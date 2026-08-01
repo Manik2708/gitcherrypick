@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Read",
+
+      "Bash(go *)",
+      "Bash(gofmt *)",
+      "Bash(golangci-lint *)",
+      "Bash(mockery *)",
+      "Bash(migrate *)",
+
+      "Bash(node *)",
+      "Bash(npm *)",
+      "Bash(npx *)",
+
+      "Bash(docker compose *)",
+      "Bash(docker build *)",
+      "Bash(docker ps *)",
+      "Bash(docker logs *)",
+      "Bash(docker exec *)",
+      "Bash(docker images *)",
+      "Bash(docker info*)",
+      "Bash(docker version*)",
+
+      "Bash(make *)",
+      "Bash(./backend/scripts/*)",
+      "Bash(./scripts/*)",
+
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git show*)",
+      "Bash(git add*)",
+      "Bash(git branch*)",
+      "Bash(git checkout*)",
+      "Bash(git switch*)",
+      "Bash(git rev-parse*)",
+      "Bash(git init*)",
+
+      "Edit(backend/**)",
+      "Edit(frontend/**)",
+      "Edit(rfc/**)",
+      "Edit(adr/**)",
+      "Edit(evaluation/**)",
+      "Edit(docs/**)"
+    ],
+    "ask": [
+      "Edit(.claude/**)",
+      "Write(.claude/**)",
+      "Bash(git commit*)",
+      "Bash(git push*)",
+      "Bash(gh *)"
+    ],
+    "deny": [
+      "Bash(sudo *)",
+      "Bash(rm -rf /*)",
+      "Bash(git reset --hard*)",
+      "Bash(git clean -fdx*)",
+      "Bash(docker system prune*)",
+      "Bash(npm publish*)",
+      "Bash(go clean -modcache*)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_response.filePath // .tool_input.file_path' | { read -r f; case \"$f\" in *.go) gofmt -w \"$f\";; esac; } 2>/dev/null || true",
+            "statusMessage": "gofmt"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/scripts/gate.sh",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}
