@@ -94,6 +94,37 @@ producing a long list we then truncate arbitrarily. The contributor's own declar
 are not capped — they are describing their own work, and constraining that would be
 answering a different question.
 
+## `pr-review` is claimed, not derived
+
+Reviewing is a skill like any other and is claimed like any other: the contributor submits
+**review threads on other people's pull requests** as evidence, 1–5 of them, primary at 5.
+
+The alternative was to derive it — go and fetch the contributor's review history ourselves
+and judge a sample. That would have bought one thing, resistance to curating five flattering
+reviews, at the cost of a separate code path, an unbounded GitHub fetch per contributor, and
+arbitrary decisions about how far back to read and which of a maintainer's five thousand
+reviews to judge. It also applies a sampling standard to reviews that we apply to nothing
+else: **the entire product is curated evidence.** "Your five best PRs" is the premise, not a
+weakness, and there is no reason reviews should be held to a different one.
+
+Two things differ from an ordinary claim:
+
+**The evidence role is `reviewer`, not `author`.** Validation inverts: the claimant must
+have left a review on the PR, and must **not** be its author. Reviewing your own pull
+request is not review work.
+
+**No PR-level arithmetic; project reach still counts.** Reviewing in a large, complex,
+widely-used codebase is worth more than reviewing in a toy one, so repository signals apply
+normally. What does not apply is anything measuring the pull request itself — diff size,
+files changed, comment counts. Those describe *the author's* work, not the reviewer's: one
+precise comment on a 4,000-line change is not 4,000 lines of review. The model reads the
+full conversation and judges review quality directly (RFC-0005). Separately-submitted
+project evidence contributes nothing to a `pr-review` claim and is not accepted on one.
+
+Everything else is unchanged — zero means rejected, five distinct PRs promotes to primary,
+and the `ω = 1.2` multiplier in the overall score (RFC-0005) still makes review work worth
+more per unit than contribution work.
+
 ### Score and standing are orthogonal
 
 Worth stating plainly, because the two are easy to conflate:

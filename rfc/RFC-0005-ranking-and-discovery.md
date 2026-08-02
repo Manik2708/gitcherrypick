@@ -18,13 +18,19 @@ Every input is either **arithmetic** — a number GitHub gives us, reproducible 
 verifiable — or **judged** — something only a reader of the diff and its conversation can
 assess.
 
-| Arithmetic | Judged by the model |
+| Arithmetic — scored directly | Judged by the model |
 |---|---|
 | Repository stars, forks, contributor count | Contribution substance |
 | Dependents count, package downloads | Complexity |
-| Additions, deletions, files changed | Conversation quality |
-| Review count, review comment count, participants | Craft (tests, docs, clarity) |
-| Maintainer status (declared, model-validated) | Skill specificity |
+| Review count, review comment count, participants | Conversation quality |
+| Maintainer status (declared, model-validated) | Craft (tests, docs, clarity) |
+| | Skill specificity |
+
+**Diff statistics are context, not a scored signal.** Additions, deletions, and files
+changed are cached and passed to the model as facts when it judges substance and
+complexity — but they feed no arithmetic term of their own. A 4,000-line generated-file
+change is not four thousand lines of engineering, and any weight on raw diff size would say
+it was.
 
 The split matters because they fail differently. Arithmetic signals are gameable but
 verifiable; judged signals are hard to game but vary with the model. Keeping them separate
@@ -256,18 +262,36 @@ headroom, so a second skill always helps and never hurts.
 
 ### The PR Review skill
 
-`pr-review` is a **derived skill**: never claimed, never submitted with evidence. The
-evaluator reads the contributor's review activity on other people's pull requests and the
-model judges it.
+`pr-review` is **claimed like any other skill** (RFC-0003) — the contributor submits review
+threads on other people's pull requests, 1–5 of them, primary at 5. It differs from every
+other skill in exactly one way, and that difference is in the scoring:
 
-Review quality is irreducibly subjective — a single well-aimed comment that changes a
-design is a better review than fifty "LGTM"s — so this is left entirely to the model, with
-no arithmetic floor. **If the model scores it zero, it is rejected and no skill is
-recorded**, exactly as for any other skill.
+```
+PR_score(pr-review) = 100 · [ 0.80·(Q/100) + 0.20·R ]        no E
+Skill_score(pr-review) = PR_component                        no project component
+```
 
-It carries a multiplier `ω = 1.2` in the overall score because a good reviewer raises the
-quality of everyone else's work, which is worth more to a project than another
-contributor. Capped at 100 so the multiplier cannot manufacture a score above the scale.
+**Project reach still counts.** Reviewing in a large, complex, widely-depended-on codebase
+is harder and worth more than reviewing in a toy repository, and `R` is exactly the measure
+of that. It keeps its 0.20 weight.
+
+**PR-specific arithmetic does not.** Additions, deletions, files changed, and the engagement
+counts `E` all describe *the author's* pull request, not the reviewer's work on it. A
+reviewer who leaves one precise comment on a 4,000-line change has not done 4,000 lines of
+review, and a thread with forty comments may just be two people disagreeing. Counting them
+would measure the wrong person.
+
+So `E`'s 0.10 weight moves to `Q`: the model reads the full conversation and judges review
+quality directly, which is the only thing that can see a single well-aimed comment beating
+fifty "LGTM"s.
+
+This is the only skill with `scoring_mode = 'judged_only'` — meaning *no PR-level
+arithmetic*. Every other skill keeps the full 70/20/10 split.
+
+**Zero means rejected**, exactly as for any other skill. And `ω = 1.2` still applies in the
+overall score, because a good reviewer raises the quality of everyone else's work, which is
+worth more to a project than another contributor. Capped at 100 so the multiplier cannot
+manufacture a score above the scale.
 
 ---
 
@@ -380,7 +404,7 @@ becomes worth defending against when the index is worth stealing.
 | Split arithmetic vs AI parameters | Two signal classes, ~30/70 weighting, separately recomputable |
 | Arithmetic relative to shared numbers in the DB | Platform-wide maxima in `global_norms`, log + percentile blend |
 | Periodic recompute of relative numbers | Arithmetic recompute — relative values only, no re-enrichment, no model calls |
-| Add a PR Review skill; reviewers matter more | Derived skill, AI-judged, ω = 1.2 multiplier, zero means rejected |
+| Add a PR Review skill; reviewers matter more | Claimed like any skill, scored 100% by the model with no arithmetic, ω = 1.2, zero means rejected |
 | Maintainer status should count | Declared with a source of truth, model-validated, μ = 1.25 on reach |
 | Project reach beyond stars | Stars, forks, contributors, dependents, downloads combined |
 | Shortlist button, email release, tentative date | Contact request + contributor approval; tentative date on the shortlist |
@@ -391,12 +415,14 @@ becomes worth defending against when the index is worth stealing.
 
 ## Open questions
 
-1. **`pr-review` evidence scope.** How far back do we read review activity, and how do we
-   bound the API cost of a prolific reviewer? **Owned by the Evaluation Planner** (stage 2)
-   — it is a rubric question, not a pipeline one.
-2. **Constants are guesses.** Every weight here is a starting point that should be tuned
-   against a labelled set before launch — particularly `d`, `γ`, and `w_q`. **Owned by the
-   Evaluation Planner**, who also owns the labelled set.
+1. **Constants are guesses.** Every weight here is a reasoned starting point, not a measured
+   one — particularly `d`, `γ`, and `w_q`. Validating them needs a set of claims a human has
+   independently ranked, which cannot exist before there are claims. **Owned by the
+   Evaluation Planner** (stage 2), together with the labelled set itself.
+
+   The `pr-review` scope question that sat here is gone: the skill is claimed rather than
+   derived (RFC-0003), so the contributor chooses the evidence and there is no review
+   history to fetch, bound, or sample.
 
 ### Decided without escalation
 

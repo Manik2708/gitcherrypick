@@ -13,7 +13,10 @@ CREATE TYPE claim_status AS ENUM (
 CREATE TYPE evidence_invalid_reason AS ENUM (
     'malformed_url', 'not_found', 'not_public', 'not_merged',
     'not_authored_by_claimant', 'duplicate_in_claim',
-    'repository_unavailable', 'github_error'
+    'repository_unavailable', 'github_error',
+    -- pr-review claims only:
+    'not_reviewed_by_claimant',   -- they left no review on this PR
+    'authored_by_claimant'        -- reviewing your own PR is not review work
 );
 
 -- Derived from distinct PR count: 5+ is primary and ranked, 1-4 is secondary
@@ -26,6 +29,16 @@ CREATE TYPE skill_standing AS ENUM ('primary', 'secondary');
 CREATE TYPE claim_skill_origin AS ENUM ('user_declared', 'ai_suggested');
 
 CREATE TYPE skill_request_status AS ENUM ('pending', 'approved', 'rejected');
+
+-- 'judged_only' skills drop the PR-level arithmetic term but keep project
+-- reach (RFC-0005). Applies to 'pr-review' only; every other skill is
+-- 'standard'.
+CREATE TYPE skill_scoring_mode AS ENUM ('standard', 'judged_only');
+
+-- What the claimant did on the PR offered as evidence. Changes the authorship
+-- check: 'author' verifies they wrote it, 'reviewer' verifies they reviewed it
+-- and did NOT write it (RFC-0003).
+CREATE TYPE evidence_role AS ENUM ('author', 'reviewer');
 
 -- Contributor-declared source of truth for maintainer status, validated by the
 -- model. GitHub exposes no maintainer list, so we ask and then check
@@ -46,9 +59,14 @@ CREATE TABLE skills (
     description text        NOT NULL,
     category    text        NOT NULL,
 
-    -- Derived skills are computed from activity rather than claimed with PRs.
-    -- 'pr-review' is the first (RFC-0005).
-    is_derived  boolean     NOT NULL DEFAULT false,
+    -- How this skill is scored (RFC-0005).
+    --   'standard'    — 0.70 judged + 0.20 project reach + 0.10 engagement
+    --   'judged_only' — 0.80 judged + 0.20 project reach; NO engagement term
+    -- 'pr-review' is judged_only. Project reach still applies — reviewing in a
+    -- large complex codebase is worth more than in a toy one. What drops out is
+    -- PR-level arithmetic (diff size, comment counts), which measures the
+    -- author's pull request rather than the reviewer's work on it.
+    scoring_mode skill_scoring_mode NOT NULL DEFAULT 'standard',
 
     is_active   boolean     NOT NULL DEFAULT true,
     created_at  timestamptz NOT NULL DEFAULT now(),
@@ -172,6 +190,11 @@ CREATE TABLE claim_pr_evidence (
     pr_number      integer NOT NULL,
 
     position       smallint NOT NULL,
+
+    -- 'author' for an ordinary skill claim; 'reviewer' for a pr-review claim,
+    -- where the contributor is offering someone else's PR as evidence of how
+    -- they reviewed it (RFC-0003).
+    role           evidence_role NOT NULL DEFAULT 'author',
 
     verified_at    timestamptz,
     invalid_reason evidence_invalid_reason,
