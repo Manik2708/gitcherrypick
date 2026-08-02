@@ -1,6 +1,6 @@
 # RFC-0001 — Platform overview, domain model & service topology
 
-**Status:** Draft (revision 2 — review resolved) · **Schema:** [RFC-0001-platform-overview.schema](RFC-0001-platform-overview.schema)
+**Status:** Approved 2026-08-02 · **Binding form:** [ADR-0001-platform-foundation](../adr/ADR-0001-platform-foundation.md) · **Schema:** [RFC-0001-platform-overview.schema](RFC-0001-platform-overview.schema)
 
 ## Summary
 

@@ -1,6 +1,6 @@
 # RFC-0004 — Evaluation pipeline & broker
 
-**Status:** Draft (revision 2 — review resolved) · **Schema:** [RFC-0004-evaluation-pipeline.schema](RFC-0004-evaluation-pipeline.schema)
+**Status:** Approved 2026-08-02 · **Binding form:** [ADR-0004-evaluation-pipeline](../adr/ADR-0004-evaluation-pipeline.md) · **Schema:** [RFC-0004-evaluation-pipeline.schema](RFC-0004-evaluation-pipeline.schema)
 · **Depends on:** RFC-0001, RFC-0003
 
 ## Summary

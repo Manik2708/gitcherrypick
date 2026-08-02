@@ -1,6 +1,6 @@
 # RFC-0006 — Technology selection
 
-**Status:** Draft (revision 2 — review resolved) · **Schema:** none — this RFC introduces no tables
+**Status:** Approved 2026-08-02 · **Binding form:** [ADR-0006-technology-selection](../adr/ADR-0006-technology-selection.md) · **Schema:** none — this RFC introduces no tables
 · **Depends on:** RFC-0001 … RFC-0005
 
 ## Summary

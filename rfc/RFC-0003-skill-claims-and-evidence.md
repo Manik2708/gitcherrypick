@@ -1,6 +1,6 @@
 # RFC-0003 — Claims, evidence & skill standing
 
-**Status:** Draft (revision 2 — review resolved) · **Schema:** [RFC-0003-skill-claims-and-evidence.schema](RFC-0003-skill-claims-and-evidence.schema)
+**Status:** Approved 2026-08-02 · **Binding form:** [ADR-0003-claims-and-standing](../adr/ADR-0003-claims-and-standing.md) · **Schema:** [RFC-0003-skill-claims-and-evidence.schema](RFC-0003-skill-claims-and-evidence.schema)
 · **Depends on:** RFC-0001, RFC-0002
 
 ## Summary

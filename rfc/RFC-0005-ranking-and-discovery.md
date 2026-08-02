@@ -1,6 +1,6 @@
 # RFC-0005 — Scoring formulas, ranking & discovery
 
-**Status:** Draft (revision 2 — review resolved) · **Schema:** [RFC-0005-ranking-and-discovery.schema](RFC-0005-ranking-and-discovery.schema)
+**Status:** Approved 2026-08-02 · **Binding form:** [ADR-0005-scoring-and-discovery](../adr/ADR-0005-scoring-and-discovery.md) · **Schema:** [RFC-0005-ranking-and-discovery.schema](RFC-0005-ranking-and-discovery.schema)
 · **Depends on:** RFC-0002, RFC-0003, RFC-0004
 
 ## Summary

@@ -8,7 +8,7 @@ word — it requires **5 of their best merged PRs** demonstrating that skill, pl
 projects they contributed to with it. An AI evaluator scores that evidence and
 produces a per-skill score and an overall score, which drive ranking for recruiters.
 
-**Current gate:** Stage 1 — Planning. RFCs at revision 2, review resolved, awaiting owner approval before promotion to ADRs.
+**Current gate:** Stage 2 — Evaluation design. Planning is approved and promoted to `adr/`; the rubric in `evaluation/` is not yet written, so no implementation may start.
 
 ## Delivery pipeline
 
@@ -17,7 +17,7 @@ Work moves through fixed stages. Each has an approval gate held by the project o
 
 | # | Stage | Artifacts |
 |---|-------|-----------|
-| 1 | Planning | `rfc/*.md` + linked `rfc/*.schema` → promoted to `adr/*.md` on approval |
+| 1 | Planning ✅ | `rfc/*.md` + linked `rfc/*.schema` → promoted to `adr/*.md` on approval |
 | 2 | Evaluation design | `evaluation/*.md` — what makes a PR worth points |
 | 3 | Integration tests | `backend/e2e/*_test.go`, `backend/scripts/` — **must fail before implementation** |
 | 4 | Core backend | `backend/cmd/api`, controllers/services/repositories |
@@ -73,9 +73,13 @@ frontend/       React + TypeScript
 Fixed by the project brief: **Frontend** HTML/CSS + React + TypeScript · **Backend** Go
 · **Evaluator** Go, consuming skill-evaluation requests and calling an AI provider.
 
-Database, queue, auth mechanism, and model selection are **planning decisions** — they
-are proposed in RFCs and become binding only once the corresponding ADR is approved.
-Do not assume a database or queue before reading `adr/`.
+Decided in [ADR-0006](adr/ADR-0006-technology-selection.md) and now **binding**: PostgreSQL
+16 on Neon (direct endpoint), a Postgres-table queue behind `port.Broker`, `claude-opus-5`
+via the Batch API, `pgx/v5` with prepared statements, `chi`, `cobra`, and Resend behind
+`port.Notifier`.
+
+Read `adr/` before assuming anything. Only the ADR is binding — where an RFC and an ADR
+disagree, the ADR wins and the discrepancy goes to the Planner.
 
 ## Commands
 

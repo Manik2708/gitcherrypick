@@ -47,14 +47,18 @@ one.
 
 ## Index
 
-| # | Title | Status |
-|---|-------|--------|
-| [0001](RFC-0001-platform-overview.md) | Platform overview, domain model & service topology | Draft (rev 2) |
-| [0002](RFC-0002-identity-and-access.md) | Identity, access & organizations | Draft (rev 2) |
-| [0003](RFC-0003-skill-claims-and-evidence.md) | Claims, evidence & skill standing | Draft (rev 2) |
-| [0004](RFC-0004-evaluation-pipeline.md) | Evaluation pipeline & broker | Draft (rev 2) |
-| [0005](RFC-0005-ranking-and-discovery.md) | Scoring formulas, ranking & discovery | Draft (rev 2) |
-| [0006](RFC-0006-technology-selection.md) | Technology selection | Draft (rev 2) |
+**All six were approved on 2026-08-02 and promoted to ADRs.** These documents are now the
+record of *why*; the ADRs in [`../adr/`](../adr/) are what implementers build against. If
+the two disagree, the ADR wins.
+
+| # | Title | Binding form |
+|---|-------|--------------|
+| [0001](RFC-0001-platform-overview.md) | Platform overview, domain model & service topology | [ADR-0001](../adr/ADR-0001-platform-foundation.md) |
+| [0002](RFC-0002-identity-and-access.md) | Identity, access & organizations | [ADR-0002](../adr/ADR-0002-identity-and-access.md) |
+| [0003](RFC-0003-skill-claims-and-evidence.md) | Claims, evidence & skill standing | [ADR-0003](../adr/ADR-0003-claims-and-standing.md) |
+| [0004](RFC-0004-evaluation-pipeline.md) | Evaluation pipeline & broker | [ADR-0004](../adr/ADR-0004-evaluation-pipeline.md) |
+| [0005](RFC-0005-ranking-and-discovery.md) | Scoring formulas, ranking & discovery | [ADR-0005](../adr/ADR-0005-scoring-and-discovery.md) |
+| [0006](RFC-0006-technology-selection.md) | Technology selection | [ADR-0006](../adr/ADR-0006-technology-selection.md) |
 
 Read them in numeric order; each assumes the ones before it.
 

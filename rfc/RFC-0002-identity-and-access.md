@@ -1,6 +1,6 @@
 # RFC-0002 — Identity, access & organizations
 
-**Status:** Draft (revision 2 — review resolved) · **Schema:** [RFC-0002-identity-and-access.schema](RFC-0002-identity-and-access.schema)
+**Status:** Approved 2026-08-02 · **Binding form:** [ADR-0002-identity-and-access](../adr/ADR-0002-identity-and-access.md) · **Schema:** [RFC-0002-identity-and-access.schema](RFC-0002-identity-and-access.schema)
 · **Depends on:** RFC-0001
 
 ## Summary
