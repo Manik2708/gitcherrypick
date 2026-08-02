@@ -1,0 +1,363 @@
+-- RFC-0003 — Claims, evidence & skill standing
+-- Schema delta. Depends on RFC-0001, RFC-0002.
+
+-- ---------------------------------------------------------------------------
+-- Enums
+-- ---------------------------------------------------------------------------
+
+CREATE TYPE claim_status AS ENUM (
+    'draft', 'validating', 'invalid', 'queued',
+    'evaluating', 'evaluated', 'failed', 'withdrawn'
+);
+
+CREATE TYPE evidence_invalid_reason AS ENUM (
+    'malformed_url', 'not_found', 'not_public', 'not_merged',
+    'not_authored_by_claimant', 'duplicate_in_claim',
+    'repository_unavailable', 'github_error'
+);
+
+-- Derived from distinct PR count: 5+ is primary and ranked, 1-4 is secondary
+-- and unranked but still contributes to the overall score (RFC-0003).
+CREATE TYPE skill_standing AS ENUM ('primary', 'secondary');
+
+-- How a skill came to be attached to a claim. 'ai_suggested' rows are inert —
+-- unscored and excluded from standing — until the contributor accepts them,
+-- at which point they become 'user_declared' (RFC-0003).
+CREATE TYPE claim_skill_origin AS ENUM ('user_declared', 'ai_suggested');
+
+CREATE TYPE skill_request_status AS ENUM ('pending', 'approved', 'rejected');
+
+-- Contributor-declared source of truth for maintainer status, validated by the
+-- model. GitHub exposes no maintainer list, so we ask and then check
+-- (RFC-0003).
+CREATE TYPE maintainer_source AS ENUM (
+    'codeowners', 'merges_others_prs', 'readme_or_governance',
+    'org_owner', 'other'
+);
+
+-- ---------------------------------------------------------------------------
+-- skills — curated catalogue. Never free text.
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE skills (
+    id          uuid PRIMARY KEY,
+    slug        citext      NOT NULL,
+    name        text        NOT NULL,
+    description text        NOT NULL,
+    category    text        NOT NULL,
+
+    -- Derived skills are computed from activity rather than claimed with PRs.
+    -- 'pr-review' is the first (RFC-0005).
+    is_derived  boolean     NOT NULL DEFAULT false,
+
+    is_active   boolean     NOT NULL DEFAULT true,
+    created_at  timestamptz NOT NULL DEFAULT now(),
+    updated_at  timestamptz NOT NULL DEFAULT now(),
+
+    CONSTRAINT uq_skills_slug UNIQUE (slug)
+);
+
+CREATE TRIGGER trg_skills_updated_at
+    BEFORE UPDATE ON skills
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- Search synonyms only ('golang' -> 'go'). Never claimable, so the claiming
+-- population never fragments across spellings.
+CREATE TABLE skill_aliases (
+    skill_id uuid   NOT NULL REFERENCES skills(id) ON DELETE CASCADE,
+    alias    citext NOT NULL,
+    PRIMARY KEY (skill_id, alias)
+);
+
+CREATE UNIQUE INDEX uq_skill_alias ON skill_aliases (alias);
+
+CREATE TABLE skill_requests (
+    id            uuid PRIMARY KEY,
+    user_id       uuid                 NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    proposed_name text                 NOT NULL,
+    rationale     text                 NOT NULL,
+    status        skill_request_status NOT NULL DEFAULT 'pending',
+
+    reviewed_by   uuid                 REFERENCES admin_accounts(id) ON DELETE SET NULL,
+    reviewed_at   timestamptz,
+    created_skill_id uuid              REFERENCES skills(id) ON DELETE SET NULL,
+    decision_reason  text,
+
+    created_at    timestamptz NOT NULL DEFAULT now(),
+    updated_at    timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_skill_requests_pending ON skill_requests (created_at)
+    WHERE status = 'pending';
+
+CREATE TRIGGER trg_skill_requests_updated_at
+    BEFORE UPDATE ON skill_requests
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- ---------------------------------------------------------------------------
+-- claims — an evidence bundle, NOT an assertion about one skill (RFC-0003).
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE claims (
+    id            uuid PRIMARY KEY,
+    user_id       uuid         NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+
+    status        claim_status NOT NULL DEFAULT 'draft',
+    version       integer      NOT NULL DEFAULT 1,
+
+    submitted_at  timestamptz,
+    evaluated_at  timestamptz,
+    withdrawn_at  timestamptz,
+
+    -- Set to evaluated_at + 7 days. Blocks edit/resubmit of THIS claim only;
+    -- other skills remain freely claimable (RFC-0003).
+    locked_until  timestamptz,
+
+    created_at    timestamptz  NOT NULL DEFAULT now(),
+    updated_at    timestamptz  NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_claims_user ON claims (user_id, created_at DESC);
+
+CREATE TRIGGER trg_claims_updated_at
+    BEFORE UPDATE ON claims
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- ---------------------------------------------------------------------------
+-- claim_skills — the skills one claim is judged against.
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE claim_skills (
+    id          uuid PRIMARY KEY,
+    claim_id    uuid               NOT NULL REFERENCES claims(id) ON DELETE CASCADE,
+    skill_id    uuid               NOT NULL REFERENCES skills(id) ON DELETE RESTRICT,
+
+    origin      claim_skill_origin NOT NULL DEFAULT 'user_declared',
+
+    -- The contributor's nomination. Does NOT cap the score: a secondary skill
+    -- may outscore it (RFC-0003).
+    is_nominated_primary boolean   NOT NULL DEFAULT false,
+
+    -- AI suggestions are inert until accepted. NULL = not yet acted on.
+    accepted_at timestamptz,
+    dismissed_at timestamptz,
+
+    -- Set when the model returns zero for this skill: dropped, never stored as
+    -- a zero score (RFC-0003).
+    rejected_at timestamptz,
+    rejection_reason text,
+
+    created_at  timestamptz NOT NULL DEFAULT now(),
+
+    CONSTRAINT uq_claim_skill UNIQUE (claim_id, skill_id)
+);
+
+CREATE INDEX idx_claim_skills_claim ON claim_skills (claim_id);
+
+-- At most one nominated primary per claim.
+CREATE UNIQUE INDEX uq_claim_one_nominated_primary ON claim_skills (claim_id)
+    WHERE is_nominated_primary;
+
+-- ---------------------------------------------------------------------------
+-- claim_pr_evidence — 1..5 per claim.
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE claim_pr_evidence (
+    id             uuid PRIMARY KEY,
+    claim_id       uuid    NOT NULL REFERENCES claims(id) ON DELETE CASCADE,
+
+    pr_url         text    NOT NULL,
+    repo_owner     citext  NOT NULL,
+    repo_name      citext  NOT NULL,
+    pr_number      integer NOT NULL,
+
+    position       smallint NOT NULL,
+
+    verified_at    timestamptz,
+    invalid_reason evidence_invalid_reason,
+
+    -- Facts cached at enrichment. Re-enriched when older than 7 days
+    -- (RFC-0004). The evaluator reads these rather than re-querying, so a run
+    -- is reproducible from stored data.
+    author_github_user_id bigint,
+    merged_at             timestamptz,
+    title                 text,
+    additions             integer,
+    deletions             integer,
+    changed_files         integer,
+    review_comment_count  integer,   -- conversation depth matters as much as diff size
+    review_count          integer,
+    participant_count     integer,
+    repo_stars            integer,
+    repo_forks            integer,
+    repo_contributor_count integer,
+    repo_primary_language text,
+    enriched_at           timestamptz,
+
+    created_at     timestamptz NOT NULL DEFAULT now(),
+    updated_at     timestamptz NOT NULL DEFAULT now(),
+
+    CONSTRAINT uq_pr_evidence_in_claim UNIQUE (claim_id, repo_owner, repo_name, pr_number),
+    CONSTRAINT uq_pr_evidence_position UNIQUE (claim_id, position),
+    CONSTRAINT ck_pr_position_range CHECK (position BETWEEN 1 AND 5)
+);
+
+CREATE INDEX idx_pr_evidence_claim ON claim_pr_evidence (claim_id);
+
+-- Distinct-PR counting for standing promotion is keyed on this triple across
+-- ALL of a user's claims, so the same PR resubmitted many times counts once.
+CREATE INDEX idx_pr_evidence_identity ON claim_pr_evidence (repo_owner, repo_name, pr_number);
+
+CREATE TRIGGER trg_claim_pr_evidence_updated_at
+    BEFORE UPDATE ON claim_pr_evidence
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- ---------------------------------------------------------------------------
+-- claim_project_evidence — 0..20, optional, arithmetic-only (RFC-0003).
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE claim_project_evidence (
+    id             uuid PRIMARY KEY,
+    claim_id       uuid   NOT NULL REFERENCES claims(id) ON DELETE CASCADE,
+
+    repo_url       text   NOT NULL,
+    repo_owner     citext NOT NULL,
+    repo_name      citext NOT NULL,
+
+    contribution_summary text,
+
+    verified_at    timestamptz,
+    invalid_reason evidence_invalid_reason,
+
+    -- Hard signals only. No model judgement is ever applied to a project.
+    repo_stars             integer,
+    repo_forks             integer,
+    repo_contributor_count integer,
+    dependents_count       integer,
+    package_downloads      bigint,
+    repo_primary_language  text,
+    enriched_at            timestamptz,
+
+    created_at     timestamptz NOT NULL DEFAULT now(),
+    updated_at     timestamptz NOT NULL DEFAULT now(),
+
+    CONSTRAINT uq_project_evidence_in_claim UNIQUE (claim_id, repo_owner, repo_name)
+);
+
+CREATE INDEX idx_project_evidence_claim ON claim_project_evidence (claim_id);
+
+CREATE TRIGGER trg_claim_project_evidence_updated_at
+    BEFORE UPDATE ON claim_project_evidence
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- ---------------------------------------------------------------------------
+-- project_maintainer_declarations
+--
+-- GitHub exposes no maintainer list, so the contributor declares it and the
+-- model validates against observable repository facts (RFC-0003).
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE project_maintainer_declarations (
+    id                  uuid PRIMARY KEY,
+    project_evidence_id uuid              NOT NULL REFERENCES claim_project_evidence(id) ON DELETE CASCADE,
+
+    sources             maintainer_source[] NOT NULL DEFAULT '{}',
+    -- Free text when 'other' is among the sources.
+    other_evidence      text,
+
+    -- Model verdict. NULL until validated; false means the declaration was not
+    -- supported, and the maintainer bonus is not applied.
+    validated           boolean,
+    validated_at        timestamptz,
+    validation_notes    text,
+
+    created_at          timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX uq_maintainer_decl_project
+    ON project_maintainer_declarations (project_evidence_id);
+
+-- ---------------------------------------------------------------------------
+-- user_skills — DERIVED standing. Written only by the evaluator.
+--
+-- This is the ranked entity, not `claims`: standing follows from how many
+-- distinct PRs across all claims evidence a skill (RFC-0003).
+-- ---------------------------------------------------------------------------
+
+-- ---------------------------------------------------------------------------
+-- user_skill_pr_links — which PRs evidence which skill, for which user.
+--
+-- The primary key IS the business rule: a given (user, PR, skill) triple can
+-- exist only once. Two claims by the same contributor cannot both offer PR #7
+-- as evidence of Go, so a PR is never judged twice for the same skill and
+-- `distinct_pr_count` is a plain row count rather than a derivation
+-- (RFC-0003).
+--
+-- The same PR evidencing DIFFERENT skills is expected and allowed — that is
+-- how secondary skills accumulate toward promotion.
+--
+-- Rows are removed when a claim is withdrawn, releasing the pairs for reuse.
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE user_skill_pr_links (
+    user_id     uuid    NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    skill_id    uuid    NOT NULL REFERENCES skills(id) ON DELETE CASCADE,
+    repo_owner  citext  NOT NULL,
+    repo_name   citext  NOT NULL,
+    pr_number   integer NOT NULL,
+
+    -- Which claim currently supplies this evidence. Validation names it when
+    -- rejecting a duplicate: "PR 3 already evidences Go in claim X".
+    claim_id    uuid    NOT NULL REFERENCES claims(id) ON DELETE CASCADE,
+
+    linked_at   timestamptz NOT NULL DEFAULT now(),
+
+    PRIMARY KEY (user_id, skill_id, repo_owner, repo_name, pr_number)
+);
+
+CREATE INDEX idx_user_skill_pr_links_claim ON user_skill_pr_links (claim_id);
+CREATE INDEX idx_user_skill_pr_links_count ON user_skill_pr_links (user_id, skill_id);
+
+CREATE TABLE user_skills (
+    user_id          uuid           NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    skill_id         uuid           NOT NULL REFERENCES skills(id) ON DELETE CASCADE,
+
+    -- Row count from user_skill_pr_links. >= 5 promotes to primary
+    -- automatically; no resubmission required (RFC-0003).
+    distinct_pr_count integer       NOT NULL DEFAULT 0,
+    standing          skill_standing NOT NULL DEFAULT 'secondary',
+
+    score            numeric(5,2),
+
+    -- Persisted score components, so the scorecard reads a breakdown instead
+    -- of recomputing one. Deriving on read would put the formula in two
+    -- places, and the two would eventually disagree silently (RFC-0005).
+    pr_component      numeric(5,2),
+    project_component numeric(5,4),
+
+    promoted_at      timestamptz,
+    last_evaluated_at timestamptz,
+
+    created_at       timestamptz    NOT NULL DEFAULT now(),
+    updated_at       timestamptz    NOT NULL DEFAULT now(),
+
+    PRIMARY KEY (user_id, skill_id),
+    CONSTRAINT ck_user_skill_score_range CHECK (score IS NULL
+        OR (score > 0 AND score <= 100)),
+    -- Standing must agree with the evidence count.
+    CONSTRAINT ck_standing_matches_count CHECK (
+        (standing = 'primary'   AND distinct_pr_count >= 5) OR
+        (standing = 'secondary' AND distinct_pr_count <  5)
+    )
+);
+
+-- Ranking read path: top contributors for a skill, primary standing only.
+CREATE INDEX idx_user_skills_ranking ON user_skills (skill_id, score DESC)
+    WHERE standing = 'primary' AND score IS NOT NULL;
+
+CREATE TRIGGER trg_user_skills_updated_at
+    BEFORE UPDATE ON user_skills
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- Note: score is CHECK (> 0), not (>= 0). A zero score means the skill was
+-- rejected and no row is written at all (RFC-0003).

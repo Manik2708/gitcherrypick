@@ -8,7 +8,7 @@ word — it requires **5 of their best merged PRs** demonstrating that skill, pl
 projects they contributed to with it. An AI evaluator scores that evidence and
 produces a per-skill score and an overall score, which drive ranking for recruiters.
 
-**Current gate:** Stage 1 — Planning. RFCs not yet drafted; nothing downstream may start.
+**Current gate:** Stage 1 — Planning. RFCs at revision 2, review resolved, awaiting owner approval before promotion to ADRs.
 
 ## Delivery pipeline
 

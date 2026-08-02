@@ -1,0 +1,71 @@
+# RFCs
+
+An RFC proposes a feature and the data model behind it. It is a **proposal** — it
+describes what we intend to build and why, and carries no authority until the project
+owner approves it.
+
+## Lifecycle
+
+```
+Draft ──▶ In review ──▶ Approved ──▶ promoted to adr/ADR-NNNN-<slug>.md
+                │
+                └──▶ Rejected / Withdrawn   (kept, marked, never deleted)
+```
+
+An approved RFC is promoted to an ADR **of the same number** — RFC-0004 becomes
+ADR-0004 — expanded with implementation detail and ordered steps. The RFC stays in
+place as the record of the proposal; the ADR is what implementers build against.
+
+**Only the ADR is binding.** No role may assume a database, queue, model, or endpoint
+shape that exists solely in an unapproved RFC.
+
+## File pairing
+
+Each RFC is at most two files:
+
+| File | Contents |
+|---|---|
+| `RFC-NNNN-<slug>.md` | The proposal — motivation, design, decisions, open questions |
+| `RFC-NNNN-<slug>.schema` | **Only the schema delta** this RFC introduces |
+
+The `.schema` file is PostgreSQL DDL, and it is a delta, not a snapshot: it contains
+what this RFC adds or changes and nothing else. To see the full schema, read the schema
+files of all approved RFCs in numeric order. If an RFC needs no schema change, it says
+so in its **Schema** section and the `.schema` file is omitted.
+
+`.schema` files are the design-time source of truth. Runnable migrations are generated
+from them during implementation and live under `backend/`.
+
+## Review
+
+Review comments are resolved by **amending the same RFC and committing to the same PR**.
+Do not open a competing document to answer feedback on an existing one — the discussion
+and the resolution must stay together.
+
+Numbers are permanent. Never renumber or reuse an RFC number, including for a rejected
+one.
+
+## Index
+
+| # | Title | Status |
+|---|-------|--------|
+| [0001](RFC-0001-platform-overview.md) | Platform overview, domain model & service topology | Draft (rev 2) |
+| [0002](RFC-0002-identity-and-access.md) | Identity, access & organizations | Draft (rev 2) |
+| [0003](RFC-0003-skill-claims-and-evidence.md) | Claims, evidence & skill standing | Draft (rev 2) |
+| [0004](RFC-0004-evaluation-pipeline.md) | Evaluation pipeline & broker | Draft (rev 2) |
+| [0005](RFC-0005-ranking-and-discovery.md) | Scoring formulas, ranking & discovery | Draft (rev 2) |
+| [0006](RFC-0006-technology-selection.md) | Technology selection | Draft (rev 2) |
+
+Read them in numeric order; each assumes the ones before it.
+
+## Revision 2
+
+All six were revised after the owner's review. Every RFC ends with a **Resolved review
+comments** table mapping each marker to what it became, so the review can be checked
+without re-reading the whole document.
+
+The structural change worth knowing before reading: a claim is no longer *(user, one skill,
+5 PRs)*. It is an **evidence bundle** — up to 5 PRs, optional projects, and the skills those
+PRs demonstrate — judged for every one of its skills in a single model call. Ranked
+standing is **derived** per (user, skill) from how many distinct PRs evidence it: 5 or more
+is primary and ranked, 1–4 is secondary and unranked.

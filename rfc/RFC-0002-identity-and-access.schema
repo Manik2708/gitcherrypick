@@ -1,0 +1,384 @@
+-- RFC-0002 — Identity, access & organizations
+-- Schema delta. Depends on RFC-0001 (extensions, set_updated_at()).
+
+-- ---------------------------------------------------------------------------
+-- Enums
+-- ---------------------------------------------------------------------------
+
+CREATE TYPE org_member_role AS ENUM ('owner', 'member');
+
+CREATE TYPE hirer_auth_provider AS ENUM ('google', 'email', 'github');
+
+CREATE TYPE verification_status AS ENUM ('pending', 'approved', 'rejected');
+
+-- What a hirer or organization submitted as proof. 'alternative' is the path
+-- for small firms with no company domain or LinkedIn page (RFC-0002) — without
+-- it, verification would only be satisfiable by large companies.
+CREATE TYPE verification_proof_kind AS ENUM (
+    'organization_linkedin',
+    'work_email_domain',
+    'freelancer_profile',
+    'payment_capability',
+    'alternative'
+);
+
+-- Expires after 15 days; a lapsed status hides the profile from hirers
+-- (RFC-0002). Stale availability is the standard failure of hiring platforms.
+CREATE TYPE availability_status AS ENUM (
+    'not_looking',
+    'looking_for_job',
+    'looking_for_freelance',
+    'open_to_freelance'
+);
+
+-- ---------------------------------------------------------------------------
+-- users — contributors. GitHub authentication only.
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE users (
+    id            uuid PRIMARY KEY,
+    display_name  text        NOT NULL,
+    email         citext,                 -- from GitHub; never released without approval
+    avatar_url    text,
+    bio           text,
+    location      text,
+
+    -- Denormalised from the newest score snapshot (RFC-0005) for ranking reads.
+    -- NULL until the contributor holds at least one PRIMARY skill: no primary
+    -- skill means no overall score (RFC-0001).
+    overall_score numeric(5,2),
+
+    created_at    timestamptz NOT NULL DEFAULT now(),
+    updated_at    timestamptz NOT NULL DEFAULT now(),
+    deactivated_at timestamptz
+);
+
+CREATE TRIGGER trg_users_updated_at
+    BEFORE UPDATE ON users
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- ---------------------------------------------------------------------------
+-- user_availability
+--
+-- Separate table because it EXPIRES. Keeping it apart from `users` means the
+-- expiry sweep touches one narrow table, and an ordinary profile update can
+-- never accidentally extend visibility.
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE user_availability (
+    user_id     uuid PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    status      availability_status NOT NULL DEFAULT 'not_looking',
+
+    -- Set to now() + 15 days on every refresh. Past this, the contributor is
+    -- invisible to hirers regardless of `status`.
+    expires_at  timestamptz,
+    reminded_at timestamptz,             -- last pre-lapse reminder sent
+
+    updated_at  timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TRIGGER trg_user_availability_updated_at
+    BEFORE UPDATE ON user_availability
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- Hirer search filters on this first: currently-visible contributors only.
+CREATE INDEX idx_availability_visible ON user_availability (status, expires_at)
+    WHERE status <> 'not_looking';
+
+-- ---------------------------------------------------------------------------
+-- profile_share_links
+--
+-- The one publishable surface (RFC-0002). A contributor generates a link to
+-- their OWN scorecard; it exposes nothing about anyone else's ranking. Off by
+-- default, revocable, and never created by us.
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE profile_share_links (
+    id          uuid PRIMARY KEY,
+    user_id     uuid   NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+
+    -- Random, unguessable, and the only credential. Stored hashed for the same
+    -- reason as refresh tokens: a database disclosure must not yield working
+    -- links to every contributor's scorecard.
+    token_hash  bytea  NOT NULL,
+
+    revoked_at  timestamptz,
+    last_viewed_at timestamptz,
+    view_count  integer NOT NULL DEFAULT 0,
+
+    created_at  timestamptz NOT NULL DEFAULT now(),
+
+    CONSTRAINT uq_share_link_token UNIQUE (token_hash)
+);
+
+-- A contributor may hold several links (one per audience) but only one active.
+CREATE UNIQUE INDEX uq_share_link_active ON profile_share_links (user_id)
+    WHERE revoked_at IS NULL;
+
+-- ---------------------------------------------------------------------------
+-- user_github_identities
+--
+-- Bound to EITHER a contributor or a hirer account, never both at once. The
+-- hirer link is what blocks self-hire (RFC-0002): a hirer may not see the
+-- contributor sharing their GitHub identity.
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE user_github_identities (
+    id                  uuid PRIMARY KEY,
+    user_id             uuid   REFERENCES users(id) ON DELETE CASCADE,
+    hirer_account_id    uuid,  -- FK added after hirer_accounts; see below
+
+    github_user_id      bigint NOT NULL,
+    github_login        citext NOT NULL,
+
+    access_token_enc    bytea,
+    token_scopes        text[]      NOT NULL DEFAULT '{}',
+
+    last_synced_at      timestamptz,
+    created_at          timestamptz NOT NULL DEFAULT now(),
+    updated_at          timestamptz NOT NULL DEFAULT now(),
+
+    -- Exactly one owner.
+    CONSTRAINT ck_identity_single_owner CHECK (
+        (user_id IS NOT NULL AND hirer_account_id IS NULL) OR
+        (user_id IS NULL AND hirer_account_id IS NOT NULL)
+    ),
+    CONSTRAINT uq_github_identity_user  UNIQUE (user_id),
+    CONSTRAINT uq_github_identity_hirer UNIQUE (hirer_account_id)
+);
+
+-- One contributor account and one hirer account may share a github_user_id —
+-- that pairing is precisely what self-hire exclusion keys on — so this is NOT
+-- globally unique. It is unique per side, enforced above.
+CREATE INDEX idx_github_identities_github_user ON user_github_identities (github_user_id);
+CREATE INDEX idx_github_identities_login ON user_github_identities (github_login);
+
+CREATE TRIGGER trg_user_github_identities_updated_at
+    BEFORE UPDATE ON user_github_identities
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- ---------------------------------------------------------------------------
+-- organizations
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE organizations (
+    id          uuid PRIMARY KEY,
+    name        text        NOT NULL,
+    slug        citext      NOT NULL,
+    website     text,
+    linkedin_url text,                   -- required for verification (RFC-0002)
+
+    -- Only verified organizations may hire. NULL = unverified.
+    verified_at timestamptz,
+    verified_by uuid,                    -- FK to admin_accounts, added below
+
+    -- Separate from identity verification; absence is disclosed, not blocking
+    -- (RFC-0002).
+    payment_verified_at timestamptz,
+
+    created_at  timestamptz NOT NULL DEFAULT now(),
+    updated_at  timestamptz NOT NULL DEFAULT now(),
+
+    CONSTRAINT uq_organizations_slug UNIQUE (slug)
+);
+
+CREATE TRIGGER trg_organizations_updated_at
+    BEFORE UPDATE ON organizations
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- ---------------------------------------------------------------------------
+-- hirer_accounts — separate from contributor accounts (RFC-0002).
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE hirer_accounts (
+    id               uuid PRIMARY KEY,
+    organization_id  uuid                REFERENCES organizations(id) ON DELETE SET NULL,
+
+    email            citext              NOT NULL,
+    auth_provider    hirer_auth_provider NOT NULL,
+    provider_subject text,               -- Google 'sub' etc.; NULL for email auth
+    password_hash    bytea,              -- argon2id; only for auth_provider='email'
+
+    display_name     text                NOT NULL,
+
+    -- No hiring capability until an admin approves (RFC-0002).
+    verified_at      timestamptz,
+    verified_by      uuid,               -- FK to admin_accounts, added below
+
+    -- Identity verification and payment verification are separate. Missing
+    -- payment evidence does NOT block hiring; it is DISCLOSED to a contributor
+    -- before they release their email (RFC-0002). We cannot reliably verify
+    -- that someone will pay, so the contributor gets the fact and the choice.
+    payment_verified_at timestamptz,
+
+    created_at       timestamptz NOT NULL DEFAULT now(),
+    updated_at       timestamptz NOT NULL DEFAULT now(),
+
+    CONSTRAINT uq_hirer_email UNIQUE (email),
+    CONSTRAINT ck_hirer_password_only_for_email CHECK (
+        (auth_provider = 'email' AND password_hash IS NOT NULL) OR
+        (auth_provider <> 'email' AND password_hash IS NULL)
+    )
+);
+
+ALTER TABLE user_github_identities
+    ADD CONSTRAINT fk_identity_hirer
+    FOREIGN KEY (hirer_account_id) REFERENCES hirer_accounts(id) ON DELETE CASCADE;
+
+CREATE INDEX idx_hirer_org ON hirer_accounts (organization_id);
+CREATE INDEX idx_hirer_unverified ON hirer_accounts (created_at)
+    WHERE verified_at IS NULL;
+
+CREATE TRIGGER trg_hirer_accounts_updated_at
+    BEFORE UPDATE ON hirer_accounts
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- ---------------------------------------------------------------------------
+-- admin_accounts — seeded by CLI flag, never self-registerable (RFC-0002).
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE admin_accounts (
+    id            uuid PRIMARY KEY,
+    email         citext      NOT NULL,
+    password_hash bytea       NOT NULL,   -- argon2id
+    display_name  text        NOT NULL,
+    disabled_at   timestamptz,
+    created_at    timestamptz NOT NULL DEFAULT now(),
+    updated_at    timestamptz NOT NULL DEFAULT now(),
+
+    CONSTRAINT uq_admin_email UNIQUE (email)
+);
+
+ALTER TABLE organizations
+    ADD CONSTRAINT fk_org_verified_by
+    FOREIGN KEY (verified_by) REFERENCES admin_accounts(id) ON DELETE SET NULL;
+
+ALTER TABLE hirer_accounts
+    ADD CONSTRAINT fk_hirer_verified_by
+    FOREIGN KEY (verified_by) REFERENCES admin_accounts(id) ON DELETE SET NULL;
+
+CREATE TRIGGER trg_admin_accounts_updated_at
+    BEFORE UPDATE ON admin_accounts
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- ---------------------------------------------------------------------------
+-- verification_requests — the manual review queue.
+--
+-- Decisions record the deciding admin, timestamp, and reason so a rejection
+-- can be explained and appealed (RFC-0002).
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE verification_requests (
+    id               uuid PRIMARY KEY,
+
+    -- Exactly one subject: a hirer account or an organization.
+    hirer_account_id uuid                REFERENCES hirer_accounts(id) ON DELETE CASCADE,
+    organization_id  uuid                REFERENCES organizations(id) ON DELETE CASCADE,
+
+    status           verification_status NOT NULL DEFAULT 'pending',
+
+    reviewed_by      uuid                REFERENCES admin_accounts(id) ON DELETE SET NULL,
+    reviewed_at      timestamptz,
+    decision_reason  text,
+
+    created_at       timestamptz NOT NULL DEFAULT now(),
+    updated_at       timestamptz NOT NULL DEFAULT now(),
+
+    CONSTRAINT ck_verification_single_subject CHECK (
+        (hirer_account_id IS NOT NULL AND organization_id IS NULL) OR
+        (hirer_account_id IS NULL AND organization_id IS NOT NULL)
+    )
+);
+
+CREATE INDEX idx_verification_pending ON verification_requests (created_at)
+    WHERE status = 'pending';
+
+CREATE TRIGGER trg_verification_requests_updated_at
+    BEFORE UPDATE ON verification_requests
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+CREATE TABLE verification_proofs (
+    id           uuid PRIMARY KEY,
+    request_id   uuid                    NOT NULL REFERENCES verification_requests(id) ON DELETE CASCADE,
+    kind         verification_proof_kind NOT NULL,
+
+    -- URL for link-shaped proofs; free text for 'alternative' and
+    -- 'payment_capability', which are deliberately unstructured in v1 until we
+    -- have seen what people actually submit (RFC-0002).
+    value        text,
+    notes        text,
+    attachment_url text,
+
+    created_at   timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_verification_proofs_request ON verification_proofs (request_id);
+
+-- ---------------------------------------------------------------------------
+-- sessions — shared by all three account types.
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE sessions (
+    id                 uuid PRIMARY KEY,
+
+    -- Exactly one principal.
+    user_id            uuid  REFERENCES users(id) ON DELETE CASCADE,
+    hirer_account_id   uuid  REFERENCES hirer_accounts(id) ON DELETE CASCADE,
+    admin_account_id   uuid  REFERENCES admin_accounts(id) ON DELETE CASCADE,
+
+    family_id          uuid  NOT NULL,
+    refresh_token_hash bytea NOT NULL,
+
+    used_at            timestamptz,
+    revoked_at         timestamptz,
+    expires_at         timestamptz NOT NULL,
+
+    user_agent         text,
+    ip_address         inet,
+    created_at         timestamptz NOT NULL DEFAULT now(),
+
+    CONSTRAINT uq_sessions_token_hash UNIQUE (refresh_token_hash),
+    CONSTRAINT ck_session_single_principal CHECK (
+        (user_id IS NOT NULL)::int +
+        (hirer_account_id IS NOT NULL)::int +
+        (admin_account_id IS NOT NULL)::int = 1
+    )
+);
+
+CREATE INDEX idx_sessions_user_active ON sessions (user_id)
+    WHERE revoked_at IS NULL AND used_at IS NULL;
+CREATE INDEX idx_sessions_family ON sessions (family_id);
+CREATE INDEX idx_sessions_expiry ON sessions (expires_at);
+
+-- ---------------------------------------------------------------------------
+-- organization membership — self-administered by the org (RFC-0002).
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE organization_members (
+    organization_id  uuid            NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    hirer_account_id uuid            NOT NULL REFERENCES hirer_accounts(id) ON DELETE CASCADE,
+    role             org_member_role NOT NULL DEFAULT 'member',
+    added_by         uuid            REFERENCES hirer_accounts(id) ON DELETE SET NULL,
+    joined_at        timestamptz     NOT NULL DEFAULT now(),
+    PRIMARY KEY (organization_id, hirer_account_id)
+);
+
+CREATE INDEX idx_org_members_hirer ON organization_members (hirer_account_id);
+
+CREATE TABLE organization_invitations (
+    id              uuid PRIMARY KEY,
+    organization_id uuid            NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    email           citext          NOT NULL,
+    role            org_member_role NOT NULL DEFAULT 'member',
+    invited_by      uuid            NOT NULL REFERENCES hirer_accounts(id) ON DELETE CASCADE,
+
+    token_hash      bytea           NOT NULL,
+    accepted_at     timestamptz,
+    expires_at      timestamptz     NOT NULL,
+    created_at      timestamptz     NOT NULL DEFAULT now(),
+
+    CONSTRAINT uq_org_invitation_token UNIQUE (token_hash)
+);
+
+CREATE UNIQUE INDEX uq_org_invite_pending ON organization_invitations (organization_id, email)
+    WHERE accepted_at IS NULL;

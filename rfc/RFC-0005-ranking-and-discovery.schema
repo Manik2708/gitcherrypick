@@ -1,0 +1,217 @@
+-- RFC-0005 — Scoring formulas, ranking & discovery
+-- Schema delta. Depends on RFC-0002, RFC-0003, RFC-0004.
+
+-- ---------------------------------------------------------------------------
+-- Enums
+-- ---------------------------------------------------------------------------
+
+CREATE TYPE arithmetic_metric AS ENUM (
+    'repo_stars', 'repo_forks', 'repo_contributors',
+    'dependents', 'package_downloads',
+    'review_comments', 'reviews', 'participants'
+);
+
+CREATE TYPE snapshot_reason AS ENUM (
+    'evaluation',            -- a claim was scored
+    'arithmetic_recompute',  -- platform maxima moved; relative values only
+    'rubric_sweep',          -- rubric version bump
+    'claim_withdrawn'
+);
+
+CREATE TYPE shortlist_status AS ENUM ('open', 'closed');
+
+CREATE TYPE contact_request_status AS ENUM ('pending', 'accepted', 'declined', 'expired');
+
+-- ---------------------------------------------------------------------------
+-- global_norms — the shared maxima every arithmetic signal is measured against
+-- (RFC-0005).
+--
+-- One row per metric. When a contributor lands a PR in a bigger repository
+-- than any seen before, max_value updates here and the arithmetic recompute
+-- adjusts everyone's RELATIVE values. Absolute cached facts never change.
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE global_norms (
+    metric             arithmetic_metric PRIMARY KEY,
+
+    -- Bumped whenever max_value or quantiles change. Stamped onto every score
+    -- computed against this generation (pr_skill_scores.norms_generation), so
+    -- the nightly recompute can tell stale rows from current ones and resume
+    -- after an interruption.
+    generation         bigint      NOT NULL DEFAULT 1,
+
+    max_value          numeric     NOT NULL DEFAULT 0,
+    -- Provenance of the current maximum, so a suspicious record can be traced.
+    max_source         text,
+    max_observed_at    timestamptz,
+
+    -- Supports the percentile half of the blend without a full corpus scan.
+    observation_count  bigint      NOT NULL DEFAULT 0,
+    -- Sampled quantile boundaries, refreshed by the recompute job.
+    -- e.g. {"p10": 3, "p50": 47, "p90": 1200, "p99": 24000}
+    quantiles          jsonb       NOT NULL DEFAULT '{}'::jsonb,
+
+    last_recomputed_at timestamptz,
+    updated_at         timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TRIGGER trg_global_norms_updated_at
+    BEFORE UPDATE ON global_norms
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- Raw observations feeding the quantile estimates. Append-only; pruned by
+-- sampling once it grows large — exact percentiles are not worth the cost
+-- (RFC-0005 open question 2).
+CREATE TABLE metric_observations (
+    id         bigserial PRIMARY KEY,
+    metric     arithmetic_metric NOT NULL,
+    value      numeric           NOT NULL,
+    source     text,                        -- 'owner/repo' for traceability
+    observed_at timestamptz      NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_metric_observations_metric_value
+    ON metric_observations (metric, value);
+
+-- ---------------------------------------------------------------------------
+-- Search support (RFC-0001 pg_trgm)
+-- ---------------------------------------------------------------------------
+
+CREATE INDEX idx_users_display_name_trgm ON users USING gin (display_name gin_trgm_ops);
+CREATE INDEX idx_users_bio_trgm          ON users USING gin (bio gin_trgm_ops);
+CREATE INDEX idx_github_login_trgm
+    ON user_github_identities USING gin (github_login gin_trgm_ops);
+
+-- Global ranking read path. Only contributors holding a primary skill have an
+-- overall score at all (RFC-0001).
+CREATE INDEX idx_users_overall_score ON users (overall_score DESC)
+    WHERE overall_score IS NOT NULL;
+
+-- ---------------------------------------------------------------------------
+-- score_snapshots — trend line and audit trail.
+--
+-- Written on every evaluation AND every arithmetic recompute, with the reason,
+-- so a contributor whose score moved without them acting can find out why
+-- (RFC-0005).
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE score_snapshots (
+    id             uuid PRIMARY KEY,
+    user_id        uuid            NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+
+    -- NULL skill_id = the overall-score snapshot.
+    skill_id       uuid            REFERENCES skills(id) ON DELETE CASCADE,
+    evaluation_id  uuid            REFERENCES evaluations(id) ON DELETE SET NULL,
+
+    score          numeric(5,2)    NOT NULL,
+    reason         snapshot_reason NOT NULL,
+    rubric_version text            NOT NULL,
+
+    captured_at    timestamptz     NOT NULL DEFAULT now(),
+
+    CONSTRAINT ck_snapshot_score_range CHECK (score > 0 AND score <= 100)
+);
+
+CREATE INDEX idx_snapshots_user_time ON score_snapshots (user_id, captured_at DESC);
+CREATE INDEX idx_snapshots_user_skill ON score_snapshots (user_id, skill_id, captured_at DESC);
+
+-- ---------------------------------------------------------------------------
+-- shortlists — owned by the ORGANIZATION (RFC-0005).
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE shortlists (
+    id              uuid PRIMARY KEY,
+    organization_id uuid             NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    name            text             NOT NULL,
+    description     text,
+
+    status          shortlist_status NOT NULL DEFAULT 'open',
+
+    -- The commitment a hirer makes when opening a round. Not enforced by
+    -- blocking; an org with >=80% of open shortlists overdue is flagged to
+    -- admins instead (RFC-0005).
+    tentative_result_date date       NOT NULL,
+    closed_at       timestamptz,
+
+    created_by      uuid             NOT NULL REFERENCES hirer_accounts(id) ON DELETE RESTRICT,
+    created_at      timestamptz      NOT NULL DEFAULT now(),
+    updated_at      timestamptz      NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_shortlists_org ON shortlists (organization_id);
+-- Drives the overdue-ratio check per organization.
+CREATE INDEX idx_shortlists_overdue ON shortlists (organization_id, tentative_result_date)
+    WHERE status = 'open';
+
+CREATE TRIGGER trg_shortlists_updated_at
+    BEFORE UPDATE ON shortlists
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+CREATE TABLE shortlist_entries (
+    shortlist_id uuid        NOT NULL REFERENCES shortlists(id) ON DELETE CASCADE,
+    user_id      uuid        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    note         text,
+    added_by     uuid        NOT NULL REFERENCES hirer_accounts(id) ON DELETE RESTRICT,
+    added_at     timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (shortlist_id, user_id)
+);
+
+-- ---------------------------------------------------------------------------
+-- contact_requests
+--
+-- Shortlisting does NOT disclose an email. It raises a request the contributor
+-- must accept (RFC-0005). Without this the consent model in RFC-0002 would be
+-- bypassed by a single click.
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE contact_requests (
+    id              uuid PRIMARY KEY,
+    shortlist_id    uuid                   NOT NULL REFERENCES shortlists(id) ON DELETE CASCADE,
+    user_id         uuid                   NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    organization_id uuid                   NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    requested_by    uuid                   NOT NULL REFERENCES hirer_accounts(id) ON DELETE RESTRICT,
+
+    status          contact_request_status NOT NULL DEFAULT 'pending',
+
+    -- Shown to the contributor when deciding, copied from the shortlist so the
+    -- record of what they were told survives a later edit.
+    tentative_result_date date             NOT NULL,
+
+    responded_at    timestamptz,
+    -- Set only on acceptance. The email itself is read from users.email; this
+    -- records that release was authorised and when.
+    email_released_at timestamptz,
+    expires_at      timestamptz            NOT NULL,
+
+    created_at      timestamptz            NOT NULL DEFAULT now(),
+
+    CONSTRAINT uq_contact_request UNIQUE (shortlist_id, user_id)
+);
+
+CREATE INDEX idx_contact_requests_user ON contact_requests (user_id, status);
+CREATE INDEX idx_contact_requests_org ON contact_requests (organization_id, status);
+
+-- ---------------------------------------------------------------------------
+-- saved_searches — filter sets, re-run live. Results are never cached: a stale
+-- candidate list is worse than no list.
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE saved_searches (
+    id              uuid PRIMARY KEY,
+    organization_id uuid        NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    name            text        NOT NULL,
+
+    -- e.g. {"skills": ["go", "kubernetes"], "min_skill_score": 70,
+    --       "availability": ["looking_for_job"], "evidence_within_months": 24}
+    filters         jsonb       NOT NULL,
+
+    created_by      uuid        NOT NULL REFERENCES hirer_accounts(id) ON DELETE RESTRICT,
+    created_at      timestamptz NOT NULL DEFAULT now(),
+    updated_at      timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_saved_searches_org ON saved_searches (organization_id);
+
+CREATE TRIGGER trg_saved_searches_updated_at
+    BEFORE UPDATE ON saved_searches
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();

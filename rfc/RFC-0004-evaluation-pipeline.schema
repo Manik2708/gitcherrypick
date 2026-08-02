@@ -1,0 +1,242 @@
+-- RFC-0004 — Evaluation pipeline & broker
+-- Schema delta. Depends on RFC-0001, RFC-0003.
+
+-- ---------------------------------------------------------------------------
+-- Enums
+-- ---------------------------------------------------------------------------
+
+CREATE TYPE evaluation_status AS ENUM ('pending', 'running', 'succeeded', 'failed');
+
+CREATE TYPE evaluation_trigger AS ENUM (
+    'submission', 'claim_edited', 'admin_requested', 'rubric_sweep'
+);
+
+CREATE TYPE batch_status AS ENUM (
+    'accumulating',  -- open dispatch window, claims still joining
+    'submitted',     -- sent to the provider
+    'completed',
+    'escalated',     -- unreturned at 20h, re-dispatched synchronously (RFC-0004)
+    'failed'
+);
+
+-- ---------------------------------------------------------------------------
+-- evaluation_jobs — the broker's v1 backing store.
+--
+-- Deliberately generic (topic + payload): nothing here is evaluation-specific,
+-- so the table can be dropped wholesale when the Broker interface is pointed
+-- at Kafka or SQS, with no change to any other table.
+--
+-- Live submissions and rubric sweeps use SEPARATE topics; workers drain the
+-- sweep topic only when the live topic is empty (RFC-0004).
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE evaluation_jobs (
+    id            uuid PRIMARY KEY,
+    topic         text        NOT NULL,   -- 'claims.live' | 'claims.sweep'
+    payload       jsonb       NOT NULL,
+
+    -- '-infinity' rather than NULL for "not leased". This collapses the claim
+    -- predicate from `leased_until IS NULL OR leased_until < now()` to a single
+    -- sargable `leased_until < now()`, so the composite index below is fully
+    -- usable instead of degrading to a filter.
+    leased_until  timestamptz NOT NULL DEFAULT '-infinity',
+    leased_by     text,
+
+    attempt       integer     NOT NULL DEFAULT 0,
+    max_attempts  integer     NOT NULL DEFAULT 6,
+
+    -- Backoff target: the claim query does not see rows with a future value.
+    available_at  timestamptz NOT NULL DEFAULT now(),
+
+    last_error    text,
+    created_at    timestamptz NOT NULL DEFAULT now(),
+    updated_at    timestamptz NOT NULL DEFAULT now()
+);
+
+-- Supports the FOR UPDATE SKIP LOCKED claim query in RFC-0004.
+--
+-- NOT a partial index: `now()` is STABLE, not IMMUTABLE, so it cannot appear
+-- in an index predicate — Postgres rejects it outright. A plain composite over
+-- the three predicate columns serves the same query.
+CREATE INDEX idx_jobs_claimable
+    ON evaluation_jobs (topic, available_at, leased_until);
+
+CREATE TRIGGER trg_evaluation_jobs_updated_at
+    BEFORE UPDATE ON evaluation_jobs
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+CREATE TABLE evaluation_dead_letters (
+    id            uuid PRIMARY KEY,
+    topic         text        NOT NULL,
+    payload       jsonb       NOT NULL,
+    attempts      integer     NOT NULL,
+    failure_kind  text        NOT NULL,   -- 'malformed' | 'refusal' | 'exhausted' | ...
+    last_error    text,
+    first_seen_at timestamptz NOT NULL,
+    created_at    timestamptz NOT NULL DEFAULT now()
+);
+
+-- ---------------------------------------------------------------------------
+-- evaluation_batches — Batch API dispatch tracking (RFC-0004).
+--
+-- Claims accumulate over a dispatch window, are submitted together, and are
+-- escalated to synchronous dispatch if unreturned at 20h so the 24h ceiling
+-- holds regardless of provider behaviour.
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE evaluation_batches (
+    id                 uuid PRIMARY KEY,
+    provider_batch_id  text,                   -- NULL until submitted
+    status             batch_status NOT NULL DEFAULT 'accumulating',
+
+    -- Window closes at this time, or earlier if the batch fills.
+    window_closes_at   timestamptz  NOT NULL,
+    submitted_at       timestamptz,
+    completed_at       timestamptz,
+
+    -- Ceiling enforcement: escalate when now() > escalate_at (RFC-0004).
+    escalate_at        timestamptz,
+    escalated_at       timestamptz,
+
+    request_count      integer      NOT NULL DEFAULT 0,
+    input_tokens       integer,
+    output_tokens      integer,
+    last_error         text,
+
+    created_at         timestamptz  NOT NULL DEFAULT now(),
+    updated_at         timestamptz  NOT NULL DEFAULT now()
+);
+
+-- The open window a new claim joins; at most one per topic at a time.
+CREATE INDEX idx_batches_accumulating ON evaluation_batches (window_closes_at)
+    WHERE status = 'accumulating';
+-- The escalation sweep.
+CREATE INDEX idx_batches_escalation ON evaluation_batches (escalate_at)
+    WHERE status = 'submitted';
+
+CREATE TRIGGER trg_evaluation_batches_updated_at
+    BEFORE UPDATE ON evaluation_batches
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- ---------------------------------------------------------------------------
+-- evaluations — one scoring run over one claim version. Immutable once
+-- succeeded.
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE evaluations (
+    id                   uuid PRIMARY KEY,
+    claim_id             uuid              NOT NULL REFERENCES claims(id) ON DELETE CASCADE,
+    batch_id             uuid              REFERENCES evaluation_batches(id) ON DELETE SET NULL,
+
+    claim_version        integer           NOT NULL,
+    rubric_version       text              NOT NULL,
+    model                text              NOT NULL,
+    prompt_version       text              NOT NULL,
+
+    -- Hash over sorted PR triples + project list + declared skills. Gives
+    -- idempotency and refuses unchanged re-submission (RFC-0003, RFC-0004).
+    evidence_fingerprint bytea             NOT NULL,
+
+    trigger              evaluation_trigger NOT NULL,
+    status               evaluation_status  NOT NULL DEFAULT 'pending',
+
+    -- Model-authored summary shown to the contributor. Explanation only; never
+    -- an input to arithmetic.
+    summary              text,
+
+    -- PRs that could not be enriched and were excluded from scoring
+    -- (RFC-0004 partial enrichment).
+    skipped_pr_positions smallint[]        NOT NULL DEFAULT '{}',
+
+    input_tokens         integer,
+    output_tokens        integer,
+    duration_ms          integer,
+    error_message        text,
+
+    started_at           timestamptz,
+    completed_at         timestamptz,
+    created_at           timestamptz       NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_evaluations_claim ON evaluations (claim_id, created_at DESC);
+CREATE INDEX idx_evaluations_batch ON evaluations (batch_id);
+
+-- Idempotency: at most one successful evaluation per (claim version, evidence,
+-- rubric). A redelivered message finds this row and acks without a model call.
+CREATE UNIQUE INDEX uq_evaluation_idempotent
+    ON evaluations (claim_id, claim_version, evidence_fingerprint, rubric_version)
+    WHERE status = 'succeeded';
+
+-- ---------------------------------------------------------------------------
+-- pr_skill_scores — one PR judged against one skill by one evaluation.
+--
+-- The grain is (evaluation, PR, skill), because a single model call scores
+-- every PR against every declared skill (RFC-0004). A PR that is strong Go
+-- evidence and weak Kubernetes evidence produces two rows with different
+-- scores.
+--
+-- PR identity and the facts used are DENORMALISED rather than referenced from
+-- claim_pr_evidence: evidence rows are replaced when a contributor edits a
+-- claim, and a historical score must stay readable and explainable (RFC-0003).
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE pr_skill_scores (
+    id            uuid PRIMARY KEY,
+    evaluation_id uuid    NOT NULL REFERENCES evaluations(id) ON DELETE CASCADE,
+    skill_id      uuid    NOT NULL REFERENCES skills(id) ON DELETE CASCADE,
+
+    repo_owner    citext  NOT NULL,
+    repo_name     citext  NOT NULL,
+    pr_number     integer NOT NULL,
+    position      smallint NOT NULL,
+
+    -- True for the skill the contributor nominated primary on this claim.
+    -- Recorded for explanation only: a secondary skill may outscore it, since
+    -- the proportion is uncapped (RFC-0003).
+    was_nominated_primary boolean NOT NULL DEFAULT false,
+
+    -- Per-dimension judgements keyed by the names the rubric defines, e.g.
+    --   {"contribution_substance": 72, "conversation_quality": 55, ...}
+    -- jsonb because the rubric owns the dimension set and must be able to add
+    -- one without a schema migration.
+    dimension_scores jsonb NOT NULL,
+
+    -- For a secondary skill: the share of the nominated primary's score this
+    -- skill earned on this PR, as judged by the model. Uncapped -- may exceed
+    -- 1.0 (RFC-0003). NULL on the nominated primary row itself.
+    relative_share numeric(5,4),
+
+    -- Computed in Go from dimension_scores x rubric weights (RFC-0005).
+    -- Never zero: a zero-scoring skill is dropped, not stored (RFC-0003).
+    score         numeric(5,2) NOT NULL,
+
+    -- Persisted score components. score = 100*(w_q*quality_q/100 + w_r*reach_r
+    -- + w_e*engagement_e). Stored rather than derived on read so the formula
+    -- lives in exactly one place — the evaluator. A read path recomputing it
+    -- would be a second implementation, and the two would diverge silently
+    -- (RFC-0005).
+    --
+    -- Per-metric norms (norm(stars), norm(forks), ...) are deliberately NOT
+    -- stored: reconstructable from `facts` plus the norms generation, and a
+    -- dozen more columns per row for debugging depth that is rarely needed.
+    quality_q     numeric(5,2),   -- judged half, from dimension_scores
+    reach_r       numeric(5,4),   -- normalised project reach at scoring time
+    engagement_e  numeric(5,4),   -- normalised engagement at scoring time
+
+    -- Which generation of global_norms produced reach_r and engagement_e.
+    -- A new platform maximum invalidates every row that used that metric, so
+    -- the nightly recompute is full-corpus; this makes it resumable and makes
+    -- "which rows are stale" answerable without recomputing to find out.
+    norms_generation bigint,
+
+    rationale     text,
+    facts         jsonb,          -- snapshot of the facts judged, for later explanation
+
+    created_at    timestamptz NOT NULL DEFAULT now(),
+
+    CONSTRAINT uq_pr_skill_score UNIQUE (evaluation_id, position, skill_id),
+    CONSTRAINT ck_pr_skill_score_range CHECK (score > 0 AND score <= 100)
+);
+
+CREATE INDEX idx_pr_skill_scores_evaluation ON pr_skill_scores (evaluation_id);
+CREATE INDEX idx_pr_skill_scores_skill ON pr_skill_scores (skill_id);
