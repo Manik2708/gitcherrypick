@@ -75,15 +75,28 @@ zero is one where nobody can predict what happens.
 | `authored_by_other` | The claimant is not meaningfully the author — the diff is someone else's work merged under their name. |
 | `unrelated_to_issue` | The PR claims to address an issue and does something else, or nothing the issue asked for. |
 | `maintainer_flagged_unrelated` | A maintainer stated in the thread that the change was unrelated, unwanted, or merged for a reason other than its merit. The people who own the project are the authority on this. |
-| `ai_generated_slop` | Machine-generated code submitted without evident understanding: plausible-looking changes that do not fit the codebase, invented APIs, a description that does not match the diff, or a thread where the author cannot answer questions about their own change. |
 
-`ai_generated_slop` is the hardest of these to apply and the most important to get right.
-**The ground is unreviewed generation, not use of a tool.** An engineer who used a model to
-draft a change, understood it, adapted it, and defended it in review has done the work. The
-signals that distinguish the two are in the review thread: whether the author can explain
-their own decisions, whether the change fits the surrounding code, and whether the
-description describes what the diff actually does. When genuinely uncertain, **score low
-rather than disqualify** — the quality floor will catch it if it deserves catching.
+### Why "AI-generated" is not a ground
+
+It was proposed and **removed**. How a change was produced is not a ground for disqualifying
+it.
+
+A merged pull request in a repository the author does not control has already passed the only
+gate that matters: **someone else accepted it.** If a maintainer of a substantial project
+reviewed a meaningful change and merged it, the change is real work regardless of what tools
+produced the first draft. That is the same argument the entire product rests on — merged PRs
+are expensive to fake precisely because acceptance is not in the contributor's gift.
+
+Trying to detect provenance would also be bad at its job. The signals — plausible-looking
+code, a description that does not match the diff, an author who cannot explain their own
+change — are all things the existing dimensions already measure, and they are equally present
+in careless human work. `craft` catches code that does not fit the codebase.
+`conversation_quality` catches an author who cannot defend their decisions. The quality floor
+catches output too thin to mean anything.
+
+So we score the change, not its authorship. `generated_output` remains a ground for a
+genuinely different case: a diff that is *entirely* machine output with no hand-written part,
+like a regenerated lockfile — where the author ran a tool and committed the result.
 
 ### Deliberately not grounds
 

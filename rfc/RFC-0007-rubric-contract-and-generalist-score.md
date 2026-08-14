@@ -38,9 +38,21 @@ The model returns a verdict alongside the dimension scores:
 ```
 
 When set, `PR_score = 0` for that (PR, skill) pair — the arithmetic is **bypassed**, not
-reduced. Ten exhaustive grounds, defined in
+reduced. Nine exhaustive grounds, defined in
 [evaluation/disqualification.md](../evaluation/disqualification.md). The model may not invent
 one; anything not on the list is scored low instead.
+
+**"AI-generated" is deliberately not among them.** A merged pull request in a repository the
+author does not control has already passed the only gate that matters — someone else accepted
+it. If a maintainer of a substantial project reviewed a meaningful change and merged it, it is
+real work regardless of what produced the first draft. That is the same argument the product
+rests on: merged PRs are expensive to fake precisely because acceptance is not in the
+contributor's gift.
+
+Detection would also be redundant. Every signal of "slop" — code that does not fit the
+codebase, an author who cannot defend their decisions, output too thin to mean anything — is
+already measured by `craft`, `conversation_quality`, and the quality floor, and every one of
+them is equally present in careless human work. We score the change, not its authorship.
 
 Disqualification is **per (PR, skill)**. A dependency bump disqualifies for `go` and may
 still evidence `security` if the author diagnosed a CVE.
@@ -192,13 +204,13 @@ decided by **data availability, not project type**.
 
 ## Open questions
 
-1. **`ai_generated_slop` is the hardest ground to apply.** The rubric says to score low rather
-   than disqualify when uncertain, but the boundary between "used a model well" and "shipped
-   unreviewed output" will produce disputes. It may be the single largest source of
-   re-evaluation requests.
-2. **`√i` damping is reasoned, not derived.** `log₂(i+1)` is flatter and equally defensible.
-3. **Two scores means two leaderboards**, and a contributor will ask which one is "real".
-   A presentation question, but one worth settling before launch.
+**None.** All three raised in the draft were resolved in review:
+
+| Question | Resolution |
+|---|---|
+| `ai_generated_slop` is hard to apply | **Ground removed.** A big project, a meaningful PR, and a merge is enough — provenance does not matter once someone else has accepted the change. See §1. |
+| `√i` vs `log₂(i+1)` damping | **`√i`.** Revisit if calibration shows breadth over- or under-weighted. |
+| Two scores, two leaderboards, which is "real" | **A false premise.** There were never two. There is a leaderboard per skill, plus overall, plus generalist. Adding one more axis to an already multi-axis ranking is not a competing answer — each board answers a different question, and a recruiter picks the one matching what they need. |
 
 ## Schema
 

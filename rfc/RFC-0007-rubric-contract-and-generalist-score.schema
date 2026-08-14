@@ -17,7 +17,7 @@
 -- enum rather than free text, so a rejection reason is a value and not
 -- whatever a prompt happened to produce.
 --
--- The first ten are model verdicts; 'below_quality_floor' is computed in Go
+-- The first nine are model verdicts; 'below_quality_floor' is computed in Go
 -- when the mean dimension score falls under 5.
 CREATE TYPE skill_rejection_reason AS ENUM (
     'typo_or_wording',
@@ -29,7 +29,6 @@ CREATE TYPE skill_rejection_reason AS ENUM (
     'authored_by_other',
     'unrelated_to_issue',
     'maintainer_flagged_unrelated',
-    'ai_generated_slop',
     'below_quality_floor'
 );
 

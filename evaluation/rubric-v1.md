@@ -179,8 +179,11 @@ unproven breadth, and letting it into recruiter search would be a way around the
 
 Grounds are an exhaustive enum, not a scale: `typo_or_wording`, `formatting_only`,
 `generated_output`, `mechanical_dependency_bump`, `revert_only`, `not_the_claimed_skill`,
-`authored_by_other`, `unrelated_to_issue`, `maintainer_flagged_unrelated`,
-`ai_generated_slop`.
+`authored_by_other`, `unrelated_to_issue`, `maintainer_flagged_unrelated`.
+
+**"AI-generated" is not a ground.** A merged PR in a repository the author does not control
+has already passed the gate that matters — someone else accepted it. See
+[disqualification.md](disqualification.md).
 
 Plus the **quality floor**: mean dimension score below `5` zeroes the pair regardless of
 verdict. See [disqualification.md](disqualification.md).
