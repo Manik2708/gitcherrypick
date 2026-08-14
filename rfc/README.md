@@ -38,12 +38,16 @@ from them during implementation and live under `backend/`.
 
 ## Review
 
-Review comments are resolved by **amending the same RFC and committing to the same PR**.
-Do not open a competing document to answer feedback on an existing one — the discussion
-and the resolution must stay together.
+**While an RFC is Draft**, review comments are resolved by amending it in place and
+committing to the same PR. Do not open a competing document to answer feedback — the
+discussion and the resolution must stay together.
 
-Numbers are permanent. Never renumber or reuse an RFC number, including for a rejected
-one.
+**Once an RFC is Approved, it is frozen.** A change gets a new number whose `.schema` holds
+only the delta, and both documents cross-reference each other. Editing an approved document
+destroys the record of what was decided and when, and hides the fact that a decision was
+ever reconsidered.
+
+Numbers are permanent. Never renumber or reuse an RFC number, including for a rejected one.
 
 ## Index
 
@@ -65,7 +69,7 @@ audit.
 | [0004](RFC-0004-evaluation-pipeline.md) | Evaluation pipeline & broker | [ADR-0004](../adr/ADR-0004-evaluation-pipeline.md) |
 | [0005](RFC-0005-ranking-and-discovery.md) | Scoring formulas, ranking & discovery | [ADR-0005](../adr/ADR-0005-scoring-and-discovery.md) |
 | [0006](RFC-0006-technology-selection.md) | Technology selection | [ADR-0006](../adr/ADR-0006-technology-selection.md) |
-| [0007](RFC-0007-rubric-contract-and-generalist-score.md) | Rubric contract, disqualification & the generalist score | **Draft** — amends 0002–0005 |
+| [0007](RFC-0007-rubric-contract-and-generalist-score.md) | Rubric contract, disqualification & the generalist score | [ADR-0007](../adr/ADR-0007-rubric-contract-and-generalist-score.md) — amends 0002–0005 |
 
 Read them in numeric order; each assumes the ones before it.
 

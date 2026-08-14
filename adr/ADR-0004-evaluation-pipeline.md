@@ -173,8 +173,9 @@ optional — without it a provider outage synchronises every worker into one ret
   the outbox guarantee is worth the coupling, and a broker that cannot join our transaction
   cannot give it.
 
-## Revisions
+## Amendments
 
 | Date | Change |
 |---|---|
 | 2026-08-02 | Accepted from RFC-0004 |
+| 2026-08-14 | **Amended by [ADR-0007](ADR-0007-rubric-contract-and-generalist-score.md)** — the judgement contract returns a score **and a remark per dimension** plus a disqualification verdict; the persist transaction gains link-status resolution and a second user-level score. |

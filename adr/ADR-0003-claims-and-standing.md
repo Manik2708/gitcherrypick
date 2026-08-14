@@ -146,8 +146,9 @@ unaffected — the lock is per claim, not per account.
   needs tuning against real requests, and a rejected request should say which skill it
   matched so a contributor can push back.
 
-## Revisions
+## Amendments
 
 | Date | Change |
 |---|---|
 | 2026-08-02 | Accepted from RFC-0003 |
+| 2026-08-14 | **Amended by [ADR-0007](ADR-0007-rubric-contract-and-generalist-score.md)** — `distinct_pr_count` counts only `status='scored'` links, so a rejected PR leaves a skill at four and secondary. `claim_skills.rejection_reason` becomes an enum. |

@@ -137,8 +137,9 @@ no rank against others, no navigation to anyone else.
 - **Full gating removes every viral surface.** Share links are the only mitigation, and they
   require the contributor to act.
 
-## Revisions
+## Amendments
 
 | Date | Change |
 |---|---|
 | 2026-08-02 | Accepted from RFC-0002 |
+| 2026-08-14 | **Amended by [ADR-0007](ADR-0007-rubric-contract-and-generalist-score.md)** — `users.generalist_score` added: a second user-level score, unbounded and searchable, alongside `overall_score`. |

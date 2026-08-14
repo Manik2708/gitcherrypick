@@ -3,12 +3,20 @@
 A platform where open-source contributors prove skill with **evidence** rather than
 self-assertion, and recruiters cherry-pick from a ranked pool.
 
-A contributor signs in with GitHub and adds a skill. Adding a skill is not typing a
-word — it requires **5 of their best merged PRs** demonstrating that skill, plus the
-projects they contributed to with it. An AI evaluator scores that evidence and
-produces a per-skill score and an overall score, which drive ranking for recruiters.
+A contributor signs in with GitHub and submits a **claim**: up to five of their best merged
+PRs, optional supporting projects, and the skills those PRs demonstrate. One model call
+judges every PR against every declared skill.
 
-**Current gate:** Stage 2 — Evaluation design. Planning is approved and promoted to `adr/`; the rubric in `evaluation/` is not yet written, so no implementation may start.
+**Skill standing is derived, not declared.** Five distinct surviving PRs make a skill
+*primary* — ranked and searchable. One to four make it *secondary* — visible and
+score-contributing, never ranked. Promotion at the fifth is automatic.
+
+Three score families come out of it: **per PR per skill**, **per skill**, and two
+user-level numbers — **Overall** (depth, 0–100) and **Generalist** (breadth, unbounded).
+Hirers are separately verified accounts; scorecards are gated, and contributors see only
+their own rank.
+
+**Current gate:** Stage 3 — Integration tests. Planning and the evaluation rubric are approved; tests must be written, approved, and FAILING before any implementation begins.
 
 ## Delivery pipeline
 
@@ -18,7 +26,7 @@ Work moves through fixed stages. Each has an approval gate held by the project o
 | # | Stage | Artifacts |
 |---|-------|-----------|
 | 1 | Planning ✅ | `rfc/*.md` + linked `rfc/*.schema` → promoted to `adr/*.md` on approval |
-| 2 | Evaluation design | `evaluation/*.md` — what makes a PR worth points |
+| 2 | Evaluation design ✅ | `evaluation/*.md` — what makes a PR worth points |
 | 3 | Integration tests | `backend/e2e/*_test.go`, `backend/scripts/` — **must fail before implementation** |
 | 4 | Core backend | `backend/cmd/api`, controllers/services/repositories |
 | 5 | Evaluator backend | `backend/cmd/evaluator`, broker + AI adapters |

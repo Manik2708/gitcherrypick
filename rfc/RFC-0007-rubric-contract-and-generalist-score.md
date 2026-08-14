@@ -1,6 +1,6 @@
 # RFC-0007 — Rubric contract, disqualification & the generalist score
 
-**Status:** Draft · **Schema:** [RFC-0007-rubric-contract-and-generalist-score.schema](RFC-0007-rubric-contract-and-generalist-score.schema)
+**Status:** Approved 2026-08-14 · **Binding form:** [ADR-0007](../adr/ADR-0007-rubric-contract-and-generalist-score.md) · **Schema:** [RFC-0007-rubric-contract-and-generalist-score.schema](RFC-0007-rubric-contract-and-generalist-score.schema)
 · **Amends:** RFC-0002, RFC-0003, RFC-0004, RFC-0005 (and their ADRs)
 
 ## Summary

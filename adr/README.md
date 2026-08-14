@@ -57,6 +57,7 @@ changed, when, and what argument moved it.
 | [0004](ADR-0004-evaluation-pipeline.md) | Evaluation pipeline & broker | Accepted | [rfc](../rfc/RFC-0004-evaluation-pipeline.schema) |
 | [0005](ADR-0005-scoring-and-discovery.md) | Scoring, ranking & discovery | Accepted | [rfc](../rfc/RFC-0005-ranking-and-discovery.schema) |
 | [0006](ADR-0006-technology-selection.md) | Technology selection & dependencies | Accepted | — |
+| [0007](ADR-0007-rubric-contract-and-generalist-score.md) | Rubric contract, disqualification & the generalist score | Accepted | [rfc](../rfc/RFC-0007-rubric-contract-and-generalist-score.schema) |
 
 Schema DDL lives beside the RFCs; migrations are generated from it during implementation
 (ADR-0001).

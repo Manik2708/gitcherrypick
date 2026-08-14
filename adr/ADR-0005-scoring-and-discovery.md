@@ -160,8 +160,9 @@ punish a hirer for a candidate's silence as readily as for their own neglect.
 - **Contact requests will stall.** A contributor who never answers leaves the hirer with
   nothing. Accepted as the cost of consent.
 
-## Revisions
+## Amendments
 
 | Date | Change |
 |---|---|
 | 2026-08-02 | Accepted from RFC-0005 |
+| 2026-08-14 | **Amended by [ADR-0007](ADR-0007-rubric-contract-and-generalist-score.md)** — adds the **Generalist score** and the quality floor; `project_component` 0.15 → 0.30; four explicit project-reach weight cases; `conversation_quality` scores 0 with no discussion; adds the re-evaluation flow. `γ` is retained. |
