@@ -11,22 +11,22 @@ is a delta, and the sections it does not mention stay in force.
 
 Seven changes, in dependency order:
 
-| # | Change | Amends |
-|---|---|---|
-| 1 | Disqualification verdict in the judgement contract | RFC-0004 |
-| 2 | Quality floor — mean dimension score below 5 zeroes the pair | RFC-0004, RFC-0005 |
-| 3 | Rejected PRs excluded from standing | RFC-0003 |
-| 4 | Per-dimension remarks, not one rationale | RFC-0004 |
-| 5 | **Generalist score** — a second user-level score, searchable | RFC-0002, RFC-0005 |
-| 6 | Re-evaluation requests with escalating cooldown | RFC-0005 |
-| 7 | Constant changes: project weight, reach cases, conversation zero | RFC-0005 |
+| #   | Change                                                           | Amends             |
+| --- | ---------------------------------------------------------------- | ------------------ |
+| 1   | Disqualification verdict in the judgement contract               | RFC-0004           |
+| 2   | Quality floor — mean dimension score below 5 zeroes the pair     | RFC-0004, RFC-0005 |
+| 3   | Rejected PRs excluded from standing                              | RFC-0003           |
+| 4   | Per-dimension remarks, not one rationale                         | RFC-0004           |
+| 5   | **Generalist score** — a second user-level score, searchable     | RFC-0002, RFC-0005 |
+| 6   | Re-evaluation requests with escalating cooldown                  | RFC-0005           |
+| 7   | Constant changes: project weight, reach cases, conversation zero | RFC-0005           |
 
 ---
 
 ## 1 · Disqualification
 
 `Agent.md` requires a typo fix to score **0**. The weighted formula cannot produce that: a
-typo fix scores `Q ≈ 2.45`, but project reach is a property of the *repository* rather than
+typo fix scores `Q ≈ 2.45`, but project reach is a property of the _repository_ rather than
 the change, so `PR_score ≈ 1.7 + 20·R + 10·E` floors near **18** in a popular repository.
 A one-character README fix in Kubernetes would outscore a careful bug fix in a 200-star
 library.
@@ -120,12 +120,12 @@ Overall    = v₁ + (100 − v₁) · γ · B          bounded 0–100, depth   
 Generalist = v₁ + Σ(i≥2) vᵢ / √i              unbounded, breadth        (new)
 ```
 
-| Profile | Overall | Generalist |
-|---|---:|---:|
-| 1 primary @ 95 | **95.0** | 95 |
-| 2 primaries @ 90, 75 | 93.8 | 143 |
-| 4 primaries @ 80, 70, 65, 60 | 86.7 | 197 |
-| 8 primaries @ 55 | 67.4 | **240** |
+| Profile                      |  Overall | Generalist |
+| ---------------------------- | -------: | ---------: |
+| 1 primary @ 95               | **95.0** |         95 |
+| 2 primaries @ 90, 75         |     93.8 |        143 |
+| 4 primaries @ 80, 70, 65, 60 |     86.7 |        197 |
+| 8 primaries @ 55             |     67.4 |    **240** |
 
 The two columns rank these profiles in **opposite orders**, which is the evidence they
 measure different things. `√i` damping keeps count from dominating outright — the ninth skill
@@ -153,12 +153,12 @@ the disagreement for tuning — or rejects.
 
 Rejections drive an **escalating cooldown**, resetting each time it expires:
 
-| Rejections | Cooldown |
-|---|---|
-| First 3 | 28 days |
-| Next 3 | 56 days |
-| Next 3 | 112 days |
-| Next 3 | 224 days |
+| Rejections | Cooldown           |
+| ---------- | ------------------ |
+| First 3    | 28 days            |
+| Next 3     | 56 days            |
+| Next 3     | 112 days           |
+| Next 3     | 224 days           |
 | Thereafter | **365 days (cap)** |
 
 Doubling costs an honest contributor who misjudged once almost nothing while making
@@ -179,23 +179,23 @@ because nobody disputes a score they cannot see in context.
 
 ## 7 · Constant changes
 
-| Constant | Was | Now | Why |
-|---|---|---|---|
-| `project_component_weight` | 0.15 | **0.30** | Contributing to a large complex project should be clearly distinguished from a basic one |
-| `pr_component_weight` | 0.85 | **0.70** | Complement of the above |
-| Project reach weights | one set, renormalised | **four explicit cases** | Stars/forks/contributors always exist; dependents and downloads do not. Generic renormalisation silently changes what the score means by project type |
-| `conversation_quality` with no discussion | ~40 | **0** | No conversation means no conversational skill demonstrated. Makes the five-PR choice a real trade-off the contributor controls |
-| `craft` | tests, docs, durability | **+ readability** | Naming, abstraction level, design-pattern fit. Pure formatting still excluded |
-| `quality_floor` | — | **5** | New (§2) |
+| Constant                                  | Was                     | Now                     | Why                                                                                                                                                   |
+| ----------------------------------------- | ----------------------- | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `project_component_weight`                | 0.15                    | **0.30**                | Contributing to a large complex project should be clearly distinguished from a basic one                                                              |
+| `pr_component_weight`                     | 0.85                    | **0.70**                | Complement of the above                                                                                                                               |
+| Project reach weights                     | one set, renormalised   | **four explicit cases** | Stars/forks/contributors always exist; dependents and downloads do not. Generic renormalisation silently changes what the score means by project type |
+| `conversation_quality` with no discussion | ~40                     | **0**                   | No conversation means no conversational skill demonstrated. Makes the five-PR choice a real trade-off the contributor controls                        |
+| `craft`                                   | tests, docs, durability | **+ readability**       | Naming, abstraction level, design-pattern fit. Pure formatting still excluded                                                                         |
+| `quality_floor`                           | —                       | **5**                   | New (§2)                                                                                                                                              |
 
 The four reach cases:
 
-| Case | stars | forks | contributors | dependents | downloads |
-|---|---:|---:|---:|---:|---:|
-| All five | 0.30 | 0.10 | 0.15 | 0.25 | 0.20 |
-| No downloads | 0.35 | 0.15 | 0.20 | 0.30 | — |
-| No dependents | 0.35 | 0.15 | 0.20 | — | 0.30 |
-| Neither | 0.45 | 0.20 | 0.35 | — | — |
+| Case          | stars | forks | contributors | dependents | downloads |
+| ------------- | ----: | ----: | -----------: | ---------: | --------: |
+| All five      |  0.30 |  0.10 |         0.15 |       0.25 |      0.20 |
+| No downloads  |  0.35 |  0.15 |         0.20 |       0.30 |         — |
+| No dependents |  0.35 |  0.15 |         0.20 |          — |      0.30 |
+| Neither       |  0.45 |  0.20 |         0.35 |          — |         — |
 
 Case 4 is the common one — applications, services, CLIs. `contributors` is weighted up
 sharply because for an application the number of people who have landed changes says more
@@ -206,10 +206,10 @@ decided by **data availability, not project type**.
 
 **None.** All three raised in the draft were resolved in review:
 
-| Question | Resolution |
-|---|---|
-| `ai_generated_slop` is hard to apply | **Ground removed.** A big project, a meaningful PR, and a merge is enough — provenance does not matter once someone else has accepted the change. See §1. |
-| `√i` vs `log₂(i+1)` damping | **`√i`.** Revisit if calibration shows breadth over- or under-weighted. |
+| Question                                      | Resolution                                                                                                                                                                                                                                                                                    |
+| --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ai_generated_slop` is hard to apply          | **Ground removed.** A big project, a meaningful PR, and a merge is enough — provenance does not matter once someone else has accepted the change. See §1.                                                                                                                                     |
+| `√i` vs `log₂(i+1)` damping                   | **`√i`.** Revisit if calibration shows breadth over- or under-weighted.                                                                                                                                                                                                                       |
 | Two scores, two leaderboards, which is "real" | **A false premise.** There were never two. There is a leaderboard per skill, plus overall, plus generalist. Adding one more axis to an already multi-axis ranking is not a competing answer — each board answers a different question, and a recruiter picks the one matching what they need. |
 
 ## Schema

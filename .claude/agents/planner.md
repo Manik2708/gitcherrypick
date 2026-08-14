@@ -38,6 +38,7 @@ role may assume a database, queue, or model vendor.
 You speak with **the project owner** and with the **frontend-owner** agent. No one else.
 
 When frontend-owner reports an API mismatch, an IO problem, or a missing endpoint:
+
 1. Decide whether the fix belongs to the contract, the core backend, or the evaluator.
 2. Amend the relevant RFC/ADR.
 3. Get the change approved.

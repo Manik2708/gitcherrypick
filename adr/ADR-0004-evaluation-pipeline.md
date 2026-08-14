@@ -101,7 +101,7 @@ Two response-handling rules:
 - **Check `stop_reason` before reading `content`.** A refusal is an HTTP 200. Reading
   `content[0]` unconditionally panics on it. Refusals dead-letter with their category; an
   identical retry will not help.
-- **`max_tokens` bounds thinking plus output.** Size it for the JSON *and* adaptive
+- **`max_tokens` bounds thinking plus output.** Size it for the JSON _and_ adaptive
   thinking, or responses truncate mid-object.
 
 ### Persist
@@ -132,16 +132,16 @@ skill slugs.
 
 ### Failure matrix
 
-| Failure | Action |
-|---|---|
-| Malformed payload | Dead-letter. Not retryable. |
-| GitHub rate limit | Nack with `Retry-After`; **does not count as an attempt** |
-| GitHub 5xx/timeout | Nack, exponential backoff + jitter |
-| One PR fails enrichment | Longer backoff retry, then score the rest; record `skipped_pr_positions` |
-| Batch stalled at 20h | Escalate to synchronous |
-| Model refusal | Dead-letter with category |
-| Structured output invalid | Retry once, then dead-letter |
-| Repository write fails | Nack; the transaction rolled back |
+| Failure                   | Action                                                                   |
+| ------------------------- | ------------------------------------------------------------------------ |
+| Malformed payload         | Dead-letter. Not retryable.                                              |
+| GitHub rate limit         | Nack with `Retry-After`; **does not count as an attempt**                |
+| GitHub 5xx/timeout        | Nack, exponential backoff + jitter                                       |
+| One PR fails enrichment   | Longer backoff retry, then score the rest; record `skipped_pr_positions` |
+| Batch stalled at 20h      | Escalate to synchronous                                                  |
+| Model refusal             | Dead-letter with category                                                |
+| Structured output invalid | Retry once, then dead-letter                                             |
+| Repository write fails    | Nack; the transaction rolled back                                        |
 
 Backoff: 5s base, exponential, jitter, capped 15 min, **6 attempts**. Jitter is not
 optional — without it a provider outage synchronises every worker into one retry storm.
@@ -175,7 +175,7 @@ optional — without it a provider outage synchronises every worker into one ret
 
 ## Amendments
 
-| Date | Change |
-|---|---|
-| 2026-08-02 | Accepted from RFC-0004 |
+| Date       | Change                                                                                                                                                                                                                                                                   |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 2026-08-02 | Accepted from RFC-0004                                                                                                                                                                                                                                                   |
 | 2026-08-14 | **Amended by [ADR-0007](ADR-0007-rubric-contract-and-generalist-score.md)** — the judgement contract returns a score **and a remark per dimension** plus a disqualification verdict; the persist transaction gains link-status resolution and a second user-level score. |

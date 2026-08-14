@@ -1,7 +1,7 @@
 # ADR-0007 — Rubric contract, disqualification & the generalist score
 
 **Status:** Accepted · **From:** [RFC-0007](../rfc/RFC-0007-rubric-contract-and-generalist-score.md)
-· **Schema:** [RFC-0007-*.schema](../rfc/RFC-0007-rubric-contract-and-generalist-score.schema)
+· **Schema:** [`RFC-0007-*.schema`](../rfc/RFC-0007-rubric-contract-and-generalist-score.schema)
 · **Amends:** ADR-0002, ADR-0003, ADR-0004, ADR-0005
 
 ## Decision
@@ -27,37 +27,55 @@ Structured output schema, replacing the one in ADR-0004. One object per (PR, ski
 ```json
 {
   "type": "object",
-  "required": ["repo_owner","repo_name","pr_number","skill_slug","disqualified"],
+  "required": ["repo_owner", "repo_name", "pr_number", "skill_slug", "disqualified"],
   "additionalProperties": false,
   "properties": {
-    "repo_owner": {"type":"string"}, "repo_name": {"type":"string"},
-    "pr_number":  {"type":"integer"}, "skill_slug": {"type":"string"},
+    "repo_owner": { "type": "string" },
+    "repo_name": { "type": "string" },
+    "pr_number": { "type": "integer" },
+    "skill_slug": { "type": "string" },
 
-    "disqualified": {"type":"boolean"},
+    "disqualified": { "type": "boolean" },
     "disqualification_reason": {
-      "type": ["string","null"],
-      "enum": ["typo_or_wording","formatting_only","generated_output",
-               "mechanical_dependency_bump","revert_only","not_the_claimed_skill",
-               "authored_by_other","unrelated_to_issue","maintainer_flagged_unrelated",
-               null]
+      "type": ["string", "null"],
+      "enum": [
+        "typo_or_wording",
+        "formatting_only",
+        "generated_output",
+        "mechanical_dependency_bump",
+        "revert_only",
+        "not_the_claimed_skill",
+        "authored_by_other",
+        "unrelated_to_issue",
+        "maintainer_flagged_unrelated",
+        null
+      ]
     },
 
     "dimensions": {
-      "type": "object", "additionalProperties": false,
-      "required": ["substance","complexity","conversation_quality","craft","skill_specificity"],
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "substance",
+        "complexity",
+        "conversation_quality",
+        "craft",
+        "skill_specificity"
+      ],
       "patternProperties": {
         "^(substance|complexity|conversation_quality|craft|skill_specificity)$": {
-          "type": "object", "additionalProperties": false,
-          "required": ["score","remark"],
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["score", "remark"],
           "properties": {
-            "score":  {"type":"integer","minimum":0,"maximum":100},
-            "remark": {"type":"string","maxLength":400}
+            "score": { "type": "integer", "minimum": 0, "maximum": 100 },
+            "remark": { "type": "string", "maxLength": 400 }
           }
         }
       }
     },
 
-    "relative_share": {"type":["number","null"],"minimum":0}
+    "relative_share": { "type": ["number", "null"], "minimum": 0 }
   }
 }
 ```
@@ -196,6 +214,6 @@ Search gains `min_generalist_score`, served by `idx_users_generalist_score`.
 
 ## Amendments
 
-| Date | Change |
-|---|---|
+| Date       | Change                                                     |
+| ---------- | ---------------------------------------------------------- |
 | 2026-08-14 | Accepted from RFC-0007. Amends ADR-0002, 0003, 0004, 0005. |

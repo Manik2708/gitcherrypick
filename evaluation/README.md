@@ -1,7 +1,7 @@
 # Evaluation rubric
 
-What earns points. ADR-0005 decides how signals *combine*; this directory decides what the
-signals *mean*.
+What earns points. ADR-0005 decides how signals _combine_; this directory decides what the
+signals _mean_.
 
 The split is deliberate: two authorities on the same question is how a scoring system
 becomes unauditable. ADR-0005 owns the arithmetic and never says what
@@ -21,14 +21,14 @@ friction is intentional — a weight change rescores every contributor on the pl
 
 ## Files
 
-| File | Contents |
-|---|---|
-| [dimensions.md](dimensions.md) | The five judged dimensions, each with a 0–100 scale, anchors, and what it must ignore |
+| File                                       | Contents                                                                                        |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------- |
+| [dimensions.md](dimensions.md)             | The five judged dimensions, each with a 0–100 scale, anchors, and what it must ignore           |
 | [disqualification.md](disqualification.md) | When a PR scores **zero** regardless of everything else — and the contract change that requires |
-| [secondary-skills.md](secondary-skills.md) | How `relative_share` is judged for a skill that is not the nominated primary |
-| [pr-review.md](pr-review.md) | The `pr-review` skill's own dimensions — reviewing is judged differently from authoring |
-| [rubric-v1.md](rubric-v1.md) | Every constant, in one table. Source of truth for the embedded YAML (ADR-0006) |
-| [calibration.md](calibration.md) | How we find out whether any of this is right |
+| [secondary-skills.md](secondary-skills.md) | How `relative_share` is judged for a skill that is not the nominated primary                    |
+| [pr-review.md](pr-review.md)               | The `pr-review` skill's own dimensions — reviewing is judged differently from authoring         |
+| [rubric-v1.md](rubric-v1.md)               | Every constant, in one table. Source of truth for the embedded YAML (ADR-0006)                  |
+| [calibration.md](calibration.md)           | How we find out whether any of this is right                                                    |
 
 ## What the model is asked for, and what it is never asked for
 
@@ -52,7 +52,7 @@ below has an explicit exclusion list.
 
 **Anchor every scale with archetypes, not examples from live repositories.** A linked PR can
 be force-pushed, deleted, or edited, and a rubric anchored to one silently drifts. The
-archetypes describe a *kind* of change precisely enough to be applied consistently.
+archetypes describe a _kind_ of change precisely enough to be applied consistently.
 
 **State the non-goals.** Silence reads as an omission; a stated exclusion reads as a
 decision. See below.
@@ -62,7 +62,7 @@ decision. See below.
 - **Seniority, tenure, or employer.** Not visible in a diff and not what is being claimed.
 - **Volume of contribution.** Five PRs is the evidence set. How many others exist is not
   scored — it only breaks ties (ADR-0005), where it is a weak signal by design.
-- **Popularity of the contributor.** Followers and stars on *their* profile are irrelevant.
+- **Popularity of the contributor.** Followers and stars on _their_ profile are irrelevant.
   Repository reach is scored; personal reach is not.
 - **Code style preferences.** Formatting, naming conventions, and tabs-versus-spaces are
   project decisions, not skill signals.

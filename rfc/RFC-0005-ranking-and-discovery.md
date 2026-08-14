@@ -18,13 +18,13 @@ Every input is either **arithmetic** — a number GitHub gives us, reproducible 
 verifiable — or **judged** — something only a reader of the diff and its conversation can
 assess.
 
-| Arithmetic — scored directly | Judged by the model |
-|---|---|
-| Repository stars, forks, contributor count | Contribution substance |
-| Dependents count, package downloads | Complexity |
-| Review count, review comment count, participants | Conversation quality |
-| Maintainer status (declared, model-validated) | Craft (tests, docs, clarity) |
-| | Skill specificity |
+| Arithmetic — scored directly                     | Judged by the model          |
+| ------------------------------------------------ | ---------------------------- |
+| Repository stars, forks, contributor count       | Contribution substance       |
+| Dependents count, package downloads              | Complexity                   |
+| Review count, review comment count, participants | Conversation quality         |
+| Maintainer status (declared, model-validated)    | Craft (tests, docs, clarity) |
+|                                                  | Skill specificity            |
 
 **Diff statistics are context, not a scored signal.** Additions, deletions, and files
 changed are cached and passed to the model as facts when it judges substance and
@@ -43,7 +43,7 @@ Raw counts are useless directly — 40,000 stars and 400 stars are not "100× th
 significance". Each arithmetic metric is normalised to `[0,1]` against **platform-wide
 maxima maintained in the database**.
 
-For metric *m* with raw value *v*, and running maximum *Mₘ* across everything the platform
+For metric _m_ with raw value _v_, and running maximum _Mₘ_ across everything the platform
 has ever seen:
 
 ```
@@ -62,7 +62,7 @@ everybody else.
 
 ### Maxima drift, and scores drift with them
 
-When someone lands a PR in a bigger repository than any seen before, *Mₘ* updates and every
+When someone lands a PR in a bigger repository than any seen before, _Mₘ_ updates and every
 contributor's relative standing shifts slightly. This is intended: the arithmetic half is a
 statement about standing relative to the platform, and standing is relative by definition.
 
@@ -76,7 +76,7 @@ arbitrary.
 **It runs nightly, and exits immediately if no maximum moved since the last pass.**
 
 Event-driven recompute — firing the moment a record breaks — sounds tighter and is worse
-here. A new maximum changes the *divisor*, so every score using that metric goes stale at
+here. A new maximum changes the _divisor_, so every score using that metric goes stale at
 once; the recompute is full-corpus however it is triggered. And while the platform is
 small, nearly every new contributor will break some record, so event-driven means a
 full-corpus pass many times a day exactly when there is least capacity to absorb it. A
@@ -244,13 +244,13 @@ counting half as much as the one before (`d`).
 
 **Worked examples:**
 
-| Skills | v₁ | B | Overall |
-|---|---|---|---|
-| One primary at 90 | 90 | — | **90.0** |
-| 90, 60 | 90 | 0.60 | **93.0** |
-| 90, 60, 60 | 90 | 0.60 | **93.0** |
-| 90, 88 | 90 | 0.88 | **94.4** |
-| 60, 60, 60 | 60 | 0.60 | **72.0** |
+| Skills            | v₁  | B    | Overall  |
+| ----------------- | --- | ---- | -------- |
+| One primary at 90 | 90  | —    | **90.0** |
+| 90, 60            | 90  | 0.60 | **93.0** |
+| 90, 60, 60        | 90  | 0.60 | **93.0** |
+| 90, 88            | 90  | 0.88 | **94.4** |
+| 60, 60, 60        | 60  | 0.60 | **72.0** |
 
 **Why not a sum, a mean, or a max.** Summing makes the leaderboard a count of claims. A
 mean punishes range — adding a genuine second skill at 60 drags a 95 down, so the rational
@@ -276,7 +276,7 @@ is harder and worth more than reviewing in a toy repository, and `R` is exactly 
 of that. It keeps its 0.20 weight.
 
 **PR-specific arithmetic does not.** Additions, deletions, files changed, and the engagement
-counts `E` all describe *the author's* pull request, not the reviewer's work on it. A
+counts `E` all describe _the author's_ pull request, not the reviewer's work on it. A
 reviewer who leaves one precise comment on a 4,000-line change has not done 4,000 lines of
 review, and a thread with forty comments may just be two people disagreeing. Counting them
 would measure the wrong person.
@@ -285,8 +285,8 @@ So `E`'s 0.10 weight moves to `Q`: the model reads the full conversation and jud
 quality directly, which is the only thing that can see a single well-aimed comment beating
 fifty "LGTM"s.
 
-This is the only skill with `scoring_mode = 'judged_only'` — meaning *no PR-level
-arithmetic*. Every other skill keeps the full 70/20/10 split.
+This is the only skill with `scoring_mode = 'judged_only'` — meaning _no PR-level
+arithmetic_. Every other skill keeps the full 70/20/10 split.
 
 **Zero means rejected**, exactly as for any other skill. And `ω = 1.2` still applies in the
 overall score, because a good reviewer raises the quality of everyone else's work, which is
@@ -366,7 +366,7 @@ The cost is a funnel that stalls when contributors do not respond. Accepted.
 organization, the tentative result date, and — where payment capability was never verified
 (RFC-0002) — the label saying so:
 
-> *This organization is hiring for the first time and has not verified payment capability.*
+> _This organization is hiring for the first time and has not verified payment capability._
 
 A contributor deciding whether to hand over their email is the person carrying the risk of
 an unpaid engagement. Withholding that fact to keep the funnel moving would be choosing the
@@ -398,20 +398,20 @@ becomes worth defending against when the index is worth stealing.
 
 ## Resolved review comments
 
-| Marker | Resolution |
-|---|---|
-| Explain the three scores; write all parameters and formulas | This RFC, in full |
-| Split arithmetic vs AI parameters | Two signal classes, ~30/70 weighting, separately recomputable |
-| Arithmetic relative to shared numbers in the DB | Platform-wide maxima in `global_norms`, log + percentile blend |
-| Periodic recompute of relative numbers | Arithmetic recompute — relative values only, no re-enrichment, no model calls |
-| Add a PR Review skill; reviewers matter more | Claimed like any skill, scored 100% by the model with no arithmetic, ω = 1.2, zero means rejected |
-| Maintainer status should count | Declared with a source of truth, model-validated, μ = 1.25 on reach |
-| Project reach beyond stars | Stars, forks, contributors, dependents, downloads combined |
-| Shortlist button, email release, tentative date | Contact request + contributor approval; tentative date on the shortlist |
-| Overdue rounds | No blocking; org flagged at ≥80% overdue |
-| Q2 percentiles | Computed internally, rank and raw score displayed |
-| Q3 tie-breakers | Five-level chain, unpublished |
-| Q4 rate limiting | Light, and out of MVP scope |
+| Marker                                                      | Resolution                                                                                        |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| Explain the three scores; write all parameters and formulas | This RFC, in full                                                                                 |
+| Split arithmetic vs AI parameters                           | Two signal classes, ~30/70 weighting, separately recomputable                                     |
+| Arithmetic relative to shared numbers in the DB             | Platform-wide maxima in `global_norms`, log + percentile blend                                    |
+| Periodic recompute of relative numbers                      | Arithmetic recompute — relative values only, no re-enrichment, no model calls                     |
+| Add a PR Review skill; reviewers matter more                | Claimed like any skill, scored 100% by the model with no arithmetic, ω = 1.2, zero means rejected |
+| Maintainer status should count                              | Declared with a source of truth, model-validated, μ = 1.25 on reach                               |
+| Project reach beyond stars                                  | Stars, forks, contributors, dependents, downloads combined                                        |
+| Shortlist button, email release, tentative date             | Contact request + contributor approval; tentative date on the shortlist                           |
+| Overdue rounds                                              | No blocking; org flagged at ≥80% overdue                                                          |
+| Q2 percentiles                                              | Computed internally, rank and raw score displayed                                                 |
+| Q3 tie-breakers                                             | Five-level chain, unpublished                                                                     |
+| Q4 rate limiting                                            | Light, and out of MVP scope                                                                       |
 
 ## Open questions
 

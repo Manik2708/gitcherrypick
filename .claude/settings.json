@@ -3,7 +3,6 @@
   "permissions": {
     "allow": [
       "Read",
-
       "Bash(ls*)",
       "Bash(cat *)",
       "Bash(head *)",
@@ -40,17 +39,14 @@
       "Bash(pg_isready *)",
       "Bash(true)",
       "Bash(cd *)",
-
       "Bash(go *)",
       "Bash(gofmt *)",
       "Bash(golangci-lint *)",
       "Bash(mockery *)",
       "Bash(migrate *)",
-
       "Bash(node *)",
       "Bash(npm *)",
       "Bash(npx *)",
-
       "Bash(docker run *)",
       "Bash(docker rm *)",
       "Bash(docker stop *)",
@@ -62,11 +58,9 @@
       "Bash(docker images *)",
       "Bash(docker info*)",
       "Bash(docker version*)",
-
       "Bash(make *)",
       "Bash(./backend/scripts/*)",
       "Bash(./scripts/*)",
-
       "Bash(git status*)",
       "Bash(git diff*)",
       "Bash(git log*)",
@@ -77,7 +71,6 @@
       "Bash(git switch*)",
       "Bash(git rev-parse*)",
       "Bash(git init*)",
-
       "Edit(backend/**)",
       "Edit(frontend/**)",
       "Edit(rfc/**)",
@@ -85,13 +78,7 @@
       "Edit(evaluation/**)",
       "Edit(docs/**)"
     ],
-    "ask": [
-      "Edit(.claude/**)",
-      "Write(.claude/**)",
-      "Bash(git commit*)",
-      "Bash(git push*)",
-      "Bash(gh *)"
-    ],
+    "ask": ["Edit(.claude/**)", "Write(.claude/**)", "Bash(git commit*)", "Bash(git push*)", "Bash(gh *)"],
     "deny": [
       "Bash(sudo *)",
       "Bash(rm -rf /*)",
@@ -115,16 +102,6 @@
         ]
       }
     ],
-    "SessionStart": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": ".claude/scripts/gate.sh",
-            "timeout": 15
-          }
-        ]
-      }
-    ]
+    "SessionStart": [{ "hooks": [{ "type": "command", "command": ".claude/scripts/gate.sh", "timeout": 15 }] }]
   }
 }

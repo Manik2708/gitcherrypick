@@ -125,6 +125,6 @@ every evaluator job logs its claim id.
 
 ## Revisions
 
-| Date | Change |
-|---|---|
+| Date       | Change                 |
+| ---------- | ---------------------- |
 | 2026-08-02 | Accepted from RFC-0001 |

@@ -8,7 +8,7 @@ PRs, optional supporting projects, and the skills those PRs demonstrate. One mod
 judges every PR against every declared skill.
 
 **Skill standing is derived, not declared.** Five distinct surviving PRs make a skill
-*primary* — ranked and searchable. One to four make it *secondary* — visible and
+_primary_ — ranked and searchable. One to four make it _secondary_ — visible and
 score-contributing, never ranked. Promotion at the fifth is automatic.
 
 Three score families come out of it: **per PR per skill**, **per skill**, and two
@@ -23,15 +23,15 @@ their own rank.
 Work moves through fixed stages. Each has an approval gate held by the project owner.
 **Nothing in a stage may start until every stage above it is approved.**
 
-| # | Stage | Artifacts |
-|---|-------|-----------|
-| 1 | Planning ✅ | `rfc/*.md` + linked `rfc/*.schema` → promoted to `adr/*.md` on approval |
-| 2 | Evaluation design ✅ | `evaluation/*.md` — what makes a PR worth points |
-| 3 | Integration tests | `backend/e2e/*_test.go`, `backend/scripts/` — **must fail before implementation** |
-| 4 | Core backend | `backend/cmd/api`, controllers/services/repositories |
-| 5 | Evaluator backend | `backend/cmd/evaluator`, broker + AI adapters |
-| 6 | Frontend | `frontend/` |
-| 7 | Containerization | Dockerfiles, compose, image build scripts |
+| #   | Stage                | Artifacts                                                                         |
+| --- | -------------------- | --------------------------------------------------------------------------------- |
+| 1   | Planning ✅          | `rfc/*.md` + linked `rfc/*.schema` → promoted to `adr/*.md` on approval           |
+| 2   | Evaluation design ✅ | `evaluation/*.md` — what makes a PR worth points                                  |
+| 3   | Integration tests    | `backend/e2e/*_test.go`, `backend/scripts/` — **must fail before implementation** |
+| 4   | Core backend         | `backend/cmd/api`, controllers/services/repositories                              |
+| 5   | Evaluator backend    | `backend/cmd/evaluator`, broker + AI adapters                                     |
+| 6   | Frontend             | `frontend/`                                                                       |
+| 7   | Containerization     | Dockerfiles, compose, image build scripts                                         |
 
 Stage 3 is strict TDD at the integration level: tests are written and approved first,
 must be **red**, and turn green only through stage 4/5 work.
@@ -110,11 +110,11 @@ this section is intentionally empty rather than aspirational.
 
 `bootstrap.sh` reports what's missing. Three things need a human:
 
-| Need | Why | Blocks |
-|---|---|---|
-| Docker daemon running | e2e harness runs Postgres in a container | Stages 3–7 |
-| GitHub OAuth App id + secret | login flow; must be created by a human on github.com | Live login only |
-| `ANTHROPIC_API_KEY`, `GITHUB_TOKEN` | evaluator calls the model; PR/repo metadata fetch | Live runs only |
+| Need                                | Why                                                  | Blocks          |
+| ----------------------------------- | ---------------------------------------------------- | --------------- |
+| Docker daemon running               | e2e harness runs Postgres in a container             | Stages 3–7      |
+| GitHub OAuth App id + secret        | login flow; must be created by a human on github.com | Live login only |
+| `ANTHROPIC_API_KEY`, `GITHUB_TOKEN` | evaluator calls the model; PR/repo metadata fetch    | Live runs only  |
 
 Because the AI, broker, repository, and GitHub clients are all interfaces, the
 integration suite runs on **fakes plus a real Postgres container** — so only Docker

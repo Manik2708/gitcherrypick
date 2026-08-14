@@ -5,24 +5,24 @@
 
 ## Decision
 
-| Concern | Binding choice |
-|---|---|
-| Language / runtime | Go 1.24 |
-| Database | PostgreSQL 16 |
-| Host | Neon free tier, **direct endpoint** (not pooled) |
-| SQL | `pgx/v5`, hand-written, **prepared statements** |
-| Queue | Postgres table behind `port.Broker` |
-| Router | `chi/v5` |
-| CLI | `cobra` |
-| Model | `claude-opus-5`, Batch API, effort `high` |
-| AI SDK | `anthropic-sdk-go` — **only inside `internal/ai/anthropic`** |
-| GitHub | `go-github` behind `port.GitHubClient` |
-| Email | Resend behind `port.Notifier` |
-| Logging | `log/slog`, JSON |
-| Mocks | `mockery` |
-| Assertions | `testify` |
-| Frontend | React 18 + TypeScript + Vite + TanStack Query |
-| Rubric config | Version-controlled YAML, **never deleted** |
+| Concern            | Binding choice                                               |
+| ------------------ | ------------------------------------------------------------ |
+| Language / runtime | Go 1.24                                                      |
+| Database           | PostgreSQL 16                                                |
+| Host               | Neon free tier, **direct endpoint** (not pooled)             |
+| SQL                | `pgx/v5`, hand-written, **prepared statements**              |
+| Queue              | Postgres table behind `port.Broker`                          |
+| Router             | `chi/v5`                                                     |
+| CLI                | `cobra`                                                      |
+| Model              | `claude-opus-5`, Batch API, effort `high`                    |
+| AI SDK             | `anthropic-sdk-go` — **only inside `internal/ai/anthropic`** |
+| GitHub             | `go-github` behind `port.GitHubClient`                       |
+| Email              | Resend behind `port.Notifier`                                |
+| Logging            | `log/slog`, JSON                                             |
+| Mocks              | `mockery`                                                    |
+| Assertions         | `testify`                                                    |
+| Frontend           | React 18 + TypeScript + Vite + TanStack Query                |
+| Rubric config      | Version-controlled YAML, **never deleted**                   |
 
 ## Implementation
 
@@ -136,6 +136,6 @@ ordering.
 
 ## Revisions
 
-| Date | Change |
-|---|---|
+| Date       | Change                 |
+| ---------- | ---------------------- |
 | 2026-08-02 | Accepted from RFC-0006 |

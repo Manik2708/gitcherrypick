@@ -23,10 +23,10 @@ shape that exists solely in an unapproved RFC.
 
 Each RFC is at most two files:
 
-| File | Contents |
-|---|---|
-| `RFC-NNNN-<slug>.md` | The proposal — motivation, design, decisions, open questions |
-| `RFC-NNNN-<slug>.schema` | **Only the schema delta** this RFC introduces |
+| File                     | Contents                                                     |
+| ------------------------ | ------------------------------------------------------------ |
+| `RFC-NNNN-<slug>.md`     | The proposal — motivation, design, decisions, open questions |
+| `RFC-NNNN-<slug>.schema` | **Only the schema delta** this RFC introduces                |
 
 The `.schema` file is PostgreSQL DDL, and it is a delta, not a snapshot: it contains
 what this RFC adds or changes and nothing else. To see the full schema, read the schema
@@ -52,7 +52,7 @@ Numbers are permanent. Never renumber or reuse an RFC number, including for a re
 ## Index
 
 **RFC-0001 through 0006 were approved on 2026-08-02 and promoted to ADRs.** Those documents
-are now the record of *why*; the ADRs in [`../adr/`](../adr/) are what implementers build
+are now the record of _why_; the ADRs in [`../adr/`](../adr/) are what implementers build
 against. If the two disagree, the ADR wins.
 
 **Approved documents are never edited.** A change gets its own number, and its `.schema`
@@ -61,14 +61,14 @@ these: it amends four approved RFCs without touching one of them. Reading the cu
 means reading the numbers in order, which is the cost of having a design history you can
 audit.
 
-| # | Title | Binding form |
-|---|-------|--------------|
-| [0001](RFC-0001-platform-overview.md) | Platform overview, domain model & service topology | [ADR-0001](../adr/ADR-0001-platform-foundation.md) |
-| [0002](RFC-0002-identity-and-access.md) | Identity, access & organizations | [ADR-0002](../adr/ADR-0002-identity-and-access.md) |
-| [0003](RFC-0003-skill-claims-and-evidence.md) | Claims, evidence & skill standing | [ADR-0003](../adr/ADR-0003-claims-and-standing.md) |
-| [0004](RFC-0004-evaluation-pipeline.md) | Evaluation pipeline & broker | [ADR-0004](../adr/ADR-0004-evaluation-pipeline.md) |
-| [0005](RFC-0005-ranking-and-discovery.md) | Scoring formulas, ranking & discovery | [ADR-0005](../adr/ADR-0005-scoring-and-discovery.md) |
-| [0006](RFC-0006-technology-selection.md) | Technology selection | [ADR-0006](../adr/ADR-0006-technology-selection.md) |
+| #                                                        | Title                                                    | Binding form                                                                           |
+| -------------------------------------------------------- | -------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| [0001](RFC-0001-platform-overview.md)                    | Platform overview, domain model & service topology       | [ADR-0001](../adr/ADR-0001-platform-foundation.md)                                     |
+| [0002](RFC-0002-identity-and-access.md)                  | Identity, access & organizations                         | [ADR-0002](../adr/ADR-0002-identity-and-access.md)                                     |
+| [0003](RFC-0003-skill-claims-and-evidence.md)            | Claims, evidence & skill standing                        | [ADR-0003](../adr/ADR-0003-claims-and-standing.md)                                     |
+| [0004](RFC-0004-evaluation-pipeline.md)                  | Evaluation pipeline & broker                             | [ADR-0004](../adr/ADR-0004-evaluation-pipeline.md)                                     |
+| [0005](RFC-0005-ranking-and-discovery.md)                | Scoring formulas, ranking & discovery                    | [ADR-0005](../adr/ADR-0005-scoring-and-discovery.md)                                   |
+| [0006](RFC-0006-technology-selection.md)                 | Technology selection                                     | [ADR-0006](../adr/ADR-0006-technology-selection.md)                                    |
 | [0007](RFC-0007-rubric-contract-and-generalist-score.md) | Rubric contract, disqualification & the generalist score | [ADR-0007](../adr/ADR-0007-rubric-contract-and-generalist-score.md) — amends 0002–0005 |
 
 Read them in numeric order; each assumes the ones before it.
@@ -79,8 +79,8 @@ All six were revised after the owner's review. Every RFC ends with a **Resolved 
 comments** table mapping each marker to what it became, so the review can be checked
 without re-reading the whole document.
 
-The structural change worth knowing before reading: a claim is no longer *(user, one skill,
-5 PRs)*. It is an **evidence bundle** — up to 5 PRs, optional projects, and the skills those
+The structural change worth knowing before reading: a claim is no longer _(user, one skill,
+5 PRs)_. It is an **evidence bundle** — up to 5 PRs, optional projects, and the skills those
 PRs demonstrate — judged for every one of its skills in a single model call. Ranked
 standing is **derived** per (user, skill) from how many distinct PRs evidence it: 5 or more
 is primary and ranked, 1–4 is secondary and unranked.

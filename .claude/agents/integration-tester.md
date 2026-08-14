@@ -36,6 +36,7 @@ connection), never a fixed `sleep`.
 implementer, and they pass only because of that implementer's changes.**
 
 So:
+
 - Run the suite after writing it and **show that it is red**. A test that passes against
   no implementation is a broken test, and you must fix it before handing it over.
 - Do not stub, skip, or soften a test to make the suite green.

@@ -50,14 +50,14 @@ disagreement is recorded for tuning — or **rejects** it.
 
 **Rate limiting, escalating.** Three rejected requests puts the contributor into a cooldown
 during which they cannot request re-evaluation. The counter resets when the cooldown ends,
-and the *next* cooldown doubles:
+and the _next_ cooldown doubles:
 
-| Rejections | Cooldown |
-|---|---|
-| First 3 | 28 days |
-| Next 3 | 56 days |
-| Next 3 | 112 days |
-| Next 3 | 224 days |
+| Rejections | Cooldown           |
+| ---------- | ------------------ |
+| First 3    | 28 days            |
+| Next 3     | 56 days            |
+| Next 3     | 112 days           |
+| Next 3     | 224 days           |
 | Thereafter | **365 days (cap)** |
 
 Doubling is the right shape because it costs an honest contributor who misjudged once almost
@@ -105,14 +105,14 @@ wrong.
 
 ## What to look for first
 
-| Symptom | Likely cause |
-|---|---|
-| Everything scores 65–80 | Model avoiding the ends of the scale. Tighten the anchors; the archetypes are not distinct enough. |
-| Large PRs consistently outrank small ones | `substance` is reading diff size despite the exclusion. |
-| Popular-repo PRs dominate regardless of quality | `w_r = 0.20` is too high, or `R` needs a steeper curve. |
-| Dimensions move together | Halo scoring — the model is forming one impression and spreading it. The most likely failure mode. Consider scoring dimensions in separate passes. |
-| Generalists rank far below specialists | `d` or `γ` too aggressive. |
-| Two runs differ by 10+ | Anchors ambiguous, or `max_tokens` truncating before the model finishes. |
+| Symptom                                         | Likely cause                                                                                                                                       |
+| ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Everything scores 65–80                         | Model avoiding the ends of the scale. Tighten the anchors; the archetypes are not distinct enough.                                                 |
+| Large PRs consistently outrank small ones       | `substance` is reading diff size despite the exclusion.                                                                                            |
+| Popular-repo PRs dominate regardless of quality | `w_r = 0.20` is too high, or `R` needs a steeper curve.                                                                                            |
+| Dimensions move together                        | Halo scoring — the model is forming one impression and spreading it. The most likely failure mode. Consider scoring dimensions in separate passes. |
+| Generalists rank far below specialists          | `d` or `γ` too aggressive.                                                                                                                         |
+| Two runs differ by 10+                          | Anchors ambiguous, or `max_tokens` truncating before the model finishes.                                                                           |
 
 ## Launch posture — decided
 
@@ -122,10 +122,10 @@ cohort's disagreements into the data that validates them.
 
 The two alternatives were considered and rejected:
 
-| Rejected | Why |
-|---|---|
-| Ship, don't rank until tuned | Nobody disputes a score they cannot see in context, so the one mechanism that generates labelled data stays dormant. Delays tuning rather than enabling it. |
-| Tune before anything is shown | Requires hand-building a seed set, which only proves the rubric agrees with its author, and delays launch on work that a week of real claims does better. |
+| Rejected                      | Why                                                                                                                                                         |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Ship, don't rank until tuned  | Nobody disputes a score they cannot see in context, so the one mechanism that generates labelled data stays dormant. Delays tuning rather than enabling it. |
+| Tune before anything is shown | Requires hand-building a seed set, which only proves the rubric agrees with its author, and delays launch on work that a week of real claims does better.   |
 
 ## Ongoing
 

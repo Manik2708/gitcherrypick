@@ -20,24 +20,24 @@ reversal cost is stated for each.
 
 ## Decisions
 
-| Concern | Choice | Reversal cost |
-|---|---|---|
-| Database | PostgreSQL 16 | High — schema + repository adapters |
-| Host | **Neon** (free tier, **direct endpoint**) | Low — connection string |
-| Email | **Resend**, behind a `Notifier` interface | Low |
-| Rubric config | Version-controlled file, no DB copy | Low |
-| Queue | Postgres table, `FOR UPDATE SKIP LOCKED` | **Low** — one Broker adapter |
-| Auth | Three paths per RFC-0002 | High — it is the trust root |
-| AI provider | Anthropic `claude-opus-5`, **Batch API** | **Low** — one AI adapter |
-| SQL access | `pgx/v5` with **prepared statements** | Medium |
-| HTTP router | `chi` | Low |
-| Migrations | Plain `.sql`, applied idempotently by the api at boot | Low |
-| CLI | `cobra` (mandated) | — |
-| Mocks | `mockery` | Low |
-| Assertions | `testify` | Low |
-| Logging | `log/slog` (stdlib) | Low |
-| Frontend | React 18 + TypeScript + Vite | High |
-| Server state | TanStack Query | Medium |
+| Concern       | Choice                                                | Reversal cost                       |
+| ------------- | ----------------------------------------------------- | ----------------------------------- |
+| Database      | PostgreSQL 16                                         | High — schema + repository adapters |
+| Host          | **Neon** (free tier, **direct endpoint**)             | Low — connection string             |
+| Email         | **Resend**, behind a `Notifier` interface             | Low                                 |
+| Rubric config | Version-controlled file, no DB copy                   | Low                                 |
+| Queue         | Postgres table, `FOR UPDATE SKIP LOCKED`              | **Low** — one Broker adapter        |
+| Auth          | Three paths per RFC-0002                              | High — it is the trust root         |
+| AI provider   | Anthropic `claude-opus-5`, **Batch API**              | **Low** — one AI adapter            |
+| SQL access    | `pgx/v5` with **prepared statements**                 | Medium                              |
+| HTTP router   | `chi`                                                 | Low                                 |
+| Migrations    | Plain `.sql`, applied idempotently by the api at boot | Low                                 |
+| CLI           | `cobra` (mandated)                                    | —                                   |
+| Mocks         | `mockery`                                             | Low                                 |
+| Assertions    | `testify`                                             | Low                                 |
+| Logging       | `log/slog` (stdlib)                                   | Low                                 |
+| Frontend      | React 18 + TypeScript + Vite                          | High                                |
+| Server state  | TanStack Query                                        | Medium                              |
 
 ### Database — PostgreSQL 16
 
@@ -134,18 +134,18 @@ Score quality is the product, so this is the wrong place to economise on capabil
 Batch API recovers roughly half the cost in exchange for latency we have explicitly decided
 we can spend (RFC-0004).
 
-| Setting | Value | Why |
-|---|---|---|
-| Model | `claude-opus-5` | Strongest reasoning at this tier ($5/$25 per MTok) |
-| Dispatch | Batch API | ~50% cheaper; 24h ceiling enforced by us, not the provider |
-| Thinking | adaptive (the default) | On by default on Opus 5 — `budget_tokens` is rejected |
-| Effort | **`high`** | Quality is not being compromised for cost |
-| Output | structured outputs (`output_config.format`) | Response validates against a schema, not parsed from prose |
-| Sampling params | **none** | `temperature`, `top_p`, `top_k` return 400 on this model |
+| Setting         | Value                                       | Why                                                        |
+| --------------- | ------------------------------------------- | ---------------------------------------------------------- |
+| Model           | `claude-opus-5`                             | Strongest reasoning at this tier ($5/$25 per MTok)         |
+| Dispatch        | Batch API                                   | ~50% cheaper; 24h ceiling enforced by us, not the provider |
+| Thinking        | adaptive (the default)                      | On by default on Opus 5 — `budget_tokens` is rejected      |
+| Effort          | **`high`**                                  | Quality is not being compromised for cost                  |
+| Output          | structured outputs (`output_config.format`) | Response validates against a schema, not parsed from prose |
+| Sampling params | **none**                                    | `temperature`, `top_p`, `top_k` return 400 on this model   |
 
 Three things the implementation must handle:
 
-- **`max_tokens` bounds thinking *plus* output.** Sizing it tightly around the expected
+- **`max_tokens` bounds thinking _plus_ output.** Sizing it tightly around the expected
   JSON will truncate mid-response once adaptive thinking runs.
 - **`stop_reason: "refusal"` is an HTTP 200.** Code reading `content[0]` unconditionally
   breaks on it. Check `stop_reason` first and dead-letter refusals (RFC-0004).
@@ -217,13 +217,13 @@ comes from `.env`.
 
 ## Resolved review comments
 
-| Marker | Resolution |
-|---|---|
-| Want a free hosted Postgres | **Neon** free tier; Docker remains for local and e2e |
+| Marker                               | Resolution                                                           |
+| ------------------------------------ | -------------------------------------------------------------------- |
+| Want a free hosted Postgres          | **Neon** free tier; Docker remains for local and e2e                 |
 | Explain how the Postgres queue works | Full mechanism above — `SKIP LOCKED`, leases, `available_at`, topics |
-| Q2 effort level | `high`, fixed. Quality not compromised for cost |
-| Q3 Batch API | Resolved in RFC-0004: Batch for everything, 24h ceiling |
-| Q4 sqlc vs hand-written | Hand-written with prepared statements, proven by integration tests |
+| Q2 effort level                      | `high`, fixed. Quality not compromised for cost                      |
+| Q3 Batch API                         | Resolved in RFC-0004: Batch for everything, 24h ceiling              |
+| Q4 sqlc vs hand-written              | Hand-written with prepared statements, proven by integration tests   |
 
 ## Open questions
 

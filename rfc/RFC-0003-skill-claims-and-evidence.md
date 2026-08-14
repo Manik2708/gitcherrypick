@@ -30,11 +30,11 @@ The queue is a free-text channel to humans, so it is bounded on two sides:
 
 A claim is one submission:
 
-| Component | Cardinality |
-|---|---|
-| PR evidence | **1 to 5** |
-| Project evidence | **0 to 20** (optional) |
-| Declared skills | 1 or more, one nominated primary |
+| Component        | Cardinality                      |
+| ---------------- | -------------------------------- |
+| PR evidence      | **1 to 5**                       |
+| Project evidence | **0 to 20** (optional)           |
+| Declared skills  | 1 or more, one nominated primary |
 
 The contributor names the skills those PRs demonstrate. **The whole claim is judged in a
 single model call**, producing a score for every PR against every skill (RFC-0004).
@@ -44,11 +44,11 @@ single model call**, producing a score for every PR against every skill (RFC-000
 A skill's standing comes from **how many distinct PRs across all of a contributor's claims
 evidence it**:
 
-| PRs | Standing | Ranked? | Contributes to overall score? |
-|---|---|:--:|:--:|
-| 5+ | **Primary** | Yes | Yes |
-| 1–4 | **Secondary** | No | Yes |
-| 0 | Not held | — | — |
+| PRs | Standing      | Ranked? | Contributes to overall score? |
+| --- | ------------- | :-----: | :---------------------------: |
+| 5+  | **Primary**   |   Yes   |              Yes              |
+| 1–4 | **Secondary** |   No    |              Yes              |
+| 0   | Not held      |    —    |               —               |
 
 **Promotion is automatic.** The moment a fifth distinct PR evidences a secondary skill, it
 becomes primary and enters ranking. The evidence already exists and has already been
@@ -116,7 +116,7 @@ request is not review work.
 **No PR-level arithmetic; project reach still counts.** Reviewing in a large, complex,
 widely-used codebase is worth more than reviewing in a toy one, so repository signals apply
 normally. What does not apply is anything measuring the pull request itself — diff size,
-files changed, comment counts. Those describe *the author's* work, not the reviewer's: one
+files changed, comment counts. Those describe _the author's_ work, not the reviewer's: one
 precise comment on a 4,000-line change is not 4,000 lines of review. The model reads the
 full conversation and judges review quality directly (RFC-0005). Separately-submitted
 project evidence contributes nothing to a `pr-review` claim and is not accepted on one.
@@ -219,16 +219,16 @@ anything.
    (any state) ──withdraw──▶ withdrawn
 ```
 
-| Status | Meaning |
-|---|---|
-| `draft` | Being assembled. Evidence mutable. |
-| `validating` | Checks running against GitHub. |
-| `invalid` | A check failed. Per-item reasons attached. Editable. |
-| `queued` | Passed validation, awaiting the evaluator. **Evidence frozen.** |
-| `evaluating` | In a batch with the AI provider. |
-| `evaluated` | Scored. Standings updated. |
-| `failed` | Errored after retries. Admin-retryable. |
-| `withdrawn` | Retracted. Its PRs no longer count toward standing, and their `(PR, skill)` pairs are released. |
+| Status       | Meaning                                                                                         |
+| ------------ | ----------------------------------------------------------------------------------------------- |
+| `draft`      | Being assembled. Evidence mutable.                                                              |
+| `validating` | Checks running against GitHub.                                                                  |
+| `invalid`    | A check failed. Per-item reasons attached. Editable.                                            |
+| `queued`     | Passed validation, awaiting the evaluator. **Evidence frozen.**                                 |
+| `evaluating` | In a batch with the AI provider.                                                                |
+| `evaluated`  | Scored. Standings updated.                                                                      |
+| `failed`     | Errored after retries. Admin-retryable.                                                         |
+| `withdrawn`  | Retracted. Its PRs no longer count toward standing, and their `(PR, skill)` pairs are released. |
 
 ### Withdrawal warns before demoting
 
@@ -251,7 +251,7 @@ never decay with age (RFC-0001).
 ## The 7-day lock
 
 Once a claim is scored, **that claim cannot be edited or resubmitted for 7 days.** The
-contributor may still create and submit claims for *other* skills freely.
+contributor may still create and submit claims for _other_ skills freely.
 
 This exists to stop score-rerolling — resubmitting slightly different evidence until the
 number improves — which is both a gaming vector and a direct cost, since every submission
@@ -270,17 +270,17 @@ Also enforced:
 
 ## Resolved review comments
 
-| Marker | Resolution |
-|---|---|
-| Per-PR scores; editing a PR updates skill and profile score | PR × skill scores stored; edits trigger rescore and standings recompute |
-| 7-day lock after scoring, payment later | Per-claim 7-day lock, other skills unaffected; payments out of scope for v1 |
-| Q1 pre-filter trivial PRs | Dropped — every PR is judged by the model; a small diff may still matter |
-| Q2 co-authored PRs | Primary authorship only |
-| Q3 deleted repositories | Not re-checked until a rubric change forces re-evaluation |
-| Q4 skill request flow | Request endpoint + admin review dashboard |
-| Secondary skills hold 1–4 PRs | Standing derived from distinct PR count; auto-promotes at 5 |
-| Projects optional | 0..20, arithmetic-only, never judged by the model |
-| Maintainer status | Contributor declares with a source of truth; model validates |
+| Marker                                                      | Resolution                                                                  |
+| ----------------------------------------------------------- | --------------------------------------------------------------------------- |
+| Per-PR scores; editing a PR updates skill and profile score | PR × skill scores stored; edits trigger rescore and standings recompute     |
+| 7-day lock after scoring, payment later                     | Per-claim 7-day lock, other skills unaffected; payments out of scope for v1 |
+| Q1 pre-filter trivial PRs                                   | Dropped — every PR is judged by the model; a small diff may still matter    |
+| Q2 co-authored PRs                                          | Primary authorship only                                                     |
+| Q3 deleted repositories                                     | Not re-checked until a rubric change forces re-evaluation                   |
+| Q4 skill request flow                                       | Request endpoint + admin review dashboard                                   |
+| Secondary skills hold 1–4 PRs                               | Standing derived from distinct PR count; auto-promotes at 5                 |
+| Projects optional                                           | 0..20, arithmetic-only, never judged by the model                           |
+| Maintainer status                                           | Contributor declares with a source of truth; model validates                |
 
 ## Open questions
 

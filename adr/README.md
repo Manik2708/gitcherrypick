@@ -14,12 +14,12 @@ report it to the Planner rather than choosing.
 
 ## What an ADR adds
 
-| Section | Purpose |
-|---|---|
-| **Decision** | The binding statements, in imperative form. No hedging, no alternatives. |
-| **Implementation** | Package layout, interface signatures, algorithms, endpoint shapes. |
-| **Steps** | Ordered work items. An implementer starts at 1 and does not reorder. |
-| **Consequences** | What this forecloses, and what will hurt later. |
+| Section            | Purpose                                                                  |
+| ------------------ | ------------------------------------------------------------------------ |
+| **Decision**       | The binding statements, in imperative form. No hedging, no alternatives. |
+| **Implementation** | Package layout, interface signatures, algorithms, endpoint shapes.       |
+| **Steps**          | Ordered work items. An implementer starts at 1 and does not reorder.     |
+| **Consequences**   | What this forecloses, and what will hurt later.                          |
 
 Rationale lives in the RFC and is **not** repeated here. An ADR that re-argues its own case
 is an RFC with the wrong filename.
@@ -49,14 +49,14 @@ changed, when, and what argument moved it.
 
 ## Index
 
-| # | Title | Status | Schema |
-|---|-------|--------|--------|
-| [0001](ADR-0001-platform-foundation.md) | Platform foundation & service topology | Accepted | [rfc](../rfc/RFC-0001-platform-overview.schema) |
-| [0002](ADR-0002-identity-and-access.md) | Identity, access & organizations | Accepted | [rfc](../rfc/RFC-0002-identity-and-access.schema) |
-| [0003](ADR-0003-claims-and-standing.md) | Claims, evidence & skill standing | Accepted | [rfc](../rfc/RFC-0003-skill-claims-and-evidence.schema) |
-| [0004](ADR-0004-evaluation-pipeline.md) | Evaluation pipeline & broker | Accepted | [rfc](../rfc/RFC-0004-evaluation-pipeline.schema) |
-| [0005](ADR-0005-scoring-and-discovery.md) | Scoring, ranking & discovery | Accepted | [rfc](../rfc/RFC-0005-ranking-and-discovery.schema) |
-| [0006](ADR-0006-technology-selection.md) | Technology selection & dependencies | Accepted | — |
+| #                                                        | Title                                                    | Status   | Schema                                                             |
+| -------------------------------------------------------- | -------------------------------------------------------- | -------- | ------------------------------------------------------------------ |
+| [0001](ADR-0001-platform-foundation.md)                  | Platform foundation & service topology                   | Accepted | [rfc](../rfc/RFC-0001-platform-overview.schema)                    |
+| [0002](ADR-0002-identity-and-access.md)                  | Identity, access & organizations                         | Accepted | [rfc](../rfc/RFC-0002-identity-and-access.schema)                  |
+| [0003](ADR-0003-claims-and-standing.md)                  | Claims, evidence & skill standing                        | Accepted | [rfc](../rfc/RFC-0003-skill-claims-and-evidence.schema)            |
+| [0004](ADR-0004-evaluation-pipeline.md)                  | Evaluation pipeline & broker                             | Accepted | [rfc](../rfc/RFC-0004-evaluation-pipeline.schema)                  |
+| [0005](ADR-0005-scoring-and-discovery.md)                | Scoring, ranking & discovery                             | Accepted | [rfc](../rfc/RFC-0005-ranking-and-discovery.schema)                |
+| [0006](ADR-0006-technology-selection.md)                 | Technology selection & dependencies                      | Accepted | —                                                                  |
 | [0007](ADR-0007-rubric-contract-and-generalist-score.md) | Rubric contract, disqualification & the generalist score | Accepted | [rfc](../rfc/RFC-0007-rubric-contract-and-generalist-score.schema) |
 
 Schema DDL lives beside the RFCs; migrations are generated from it during implementation

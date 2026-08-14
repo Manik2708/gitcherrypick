@@ -124,7 +124,7 @@ Adding an entry creates a `contact_request` in the same transaction, copying the
 edit. The contributor sees the organization, the date, and — when
 `hirer_accounts.payment_verified_at IS NULL` — the disclosure:
 
-> *This organization is hiring for the first time and has not verified payment capability.*
+> _This organization is hiring for the first time and has not verified payment capability._
 
 Email is released **only** on acceptance, stamping `email_released_at`. Nothing about
 shortlist membership is visible to the contributor beyond their own pending requests.
@@ -162,7 +162,7 @@ punish a hirer for a candidate's silence as readily as for their own neglect.
 
 ## Amendments
 
-| Date | Change |
-|---|---|
-| 2026-08-02 | Accepted from RFC-0005 |
+| Date       | Change                                                                                                                                                                                                                                                                                                          |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-08-02 | Accepted from RFC-0005                                                                                                                                                                                                                                                                                          |
 | 2026-08-14 | **Amended by [ADR-0007](ADR-0007-rubric-contract-and-generalist-score.md)** — adds the **Generalist score** and the quality floor; `project_component` 0.15 → 0.30; four explicit project-reach weight cases; `conversation_quality` scores 0 with no discussion; adds the re-evaluation flow. `γ` is retained. |

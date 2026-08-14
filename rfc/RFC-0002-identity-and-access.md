@@ -21,7 +21,7 @@ compare a verified account id against PR metadata, never user input against user
 **Hirers authenticate however they like — Google, email, or GitHub.** Requiring a GitHub
 account of a non-technical recruiter is friction with no security benefit; a hirer makes
 no evidence claims, so there is nothing for a GitHub identity to secure. What matters for
-a hirer is not *which account* but *whether they are real*, and that is answered by manual
+a hirer is not _which account_ but _whether they are real_, and that is answered by manual
 verification, not by the identity provider.
 
 **Admins are seeded, with email and password.** Created by a CLI flag on first boot, never
@@ -33,12 +33,12 @@ accounts that verify everyone else must not themselves depend on a third party.
 **There is no public leaderboard and no public profile.** A logged-out visitor sees the
 marketing surface and nothing else.
 
-| Viewer | Can see |
-|---|---|
-| Logged out | Nothing |
-| Contributor | Their **own** scorecard, scores, and rank. Not anyone else's. |
+| Viewer         | Can see                                                               |
+| -------------- | --------------------------------------------------------------------- |
+| Logged out     | Nothing                                                               |
+| Contributor    | Their **own** scorecard, scores, and rank. Not anyone else's.         |
 | Verified hirer | Full scorecards, rankings, search, and comparison across contributors |
-| Admin | Everything, plus verification queues |
+| Admin          | Everything, plus verification queues                                  |
 
 A contributor cannot browse the leaderboard to see who is above them. The full scorecard —
 per-PR rationale, dimension breakdown, evidence — is the product, and it is what
@@ -100,13 +100,13 @@ in and see their own dashboard; they cannot search, view a scorecard, or shortli
 
 Proof required, at least one of:
 
-| Proof | For |
-|---|---|
-| Organization LinkedIn URL | Companies |
-| Work email on the organization's domain | Companies with their own domain |
-| Freelancer profile URL | Individuals hiring freelancers (Upwork, Toptal, etc.) |
-| Payment capability evidence | Freelance hirers — see below |
-| **Alternative evidence** | **Small firms with no company domain or LinkedIn page** |
+| Proof                                   | For                                                     |
+| --------------------------------------- | ------------------------------------------------------- |
+| Organization LinkedIn URL               | Companies                                               |
+| Work email on the organization's domain | Companies with their own domain                         |
+| Freelancer profile URL                  | Individuals hiring freelancers (Upwork, Toptal, etc.)   |
+| Payment capability evidence             | Freelance hirers — see below                            |
+| **Alternative evidence**                | **Small firms with no company domain or LinkedIn page** |
 
 The alternative path matters: a three-person studio hiring a contractor is exactly the
 customer we want and often has neither a domain email nor a company LinkedIn page.
@@ -121,7 +121,7 @@ payment-platform history, or a business bank reference.
 verified on identity but without payment evidence is labelled, and a contributor sees that
 label before deciding whether to release their email:
 
-> *This organization is hiring for the first time and has not verified payment capability.*
+> _This organization is hiring for the first time and has not verified payment capability._
 
 The same applies to companies. This is deliberately transparency rather than gatekeeping:
 we have no reliable way to verify that someone will actually pay, and refusing every
@@ -146,7 +146,7 @@ and prevents an obvious awkwardness.
 
 It can be defeated with a second GitHub account, and that is fine. Registering a hirer
 account still requires passing manual admin review with real proof of hiring intent, so the
-second account buys nothing on its own. And someone who *has* legitimately passed
+second account buys nothing on its own. And someone who _has_ legitimately passed
 verification is entitled to view scorecards regardless; the only thing the link denies them
 is their own, which they can already see as a contributor. There is no exploit here worth
 hardening against.
@@ -155,12 +155,12 @@ hardening against.
 
 A contributor controls whether hirers see them at all, through an availability status:
 
-| Status | Meaning |
-|---|---|
-| `not_looking` | Default. Invisible to hirers. |
-| `looking_for_job` | Employment |
-| `looking_for_freelance` | Freelance only |
-| `open_to_freelance` | Employed, open to freelance work |
+| Status                  | Meaning                          |
+| ----------------------- | -------------------------------- |
+| `not_looking`           | Default. Invisible to hirers.    |
+| `looking_for_job`       | Employment                       |
+| `looking_for_freelance` | Freelance only                   |
+| `open_to_freelance`     | Employed, open to freelance work |
 
 **The status expires after 15 days.** If the contributor does not refresh it, the profile
 reverts to invisible. Stale availability is the standard failure of every hiring platform —
@@ -194,7 +194,7 @@ revocable at any time, and scoped to them alone — it exposes their scores and 
 nothing about anyone else's ranking. They choose to publish; we never do.
 
 This keeps the consent model intact. The objection to a public leaderboard was never that
-scores are secret — it was that *we* should not publish a ranked list of named engineers to
+scores are secret — it was that _we_ should not publish a ranked list of named engineers to
 anyone who asks. A link the subject creates and can revoke is the opposite of that.
 
 ## Privacy
@@ -208,9 +208,9 @@ anyone who asks. A link the subject creates and can revoke is the opposite of th
 
 ## Sessions
 
-| Token | Form | Lifetime | Storage |
-|---|---|---|---|
-| Access | JWT, EdDSA (Ed25519) | 15 minutes | In memory, client-side |
+| Token   | Form                  | Lifetime          | Storage                               |
+| ------- | --------------------- | ----------------- | ------------------------------------- |
+| Access  | JWT, EdDSA (Ed25519)  | 15 minutes        | In memory, client-side                |
 | Refresh | 256-bit opaque random | 30 days, rotating | httpOnly, Secure, SameSite=Lax cookie |
 
 The access token is a JWT so authorization needs no database round trip. It is short-lived
@@ -226,18 +226,18 @@ lifetime.
 
 ## Resolved review comments
 
-| Marker | Resolution |
-|---|---|
-| Hirers should not use GitHub auth; three account types needed | Three paths: contributor (GitHub), hirer (Google/email/GitHub), admin (seeded email+password) |
-| Scorecard must not be public | Fully gated. Contributors see only their own rank; full cards require a verified hirer |
-| Recruiters must be manually verified with proofs | Manual admin verification; LinkedIn / domain email / freelancer profile / payment evidence / free-form alternative |
-| Contributor who wants to hire | Separate account, GitHub identity linked to block self-hire |
-| Small firms lack org emails | Explicit alternative-evidence path, admin-judged |
-| Org verification manual | Admin-verified; only verified orgs may hire |
-| Org invites its own members | Org self-administers membership; org notified on every add |
-| Availability options needed | Four availability statuses with a 15-day expiry |
-| Q2 org email domain claiming | Dropped — not needed |
-| Q3 token encryption / KMS | Simplicity for v1: key supplied by flag, KMS deferred |
+| Marker                                                        | Resolution                                                                                                         |
+| ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| Hirers should not use GitHub auth; three account types needed | Three paths: contributor (GitHub), hirer (Google/email/GitHub), admin (seeded email+password)                      |
+| Scorecard must not be public                                  | Fully gated. Contributors see only their own rank; full cards require a verified hirer                             |
+| Recruiters must be manually verified with proofs              | Manual admin verification; LinkedIn / domain email / freelancer profile / payment evidence / free-form alternative |
+| Contributor who wants to hire                                 | Separate account, GitHub identity linked to block self-hire                                                        |
+| Small firms lack org emails                                   | Explicit alternative-evidence path, admin-judged                                                                   |
+| Org verification manual                                       | Admin-verified; only verified orgs may hire                                                                        |
+| Org invites its own members                                   | Org self-administers membership; org notified on every add                                                         |
+| Availability options needed                                   | Four availability statuses with a 15-day expiry                                                                    |
+| Q2 org email domain claiming                                  | Dropped — not needed                                                                                               |
+| Q3 token encryption / KMS                                     | Simplicity for v1: key supplied by flag, KMS deferred                                                              |
 
 ## Open questions
 

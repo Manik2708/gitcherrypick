@@ -12,8 +12,8 @@ build on. It proposes no user-facing feature by itself.
 ## Motivation
 
 A CV claims "expert in Go." A GitHub profile shows a contribution graph. Neither answers
-the hirer's actual question: *has this person done work of consequence in this technology,
-and how good was it?*
+the hirer's actual question: _has this person done work of consequence in this technology,
+and how good was it?_
 
 The evidence to answer that is public and already exists — merged pull requests into real
 projects. It is simply expensive to assess. Someone would have to open five PRs, read the
@@ -27,10 +27,10 @@ We make that assessment once, consistently, and turn it into a comparable number
 **A skill is not a string the user types.** Skill standing is earned with merged pull
 requests, and the number of them decides what that standing is worth:
 
-| Standing | Requirement | Consequence |
-|---|---|---|
-| **Primary** | **5 distinct PRs** evidencing the skill | Ranked. Appears in search and comparisons. |
-| **Secondary** | 1–4 PRs | Visible on the profile, contributes to the overall score, **never ranked** |
+| Standing      | Requirement                             | Consequence                                                                |
+| ------------- | --------------------------------------- | -------------------------------------------------------------------------- |
+| **Primary**   | **5 distinct PRs** evidencing the skill | Ranked. Appears in search and comparisons.                                 |
+| **Secondary** | 1–4 PRs                                 | Visible on the profile, contributes to the overall score, **never ranked** |
 
 A contributor may hold **many primary and many secondary skills**. A secondary skill
 **auto-promotes to primary** the moment a fifth distinct PR evidences it — the evidence
@@ -44,7 +44,7 @@ ranking.
 
 A floor invites padding. A single lucky PR proves little. Fixing primary standing at five
 makes every ranked skill rest on the same quantity of evidence, so **the scores are
-directly comparable**. It also forces a judgement — *which five?* — that is itself signal.
+directly comparable**. It also forces a judgement — _which five?_ — that is itself signal.
 
 ## Claims are evidence bundles, not skill assertions
 
@@ -61,7 +61,7 @@ Claim ──┬── 1..5  PR evidence
 reads the five diffs and their review conversations once, then scores each PR against each
 declared skill. Judging the same PR separately per skill would cost more and produce
 less coherent results, because the interesting comparison — how much of this work is
-really *Kubernetes* rather than *Go* — is only visible when both are considered together.
+really _Kubernetes_ rather than _Go_ — is only visible when both are considered together.
 
 Ranked standing is therefore **derived**, not submitted: a skill's PR count is the number
 of distinct PRs across all of that contributor's claims that evidence it.
@@ -78,7 +78,7 @@ the contributor nominated Go as primary.
 ### There are no zero scores
 
 A skill that scores zero is **rejected, not recorded**. A negligible secondary skill is
-dropped from the claim silently. If the *primary* skill scores zero, it is dropped too and
+dropped from the claim silently. If the _primary_ skill scores zero, it is dropped too and
 the contributor is told why — but the claim survives with whatever secondary skills held
 up. Storing a zero would imply we measured something; we are saying the evidence does not
 support the claim at all.
@@ -92,12 +92,12 @@ something you never claimed.
 
 ## Actors
 
-| Actor | Description |
-|---|---|
-| **Contributor** | Authenticates with GitHub. Submits claims, receives scores. |
-| **Hirer** | A **separate, manually verified account** (RFC-0002). Hires employees or freelancers. Only verified hirers see full scorecards. |
-| **Organization** | Groups hirers, is admin-verified, owns shortlists. Only verified organizations may hire. |
-| **Admin** | Seeded account. Curates the skill catalogue, verifies hirers and organizations, handles disputes. |
+| Actor            | Description                                                                                                                     |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| **Contributor**  | Authenticates with GitHub. Submits claims, receives scores.                                                                     |
+| **Hirer**        | A **separate, manually verified account** (RFC-0002). Hires employees or freelancers. Only verified hirers see full scorecards. |
+| **Organization** | Groups hirers, is admin-verified, owns shortlists. Only verified organizations may hire.                                        |
+| **Admin**        | Seeded account. Curates the skill catalogue, verifies hirers and organizations, handles disputes.                               |
 
 Hirers looking for **freelance** work are first-class, not a special case: contributors
 signal availability for employment, freelance work, or both (RFC-0002).
@@ -135,20 +135,20 @@ User ──< UserGithubIdentity                               │
   └──< ScoreSnapshot
 ```
 
-| Entity | Meaning |
-|---|---|
-| **User** | A contributor. |
-| **UserGithubIdentity** | The verified GitHub account bound to a user or hirer. |
-| **HirerAccount** | A verified hiring identity, separate from any contributor account. |
-| **Skill** | A catalogue entry (`go`, `kubernetes`, `postgres`). Curated, not free text. |
-| **Claim** | One submission of evidence, carrying the skills it is claimed to demonstrate. |
-| **ClaimSkill** | One skill attached to a claim, declared by the user or suggested by the model. |
-| **PrEvidence** | One pull request in a claim. |
-| **ProjectEvidence** | One repository, scored **arithmetically only** (see below). |
-| **Evaluation** | One scoring run over one claim version. Immutable. |
-| **PrSkillScore** | One PR judged against one skill by one evaluation. |
-| **UserSkill** | Derived standing per (user, skill): PR count, score, primary or secondary. |
-| **ScoreSnapshot** | A user's skill and overall scores at a point in time. |
+| Entity                 | Meaning                                                                        |
+| ---------------------- | ------------------------------------------------------------------------------ |
+| **User**               | A contributor.                                                                 |
+| **UserGithubIdentity** | The verified GitHub account bound to a user or hirer.                          |
+| **HirerAccount**       | A verified hiring identity, separate from any contributor account.             |
+| **Skill**              | A catalogue entry (`go`, `kubernetes`, `postgres`). Curated, not free text.    |
+| **Claim**              | One submission of evidence, carrying the skills it is claimed to demonstrate.  |
+| **ClaimSkill**         | One skill attached to a claim, declared by the user or suggested by the model. |
+| **PrEvidence**         | One pull request in a claim.                                                   |
+| **ProjectEvidence**    | One repository, scored **arithmetically only** (see below).                    |
+| **Evaluation**         | One scoring run over one claim version. Immutable.                             |
+| **PrSkillScore**       | One PR judged against one skill by one evaluation.                             |
+| **UserSkill**          | Derived standing per (user, skill): PR count, score, primary or secondary.     |
+| **ScoreSnapshot**      | A user's skill and overall scores at a point in time.                          |
 
 ### Projects are scored arithmetically only
 
@@ -169,7 +169,7 @@ prompt version that produced it. Scores are compared only within a rubric versio
 
 **Scores change for exactly two reasons** — the rubric changed, or the evidence changed.
 They never decay with age. A third, narrower motion exists: the **arithmetic recompute**
-(RFC-0005), which refreshes only the *relative* component of a score as platform-wide
+(RFC-0005), which refreshes only the _relative_ component of a score as platform-wide
 maxima move. It re-reads nothing from GitHub and calls no model.
 
 ## Service topology
@@ -182,11 +182,11 @@ maxima move. It re-reads nothing from GitHub and calls no model.
                                      └────────▶ GitHub API
 ```
 
-| Component | Binary | Responsibility |
-|---|---|---|
-| **api** | `backend/cmd/api` | REST for the frontend. Auth, claims, search. Never calls the AI. Applies the schema idempotently at boot. |
-| **evaluator** | `backend/cmd/evaluator` | Consumes broker messages, scores claims, writes results. No client-facing surface. |
-| **frontend** | `frontend/` | React + TypeScript. Talks only to `api`. |
+| Component     | Binary                  | Responsibility                                                                                            |
+| ------------- | ----------------------- | --------------------------------------------------------------------------------------------------------- |
+| **api**       | `backend/cmd/api`       | REST for the frontend. Auth, claims, search. Never calls the AI. Applies the schema idempotently at boot. |
+| **evaluator** | `backend/cmd/evaluator` | Consumes broker messages, scores claims, writes results. No client-facing surface.                        |
+| **frontend**  | `frontend/`             | React + TypeScript. Talks only to `api`.                                                                  |
 
 **There is no migration binary.** The api applies the schema idempotently on startup:
 pending migrations are applied in order and already-applied ones are skipped, so a boot
@@ -210,15 +210,15 @@ credentials for the AI provider.
 
 ## Resolved review comments
 
-| Marker | Resolution |
-|---|---|
-| Freelance hirers missing from actors | Hirer actor covers both; availability signalled per contributor (RFC-0002) |
-| Project evidence is unprovable | Kept, but scored on hard signals only — no AI judgement, and optional |
-| Why a migrate binary now? | Removed. Schema applied idempotently by the api at boot |
-| Skill catalogue governance | Request endpoint + admin dashboard (RFC-0003) |
-| One PR backing two skills | Yes. One claim, one model call, per-skill scores. 5 distinct PRs promotes to primary |
-| Score decay | None. Scores move only on rubric change or evidence change; arithmetic recompute adjusts relative values only |
-| Discovery consent | Availability statuses with a 15-day refresh (RFC-0002); no public leaderboard (RFC-0005) |
+| Marker                               | Resolution                                                                                                    |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------- |
+| Freelance hirers missing from actors | Hirer actor covers both; availability signalled per contributor (RFC-0002)                                    |
+| Project evidence is unprovable       | Kept, but scored on hard signals only — no AI judgement, and optional                                         |
+| Why a migrate binary now?            | Removed. Schema applied idempotently by the api at boot                                                       |
+| Skill catalogue governance           | Request endpoint + admin dashboard (RFC-0003)                                                                 |
+| One PR backing two skills            | Yes. One claim, one model call, per-skill scores. 5 distinct PRs promotes to primary                          |
+| Score decay                          | None. Scores move only on rubric change or evidence change; arithmetic recompute adjusts relative values only |
+| Discovery consent                    | Availability statuses with a 15-day refresh (RFC-0002); no public leaderboard (RFC-0005)                      |
 
 ## Open questions
 

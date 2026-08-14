@@ -2,7 +2,7 @@
 
 ## The problem
 
-`Agent.md` is explicit: *"if it is a typo fix then 0 score for that PR."* The weighted
+`Agent.md` is explicit: _"if it is a typo fix then 0 score for that PR."_ The weighted
 formula cannot produce that.
 
 Work it through. A typo fix in a large, popular repository scores roughly:
@@ -16,7 +16,7 @@ PR_score = 100·[0.70·(2.45/100) + 0.20·R + 0.10·E]
 ```
 
 With `R ≈ 0.8` for a well-known repository, that is **≈ 18 before engagement**. The
-arithmetic terms are properties of *the repository*, not the change, so they float every PR
+arithmetic terms are properties of _the repository_, not the change, so they float every PR
 in a popular project off the floor. A one-character fix to a README in Kubernetes would
 score higher than a genuine, careful bug fix in a 200-star library.
 
@@ -64,16 +64,16 @@ The model returns one of these reasons, or none. **This list is exhaustive** —
 on it is scored low, not disqualified. A rubric that lets the model invent grounds for a
 zero is one where nobody can predict what happens.
 
-| Reason | Definition |
-|---|---|
-| `typo_or_wording` | Corrects spelling, grammar, or wording, in code comments, docs, or strings, with no behavioural change. |
-| `formatting_only` | Whitespace, import ordering, linter-driven reformatting. No semantic change. |
-| `generated_output` | The diff is machine-generated — lockfiles, protobuf output, vendored dependencies, snapshots. The author ran a tool. |
-| `mechanical_dependency_bump` | A version number changed with no accompanying adaptation, diagnosis, or explanation. |
-| `revert_only` | Reverts an earlier change with no new reasoning. Reverting is often correct and rarely evidences skill. |
-| `not_the_claimed_skill` | The change is real but does not exercise this skill at all. `skill_specificity` would be scoring 0, not 5. |
-| `authored_by_other` | The claimant is not meaningfully the author — the diff is someone else's work merged under their name. |
-| `unrelated_to_issue` | The PR claims to address an issue and does something else, or nothing the issue asked for. |
+| Reason                         | Definition                                                                                                                                                                        |
+| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `typo_or_wording`              | Corrects spelling, grammar, or wording, in code comments, docs, or strings, with no behavioural change.                                                                           |
+| `formatting_only`              | Whitespace, import ordering, linter-driven reformatting. No semantic change.                                                                                                      |
+| `generated_output`             | The diff is machine-generated — lockfiles, protobuf output, vendored dependencies, snapshots. The author ran a tool.                                                              |
+| `mechanical_dependency_bump`   | A version number changed with no accompanying adaptation, diagnosis, or explanation.                                                                                              |
+| `revert_only`                  | Reverts an earlier change with no new reasoning. Reverting is often correct and rarely evidences skill.                                                                           |
+| `not_the_claimed_skill`        | The change is real but does not exercise this skill at all. `skill_specificity` would be scoring 0, not 5.                                                                        |
+| `authored_by_other`            | The claimant is not meaningfully the author — the diff is someone else's work merged under their name.                                                                            |
+| `unrelated_to_issue`           | The PR claims to address an issue and does something else, or nothing the issue asked for.                                                                                        |
 | `maintainer_flagged_unrelated` | A maintainer stated in the thread that the change was unrelated, unwanted, or merged for a reason other than its merit. The people who own the project are the authority on this. |
 
 ### Why "AI-generated" is not a ground
@@ -95,7 +95,7 @@ in careless human work. `craft` catches code that does not fit the codebase.
 catches output too thin to mean anything.
 
 So we score the change, not its authorship. `generated_output` remains a ground for a
-genuinely different case: a diff that is *entirely* machine output with no hand-written part,
+genuinely different case: a diff that is _entirely_ machine output with no hand-written part,
 like a regenerated lockfile — where the author ran a tool and committed the result.
 
 ### Deliberately not grounds
@@ -116,7 +116,7 @@ Three of these need explicit instruction, because the naive reading catches real
 
 **Documentation is not automatically `typo_or_wording`.** Writing a design document,
 an architecture guide, or genuine API documentation is engineering work and scores normally.
-The ground is for *corrections*, not for authorship. A PR rewriting a confusing README
+The ground is for _corrections_, not for authorship. A PR rewriting a confusing README
 section into something accurate is real work; fixing "recieve" to "receive" is not.
 
 **A dependency bump with diagnosis is not mechanical.** If the author identified why the
@@ -125,7 +125,7 @@ description, that is the work — the version number is incidental. `mechanical_
 operative word.
 
 **Generated output accompanying real changes does not disqualify the PR.** Judge the
-hand-written part. A change that regenerates protobuf bindings *and* implements the service
+hand-written part. A change that regenerates protobuf bindings _and_ implements the service
 method is a real change with generated files in it.
 
 ## Required contract change
@@ -143,10 +143,10 @@ rationale. It needs one more field per (PR, skill):
 
 Three changes follow:
 
-| Where | Change |
-|---|---|
-| **ADR-0004** | Structured-output schema gains `disqualified` and `disqualification_reason`. The compute step short-circuits `PR_score` to 0 when set. |
-| **ADR-0005** | `PRScore()` takes the verdict and returns 0 without evaluating the weighted sum. |
+| Where               | Change                                                                                                                                                                                                                                                    |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **ADR-0004**        | Structured-output schema gains `disqualified` and `disqualification_reason`. The compute step short-circuits `PR_score` to 0 when set.                                                                                                                    |
+| **ADR-0005**        | `PRScore()` takes the verdict and returns 0 without evaluating the weighted sum.                                                                                                                                                                          |
 | **RFC-0004 schema** | `pr_skill_scores` cannot store the row at all — its `CHECK (score > 0)` forbids zero, and zero-scoring skills are dropped by design. The **reason** should be recorded on `claim_skills.rejection_reason`, which already exists, using these enum values. |
 
 That last row matters: the schema needs **no new column** for the reason, because the
@@ -154,7 +154,7 @@ existing "zero is dropped, reason recorded on the claim skill" design already ha
 shape. `rejection_reason` becomes a **Postgres enum** carrying these ten values, so a
 rejection reason is a value rather than a string a prompt happened to produce.
 
-One column *is* added: `user_skill_pr_links.status` (`pending` | `scored` | `rejected`), so
+One column _is_ added: `user_skill_pr_links.status` (`pending` | `scored` | `rejected`), so
 that standing counts surviving evidence only (see Scope above).
 
 ## Where the judgement lives

@@ -114,7 +114,7 @@ Rate limit: 3 per rolling 7 days per contributor, counted on `skill_requests.cre
 ### The 7-day lock
 
 `claims.locked_until = evaluated_at + 7 days`, set when an evaluation succeeds. Enforced in
-the claim service on edit, submit, and withdraw. Creating a claim for a *different* skill is
+the claim service on edit, submit, and withdraw. Creating a claim for a _different_ skill is
 unaffected — the lock is per claim, not per account.
 
 ## Steps
@@ -148,7 +148,7 @@ unaffected — the lock is per claim, not per account.
 
 ## Amendments
 
-| Date | Change |
-|---|---|
-| 2026-08-02 | Accepted from RFC-0003 |
+| Date       | Change                                                                                                                                                                                                                                         |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-08-02 | Accepted from RFC-0003                                                                                                                                                                                                                         |
 | 2026-08-14 | **Amended by [ADR-0007](ADR-0007-rubric-contract-and-generalist-score.md)** — `distinct_pr_count` counts only `status='scored'` links, so a rejected PR leaves a skill at four and secondary. `claim_skills.rejection_reason` becomes an enum. |

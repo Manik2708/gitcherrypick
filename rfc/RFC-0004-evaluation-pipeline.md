@@ -160,13 +160,13 @@ told. No zero-scored `user_skills` row is ever written.
 
 ## Reproducibility
 
-| Field | Why |
-|---|---|
-| `claim_version` | Which version of the evidence was scored |
-| `rubric_version` | Which rubric. Scores compare only within a version. |
-| `model` | Which model produced the judgements |
-| `prompt_version` | Which prompt template |
-| `evidence_fingerprint` | Hash of the canonical evidence set |
+| Field                  | Why                                                 |
+| ---------------------- | --------------------------------------------------- |
+| `claim_version`        | Which version of the evidence was scored            |
+| `rubric_version`       | Which rubric. Scores compare only within a version. |
+| `model`                | Which model produced the judgements                 |
+| `prompt_version`       | Which prompt template                               |
+| `evidence_fingerprint` | Hash of the canonical evidence set                  |
 
 The fingerprint hashes the sorted `owner/repo#number` triples, the project list, and the
 declared skills. It gives idempotency free — a message whose fingerprint already has a
@@ -183,16 +183,16 @@ nothing from GitHub, calls no model, and creates no evaluation row.
 
 ## Failure handling
 
-| Failure | Response |
-|---|---|
-| Malformed payload | Dead-letter immediately. Not retryable. |
-| GitHub rate limit | Nack with the delay from `Retry-After`. Does not count as an attempt. |
-| GitHub 5xx / timeout | Retry with exponential backoff + jitter. |
-| **One PR of five fails enrichment** | **Score the rest. See below.** |
-| Batch not returned by 20h | Escalate to synchronous dispatch to hold the 24h ceiling. |
-| Model refusal | Dead-letter with the refusal category. An identical retry will not help. |
-| Structured output fails validation | Retry once, then dead-letter. |
-| Repository write failure | Nack; the transaction rolled back, so retry is safe. |
+| Failure                             | Response                                                                 |
+| ----------------------------------- | ------------------------------------------------------------------------ |
+| Malformed payload                   | Dead-letter immediately. Not retryable.                                  |
+| GitHub rate limit                   | Nack with the delay from `Retry-After`. Does not count as an attempt.    |
+| GitHub 5xx / timeout                | Retry with exponential backoff + jitter.                                 |
+| **One PR of five fails enrichment** | **Score the rest. See below.**                                           |
+| Batch not returned by 20h           | Escalate to synchronous dispatch to hold the 24h ceiling.                |
+| Model refusal                       | Dead-letter with the refusal category. An identical retry will not help. |
+| Structured output fails validation  | Retry once, then dead-letter.                                            |
+| Repository write failure            | Nack; the transaction rolled back, so retry is safe.                     |
 
 Backoff is exponential with jitter from a 5-second base, capped at 15 minutes, **6
 attempts**. Exhaustion dead-letters the job and moves the claim to `failed`, which is
@@ -223,14 +223,14 @@ delay a contributor waiting on a submission. Both feed the same batching machine
 
 ## Resolved review comments
 
-| Marker | Resolution |
-|---|---|
-| Q1 use the Batch API | Batch for everything, including live submissions |
-| Q2 enrichment cache lifetime | 7 days, then re-enrich |
-| Q3 cost ceiling | No per-day cap; the 7-day per-claim lock (RFC-0003) is the control |
-| Q4 partial enrichment | Retry the failing PR, then score the rest; standing follows PR count |
-| 24 hours must be the maximum | Hard ceiling, enforced by escalating stalled batches at 20h |
-| Why three judgements per PR? | Corrected — one call per claim scores every PR against every skill |
+| Marker                       | Resolution                                                           |
+| ---------------------------- | -------------------------------------------------------------------- |
+| Q1 use the Batch API         | Batch for everything, including live submissions                     |
+| Q2 enrichment cache lifetime | 7 days, then re-enrich                                               |
+| Q3 cost ceiling              | No per-day cap; the 7-day per-claim lock (RFC-0003) is the control   |
+| Q4 partial enrichment        | Retry the failing PR, then score the rest; standing follows PR count |
+| 24 hours must be the maximum | Hard ceiling, enforced by escalating stalled batches at 20h          |
+| Why three judgements per PR? | Corrected — one call per claim scores every PR against every skill   |
 
 ## Open questions
 

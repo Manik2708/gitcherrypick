@@ -98,6 +98,7 @@ admin if `admin_accounts` is empty, then logs that it did. Never on subsequent b
 ### Availability expiry
 
 A job in the api, hourly:
+
 - `expires_at < now()` → invisible to hirers. Enforced by the **search query**, not by
   mutating the row — a contributor whose status lapsed should see their setting preserved
   when they return, not silently reset.
@@ -139,7 +140,7 @@ no rank against others, no navigation to anyone else.
 
 ## Amendments
 
-| Date | Change |
-|---|---|
-| 2026-08-02 | Accepted from RFC-0002 |
+| Date       | Change                                                                                                                                                                                        |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-08-02 | Accepted from RFC-0002                                                                                                                                                                        |
 | 2026-08-14 | **Amended by [ADR-0007](ADR-0007-rubric-contract-and-generalist-score.md)** — `users.generalist_score` added: a second user-level score, unbounded and searchable, alongside `overall_score`. |

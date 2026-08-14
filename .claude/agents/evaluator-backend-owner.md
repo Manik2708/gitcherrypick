@@ -24,7 +24,7 @@ You never serve frontend clients. Your input arrives from the **broker**.
 as a queue. Your code must read as "receive a message, acknowledge a message" and be
 indifferent to what is underneath.
 
-**The AI layer is an interface.** You care about the *response*, never the model. No
+**The AI layer is an interface.** You care about the _response_, never the model. No
 vendor SDK type, model identifier, or prompt string may appear outside the AI adapter.
 
 **The repository is an interface**, exactly as in the core backend.

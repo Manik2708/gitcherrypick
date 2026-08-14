@@ -16,7 +16,7 @@ Then, based on its output:
   one blocks:
   - **Docker daemon down** blocks integration tests (stage 3) and therefore all
     implementation. Ask the user to start Docker Desktop.
-  - **Missing secrets** block only live runs against GitHub and Claude. They do *not*
+  - **Missing secrets** block only live runs against GitHub and Claude. They do _not_
     block the integration suite, which runs on fakes plus a Postgres container.
 - If everything is ready, say so in one line and state which pipeline gate is currently
   open (see CLAUDE.md).
