@@ -1,0 +1,199 @@
+{
+  "name": "shortlisting raises a request; the email is released only on acceptance",
+  "description": "ADR-0005, and the deliberate inversion of how sourcing tools normally work. Adding someone to a shortlist does NOT disclose their email — it creates a contact request the contributor must accept. Releasing contact details on the strength of one side's interest is what makes those tools feel extractive, and the whole consent model would be hollow if a shortlist click bypassed it.\n\nThe request also discloses what we know about the hirer: sam_studio's organization was verified on identity but never on payment, so the contributor is told before deciding.",
+  "seed": ["principals", "catalogue", "repositories", "scored_population"],
+  "steps": [
+    {
+      "as": "sam_studio",
+      "request": {
+        "method": "POST",
+        "path": "/shortlists",
+        "body": { "name": "Backend contractor, Q3", "tentative_result_date": "2026-09-30" }
+      },
+      "capture": { "shortlist": "$.id" },
+      "expect": {
+        "status": 201,
+        "body": {
+          "id": "<uuid>",
+          "name": "Backend contractor, Q3",
+          "status": "open",
+          "tentative_result_date": "2026-09-30",
+          "created_at": "<timestamp>"
+        }
+      }
+    },
+    {
+      "as": "sam_studio",
+      "request": {
+        "method": "POST",
+        "path": "/shortlists/{{shortlist}}/entries",
+        "body": { "user_id": "{{alice.id}}", "note": "Strong retry-semantics work." }
+      },
+      "expect": {
+        "status": 201,
+        "_note": "No email in the response. A contact request was raised instead.",
+        "body": {
+          "user_id": "<uuid>",
+          "added_at": "<timestamp>",
+          "contact_request": { "id": "<uuid>", "status": "pending", "expires_at": "<timestamp>" },
+          "email": null
+        }
+      }
+    },
+    {
+      "as": "sam_studio",
+      "request": { "method": "GET", "path": "/contributors/{{alice.id}}/scorecard" },
+      "expect": {
+        "status": 200,
+        "_note": "The full scorecard IS visible — that is what verification buys. The email is not part of it.",
+        "body": {
+          "display_name": "Alice Okafor",
+          "github_login": "aliceok",
+          "email": null,
+          "overall_score": 64.2,
+          "generalist_score": 64.2,
+          "skills": [{ "slug": "go", "standing": "primary", "distinct_pr_count": 5, "score": 64.2 }]
+        }
+      }
+    },
+    {
+      "_step": "The contributor sees who, when, and what we know about them.",
+      "as": "alice",
+      "request": { "method": "GET", "path": "/me/contact-requests" },
+      "expect": {
+        "status": 200,
+        "body": {
+          "requests": [
+            {
+              "id": "<uuid>",
+              "organization": { "name": "Tiny Studio", "verified": true, "payment_verified": false },
+              "tentative_result_date": "2026-09-30",
+              "status": "pending",
+              "expires_at": "<timestamp>",
+              "disclosure": "This organization is hiring for the first time and has not verified payment capability.",
+              "_note": "Not a warning against them — a fact. The contributor carries the risk of an unpaid engagement, so the contributor gets the fact and the choice."
+            }
+          ]
+        }
+      }
+    },
+    {
+      "as": "alice",
+      "request": { "method": "POST", "path": "/me/contact-requests/{{contact_request_id}}/decline", "body": {} },
+      "expect": {
+        "status": 200,
+        "body": { "id": "<uuid>", "status": "declined", "responded_at": "<timestamp>" },
+        "db": {
+          "contact_requests": {
+            "where": { "user_id": "{{alice.id}}" },
+            "count": 1,
+            "all_match": { "status": "declined", "email_released_at": null }
+          }
+        }
+      }
+    },
+    {
+      "as": "sam_studio",
+      "request": { "method": "GET", "path": "/shortlists/{{shortlist}}" },
+      "expect": {
+        "status": 200,
+        "body": {
+          "id": "<uuid>",
+          "name": "Backend contractor, Q3",
+          "status": "open",
+          "tentative_result_date": "2026-09-30",
+          "entries": [{ "user_id": "<uuid>", "display_name": "Alice Okafor", "contact_status": "declined", "email": null }]
+        }
+      }
+    },
+    {
+      "_step": "A verified-on-payment organization gets no disclosure label, and acceptance releases the email.",
+      "as": "hank",
+      "request": { "method": "POST", "path": "/shortlists", "body": { "name": "Platform team", "tentative_result_date": "2026-10-15" } },
+      "capture": { "acme_shortlist": "$.id" },
+      "expect": {
+        "status": 201,
+        "body": {
+          "id": "<uuid>",
+          "name": "Platform team",
+          "status": "open",
+          "tentative_result_date": "2026-10-15",
+          "created_at": "<timestamp>"
+        }
+      }
+    },
+    {
+      "as": "hank",
+      "request": { "method": "POST", "path": "/shortlists/{{acme_shortlist}}/entries", "body": { "user_id": "{{alice.id}}" } },
+      "expect": {
+        "status": 201,
+        "body": {
+          "user_id": "<uuid>",
+          "added_at": "<timestamp>",
+          "contact_request": { "id": "<uuid>", "status": "pending", "expires_at": "<timestamp>" },
+          "email": null
+        }
+      }
+    },
+    {
+      "as": "alice",
+      "request": { "method": "GET", "path": "/me/contact-requests?status=pending" },
+      "expect": {
+        "status": 200,
+        "body": {
+          "requests": [
+            {
+              "id": "<uuid>",
+              "organization": { "name": "Acme Corp", "verified": true, "payment_verified": true },
+              "tentative_result_date": "2026-10-15",
+              "status": "pending",
+              "expires_at": "<timestamp>",
+              "disclosure": null
+            }
+          ]
+        }
+      }
+    },
+    {
+      "as": "alice",
+      "request": { "method": "POST", "path": "/me/contact-requests/{{contact_request_id}}/accept", "body": {} },
+      "expect": {
+        "status": 200,
+        "body": { "id": "<uuid>", "status": "accepted", "responded_at": "<timestamp>" },
+        "db": {
+          "contact_requests": { "where": { "organization_id": "{{acme.id}}" }, "count": 1, "none_match": { "email_released_at": null } }
+        }
+      }
+    },
+    {
+      "as": "hank",
+      "request": { "method": "GET", "path": "/shortlists/{{acme_shortlist}}" },
+      "expect": {
+        "status": 200,
+        "_note": "Only now does the email appear, and only for the organization the contributor accepted.",
+        "body": {
+          "id": "<uuid>",
+          "name": "Platform team",
+          "status": "open",
+          "tentative_result_date": "2026-10-15",
+          "entries": [{ "user_id": "<uuid>", "display_name": "Alice Okafor", "contact_status": "accepted", "email": "alice@example.com" }]
+        }
+      }
+    },
+    {
+      "_step": "Tiny Studio still sees nothing. Consent is per organization, not global.",
+      "as": "sam_studio",
+      "request": { "method": "GET", "path": "/shortlists/{{shortlist}}" },
+      "expect": {
+        "status": 200,
+        "body": {
+          "id": "<uuid>",
+          "name": "Backend contractor, Q3",
+          "status": "open",
+          "tentative_result_date": "2026-09-30",
+          "entries": [{ "user_id": "<uuid>", "display_name": "Alice Okafor", "contact_status": "declined", "email": null }]
+        }
+      }
+    }
+  ]
+}

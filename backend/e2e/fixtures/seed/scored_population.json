@@ -1,0 +1,82 @@
+{
+  "description": "Pre-scored contributors, so discovery and admin cases can query a populated index without each first driving four claims through the evaluator. Loaded ON TOP of principals + catalogue + repositories.",
+  "_note": "These rows are written directly, bypassing evaluation. That is deliberate: a search fixture should fail when SEARCH is wrong, not when scoring is. The scoring path has its own cases under controllers/evaluation/.",
+  "_named_sets": {
+    "alice_go_primary": "Just Alice, with one evaluated 5-PR Go claim. Used by the lock, withdrawal, and re-evaluation cases.",
+    "scored_population": "All four contributors scored, for search and shortlist cases."
+  },
+  "alice_go_primary": {
+    "claims": [
+      {
+        "key": "alice_go_claim",
+        "id": "01920000-0000-7000-8000-0000000f0001",
+        "user": "alice",
+        "status": "evaluated",
+        "version": 1,
+        "evaluated_at": "2026-08-10T09:00:00Z",
+        "locked_until": "2026-08-17T09:00:00Z",
+        "nominated_primary": "go",
+        "pr_evidence": [
+          { "position": 1, "repo": "acme/bigrepo", "pr_number": 101, "role": "author" },
+          { "position": 2, "repo": "acme/bigrepo", "pr_number": 102, "role": "author" },
+          { "position": 3, "repo": "acme/platform", "pr_number": 55, "role": "author" },
+          { "position": 4, "repo": "acme/platform", "pr_number": 56, "role": "author" },
+          { "position": 5, "repo": "indie/smalllib", "pr_number": 12, "role": "author" }
+        ]
+      }
+    ],
+    "pr_skill_scores": [
+      { "claim": "alice_go_claim", "position": 1, "skill": "go", "score": 79.3, "quality_q": 83.1, "reach_r": 0.71, "engagement_e": 0.62 },
+      { "claim": "alice_go_claim", "position": 2, "skill": "go", "score": 62.1, "quality_q": 63.4, "reach_r": 0.71, "engagement_e": 0.44 },
+      { "claim": "alice_go_claim", "position": 3, "skill": "go", "score": 60.4, "quality_q": 61.2, "reach_r": 0.55, "engagement_e": 0.51 },
+      { "claim": "alice_go_claim", "position": 4, "skill": "go", "score": 54.8, "quality_q": 55.9, "reach_r": 0.55, "engagement_e": 0.33 },
+      { "claim": "alice_go_claim", "position": 5, "skill": "go", "score": 64.4, "quality_q": 66.0, "reach_r": 0.38, "engagement_e": 0.58 }
+    ],
+    "user_skill_pr_links": "derived from pr_evidence, all status='scored'",
+    "user_skills": [
+      {
+        "user": "alice",
+        "skill": "go",
+        "standing": "primary",
+        "distinct_pr_count": 5,
+        "score": 64.2,
+        "pr_component": 64.2,
+        "project_component": 0.0
+      }
+    ],
+    "users": [{ "user": "alice", "overall_score": 64.2, "generalist_score": 64.2 }]
+  },
+  "scored_population": {
+    "_extends": "alice_go_primary",
+    "_bob_note": "Three primary skills, none outstanding. The generalist case: Overall 60.4 puts him below Alice on depth, Generalist 122.7 puts him first on breadth. Both numbers are true and they rank him differently, which is the whole point of having two.",
+    "_bob_arithmetic": "sorted 55, 52, 48 -> Overall = 55 + 45*0.5*B where B = (0.52*0.5 + 0.48*0.25)/0.75 = 0.507 -> 66.4. Generalist = 55 + 52/1.414 + 48/1.732 = 55 + 36.8 + 27.7 = 119.5. Values below are the ones the runner will pin; regenerate with -update if the constants move.",
+    "user_skills": [
+      { "user": "bob", "skill": "go", "standing": "primary", "distinct_pr_count": 5, "score": 55.0 },
+      { "user": "bob", "skill": "kubernetes", "standing": "primary", "distinct_pr_count": 5, "score": 52.0 },
+      { "user": "bob", "skill": "postgres", "standing": "primary", "distinct_pr_count": 5, "score": 48.0 },
+      { "user": "carol", "skill": "postgres", "standing": "primary", "distinct_pr_count": 5, "score": 71.5 },
+      { "user": "dave", "skill": "kubernetes", "standing": "primary", "distinct_pr_count": 5, "score": 58.0 },
+      {
+        "_note": "Dave holds Go as SECONDARY at four PRs. Must never match a skill=go search however high it scores.",
+        "user": "dave",
+        "skill": "go",
+        "standing": "secondary",
+        "distinct_pr_count": 4,
+        "score": 81.0
+      }
+    ],
+    "users": [
+      { "user": "bob", "overall_score": 60.4, "generalist_score": 122.7 },
+      { "user": "carol", "overall_score": 71.5, "generalist_score": 71.5 },
+      { "user": "dave", "overall_score": 58.0, "generalist_score": 58.0 }
+    ],
+    "availability_overrides": [
+      {
+        "_note": "Bob is not_looking in principals.json; the discovery cases need him visible to exercise the generalist filter.",
+        "user": "bob",
+        "status": "looking_for_freelance",
+        "expires_in_days": 15
+      }
+    ]
+  }
+}

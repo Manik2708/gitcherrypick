@@ -1,0 +1,51 @@
+{
+  "name": "an unverified hirer can sign in but cannot hire",
+  "description": "ADR-0002: registration and hiring capability are separate. An unverified hirer sees their own dashboard and nothing else — RequireHiringCapability gates search, scorecards, and shortlisting. Verification is manual and is the real gate; the identity provider is not.",
+  "seed": ["principals", "catalogue"],
+  "steps": [
+    {
+      "_step": "Signing in works. Being unverified is not being locked out.",
+      "as": "pending_pat",
+      "request": { "method": "GET", "path": "/me" },
+      "expect": {
+        "status": 200,
+        "body": {
+          "id": "<uuid>",
+          "kind": "hirer",
+          "display_name": "Pat Ferreira",
+          "verified": false,
+          "organization": { "name": "Unknown Ltd", "verified": false },
+          "capabilities": { "can_search": false, "can_shortlist": false, "can_view_scorecards": false }
+        }
+      }
+    },
+    {
+      "as": "pending_pat",
+      "request": { "method": "GET", "path": "/search?skill=go" },
+      "expect": {
+        "status": 403,
+        "body": {
+          "error": "verification_required",
+          "message": "Your hiring account is awaiting review. We aim to respond within 48 hours."
+        }
+      }
+    },
+    {
+      "as": "pending_pat",
+      "request": { "method": "GET", "path": "/contributors/{{alice.id}}/scorecard" },
+      "expect": { "status": 403, "body": { "error": "verification_required" } }
+    },
+    {
+      "_step": "A verified hirer in a verified org passes the same gate.",
+      "as": "hank",
+      "request": { "method": "GET", "path": "/search?skill=go" },
+      "expect": { "status": 200, "body": { "results": [], "total": 0 } }
+    },
+    {
+      "_step": "Verified hirer, UNVERIFIED organization — still refused. Both must be verified (ADR-0002).",
+      "as": "pending_pat",
+      "request": { "method": "GET", "path": "/shortlists" },
+      "expect": { "status": 403, "body": { "error": "verification_required" } }
+    }
+  ]
+}

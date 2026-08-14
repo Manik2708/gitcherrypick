@@ -1,0 +1,65 @@
+{
+  "name": "share links are the only thing an anonymous visitor can see",
+  "description": "ADR-0002: scorecards are fully gated. A logged-out visitor sees nothing, a contributor sees only their OWN rank, and the single publishable surface is a link the contributor generates and can revoke. The link exposes that contributor alone — no ranking against anyone else, no navigation outward.",
+  "seed": ["principals", "catalogue"],
+  "steps": [
+    {
+      "as": "anonymous",
+      "request": { "method": "GET", "path": "/contributors/{{alice.id}}/scorecard" },
+      "expect": { "status": 401, "body": { "error": "authentication_required" } }
+    },
+    {
+      "_step": "A contributor cannot browse to someone else's card either.",
+      "as": "bob",
+      "request": { "method": "GET", "path": "/contributors/{{alice.id}}/scorecard" },
+      "expect": { "status": 403, "body": { "error": "forbidden", "message": "Scorecards are visible to verified hiring accounts only." } }
+    },
+    {
+      "as": "alice",
+      "request": { "method": "POST", "path": "/me/share-link" },
+      "capture": { "share_token": "$.token" },
+      "expect": {
+        "status": 201,
+        "_note": "Shown once. Stored hashed, so a database disclosure yields no working links.",
+        "body": { "id": "<uuid>", "token": "<token>", "url": "<token>", "created_at": "<timestamp>" }
+      }
+    },
+    {
+      "_step": "Anonymous, with the token — permitted, and scoped to Alice alone.",
+      "as": "anonymous",
+      "request": { "method": "GET", "path": "/public/scorecard/{{share_token}}" },
+      "expect": {
+        "status": 200,
+        "body": {
+          "display_name": "Alice Okafor",
+          "github_login": "aliceok",
+          "skills": [],
+          "overall_score": null,
+          "generalist_score": null,
+          "_note_rank_absent": "No rank field. A share link says how good you are, never where you sit against others."
+        }
+      }
+    },
+    {
+      "as": "alice",
+      "request": { "method": "DELETE", "path": "/me/share-link/{{share_link_id}}" },
+      "expect": { "status": 204, "body": null }
+    },
+    {
+      "as": "anonymous",
+      "request": { "method": "GET", "path": "/public/scorecard/{{share_token}}" },
+      "expect": { "status": 404, "body": { "error": "not_found" } }
+    },
+    {
+      "_step": "A contributor may see their own rank — and only their own.",
+      "as": "alice",
+      "request": { "method": "GET", "path": "/me/rank" },
+      "expect": { "status": 200, "body": { "overall_rank": null, "generalist_rank": null, "skills": [] } }
+    },
+    {
+      "as": "alice",
+      "request": { "method": "GET", "path": "/leaderboard?skill=go" },
+      "expect": { "status": 403, "body": { "error": "forbidden", "message": "Rankings are visible to verified hiring accounts only." } }
+    }
+  ]
+}

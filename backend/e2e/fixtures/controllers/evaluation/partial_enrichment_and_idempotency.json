@@ -1,0 +1,152 @@
+{
+  "name": "one unreachable PR does not fail the claim, and redelivery is free",
+  "description": "Two ADR-0004 guarantees in one case.\n\nPartial enrichment: if a PR cannot be read, retry it on a longer backoff and then score the rest. The claim still evaluates; the affected skill simply has fewer distinct PRs, which needs no special case because standing derives from the count anyway.\n\nIdempotency: a redelivered message finds a succeeded evaluation matching (claim, version, evidence fingerprint, rubric version) and acks WITHOUT a second model call. This is what makes ack-after-commit safe — a crash between them redelivers, and redelivery is a no-op.",
+  "seed": ["principals", "catalogue", "repositories"],
+  "steps": [
+    {
+      "as": "alice",
+      "request": { "method": "POST", "path": "/claims", "body": {} },
+      "expect": { "status": 201, "body": { "id": "<uuid>", "status": "draft", "version": 1, "created_at": "<timestamp>" } }
+    },
+    {
+      "as": "alice",
+      "request": {
+        "method": "POST",
+        "path": "/claims/{{claim_id}}/evidence/prs",
+        "body": {
+          "prs": [
+            { "position": 1, "url": "https://github.com/acme/bigrepo/pull/101" },
+            { "position": 2, "url": "https://github.com/acme/bigrepo/pull/102" },
+            { "position": 3, "url": "https://github.com/acme/bigrepo/pull/905" }
+          ]
+        }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "prs": [
+            { "position": 1, "repo_owner": "acme", "repo_name": "bigrepo", "pr_number": 101, "role": "author" },
+            { "position": 2, "repo_owner": "acme", "repo_name": "bigrepo", "pr_number": 102, "role": "author" },
+            { "position": 3, "repo_owner": "acme", "repo_name": "bigrepo", "pr_number": 905, "role": "author" }
+          ]
+        }
+      }
+    },
+    {
+      "as": "alice",
+      "request": {
+        "method": "POST",
+        "path": "/claims/{{claim_id}}/skills",
+        "body": { "skills": [{ "slug": "go", "nominated_primary": true }] }
+      },
+      "expect": { "status": 200, "body": { "skills": [{ "slug": "go", "origin": "user_declared", "nominated_primary": true }] } }
+    },
+    {
+      "as": "alice",
+      "request": { "method": "POST", "path": "/claims/{{claim_id}}/submit", "body": {} },
+      "expect": {
+        "status": 202,
+        "body": { "id": "<uuid>", "status": "queued", "version": 1, "submitted_at": "<timestamp>", "estimated_result_within_hours": 24 }
+      }
+    },
+    {
+      "_step": "PR 905 returns not_found from the fake. It is retried on a longer backoff, then skipped.",
+      "as": "system",
+      "request": { "method": "RUN_EVALUATOR", "path": "/" },
+      "fake": {
+        "github": { "acme/bigrepo#905": { "error": "not_found" } },
+        "ai": {
+          "judgements": [
+            {
+              "pr_number": 101,
+              "skill_slug": "go",
+              "disqualified": false,
+              "dimensions": {
+                "substance": { "score": 84, "remark": "Reworked the retry path to be idempotent." },
+                "complexity": { "score": 88, "remark": "Required reasoning about interleaving." },
+                "conversation_quality": { "score": 79, "remark": "Drove a design discussion." },
+                "craft": { "score": 76, "remark": "Tests cover the redelivery case." },
+                "skill_specificity": { "score": 90, "remark": "Concurrency work in idiomatic Go." }
+              }
+            },
+            {
+              "pr_number": 102,
+              "skill_slug": "go",
+              "disqualified": false,
+              "dimensions": {
+                "substance": { "score": 61, "remark": "Bounded a renewal loop." },
+                "complexity": { "score": 70, "remark": "Clock skew makes the naive fix wrong." },
+                "conversation_quality": { "score": 55, "remark": "Some review." },
+                "craft": { "score": 68, "remark": "Test added." },
+                "skill_specificity": { "score": 82, "remark": "Squarely Go concurrency." }
+              }
+            }
+          ]
+        }
+      },
+      "expect": {
+        "status": 200,
+        "body": { "processed": 1, "failed": 0, "ai_calls": 1 },
+        "db": {
+          "evaluations": {
+            "_note": "Succeeded, with the unreachable position recorded rather than silently dropped.",
+            "where": { "claim_id": "{{claim_id}}" },
+            "count": 1,
+            "all_match": { "status": "succeeded", "skipped_pr_positions": [3] }
+          },
+          "pr_skill_scores": { "where": { "skill_slug": "go" }, "count": 2 },
+          "user_skills": {
+            "where": { "user_id": "{{alice.id}}", "skill_slug": "go" },
+            "count": 1,
+            "all_match": { "standing": "secondary", "distinct_pr_count": 2 }
+          }
+        }
+      }
+    },
+    {
+      "as": "alice",
+      "request": { "method": "GET", "path": "/claims/{{claim_id}}" },
+      "expect": {
+        "status": 200,
+        "body": {
+          "id": "<uuid>",
+          "status": "evaluated",
+          "version": 1,
+          "evaluated_at": "<timestamp>",
+          "locked_until": "<timestamp>",
+          "prs": [
+            { "position": 1, "pr_number": 101, "scores": [{ "skill": "go", "score": 79.3 }] },
+            { "position": 2, "pr_number": 102, "scores": [{ "skill": "go", "score": 62.1 }] },
+            {
+              "position": 3,
+              "pr_number": 905,
+              "skipped": true,
+              "reason": "unreachable",
+              "message": "We could not read this pull request from GitHub, so it was not scored. Check the URL is correct and still public."
+            }
+          ],
+          "skills": [{ "slug": "go", "standing": "secondary", "distinct_pr_count": 2 }]
+        }
+      }
+    },
+    {
+      "_step": "Redeliver the same message — simulates a crash between commit and ack.",
+      "as": "system",
+      "request": { "method": "REDELIVER_LAST_JOB", "path": "/" },
+      "expect": {
+        "status": 200,
+        "_note": "Acked without a model call. The unique index on (claim, version, fingerprint, rubric) found the succeeded row.",
+        "body": { "processed": 1, "failed": 0, "ai_calls": 0, "skipped_idempotent": 1 },
+        "db": {
+          "evaluations": { "where": { "claim_id": "{{claim_id}}" }, "count": 1 },
+          "pr_skill_scores": { "where": { "skill_slug": "go" }, "count": 2 },
+          "score_snapshots": {
+            "_note": "No duplicate snapshots either — a redelivery must not appear in a contributor's score history as a change.",
+            "where": { "user_id": "{{alice.id}}" },
+            "count": 1
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,54 @@
+{
+  "name": "a reused refresh token revokes the entire session family",
+  "description": "The security-critical branch of ADR-0002. Refresh tokens rotate on every use; presenting an already-used one means it leaked, so the whole family is revoked and the holder of the CURRENT token is logged out too. That last part is the point — a thief and a victim cannot be told apart, so both are stopped.",
+  "seed": ["principals"],
+  "steps": [
+    {
+      "as": "alice",
+      "request": { "method": "POST", "path": "/auth/refresh" },
+      "capture": { "refresh_a": "$.refresh_token" },
+      "expect": { "status": 200, "body": { "access_token": "<token>", "refresh_token": "<token>", "expires_in": 900 } }
+    },
+    {
+      "_step": "Rotate once. The token from step 1 is now spent.",
+      "as": "alice",
+      "request": { "method": "POST", "path": "/auth/refresh", "body": { "refresh_token": "{{refresh_a}}" } },
+      "capture": { "refresh_b": "$.refresh_token" },
+      "expect": {
+        "status": 200,
+        "body": { "access_token": "<token>", "refresh_token": "<token>", "expires_in": 900 },
+        "db": {
+          "sessions": {
+            "_note": "Two rows, one family. The first is marked used, the successor is live.",
+            "where": { "user_id": "{{alice.id}}" },
+            "count": 2,
+            "same_value": ["family_id"]
+          }
+        }
+      }
+    },
+    {
+      "_step": "Replay the spent token — this is the leak signal.",
+      "as": "anonymous",
+      "request": { "method": "POST", "path": "/auth/refresh", "body": { "refresh_token": "{{refresh_a}}" } },
+      "expect": {
+        "status": 401,
+        "body": { "error": "token_reuse_detected" },
+        "db": {
+          "sessions": {
+            "_note": "EVERY row in the family is revoked, including the one nobody misused.",
+            "where": { "user_id": "{{alice.id}}" },
+            "count": 2,
+            "none_match": { "revoked_at": null }
+          }
+        }
+      }
+    },
+    {
+      "_step": "The legitimate holder of the current token is logged out as collateral. Deliberate — we cannot distinguish them from the thief.",
+      "as": "anonymous",
+      "request": { "method": "POST", "path": "/auth/refresh", "body": { "refresh_token": "{{refresh_b}}" } },
+      "expect": { "status": 401, "body": { "error": "session_revoked" } }
+    }
+  ]
+}

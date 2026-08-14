@@ -1,0 +1,268 @@
+{
+  "name": "a secondary skill accumulates by share and auto-promotes at five",
+  "description": "ADR-0007 §5 and ADR-0003. The model scores the nominated primary on the full dimension set and returns a relative_share per secondary skill; the secondary's PR score is linear — share x primary. Kubernetes reaches five distinct scored PRs across TWO claims and promotes automatically, with no resubmission, because the evidence already exists and has already been judged.\n\nThe share is uncapped: PR 55 returns 1.15, so Kubernetes outscores Go on that PR despite Go being nominated primary.",
+  "seed": ["principals", "catalogue", "repositories"],
+  "steps": [
+    {
+      "as": "alice",
+      "request": { "method": "POST", "path": "/claims", "body": {} },
+      "capture": { "claim_one": "$.id" },
+      "expect": { "status": 201, "body": { "id": "<uuid>", "status": "draft", "version": 1, "created_at": "<timestamp>" } }
+    },
+    {
+      "as": "alice",
+      "request": {
+        "method": "POST",
+        "path": "/claims/{{claim_one}}/evidence/prs",
+        "body": {
+          "prs": [
+            { "position": 1, "url": "https://github.com/acme/platform/pull/55" },
+            { "position": 2, "url": "https://github.com/acme/platform/pull/56" },
+            { "position": 3, "url": "https://github.com/acme/bigrepo/pull/101" }
+          ]
+        }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "prs": [
+            { "position": 1, "repo_owner": "acme", "repo_name": "platform", "pr_number": 55, "role": "author" },
+            { "position": 2, "repo_owner": "acme", "repo_name": "platform", "pr_number": 56, "role": "author" },
+            { "position": 3, "repo_owner": "acme", "repo_name": "bigrepo", "pr_number": 101, "role": "author" }
+          ]
+        }
+      }
+    },
+    {
+      "as": "alice",
+      "request": {
+        "method": "POST",
+        "path": "/claims/{{claim_one}}/skills",
+        "body": { "skills": [{ "slug": "go", "nominated_primary": true }, { "slug": "kubernetes" }] }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "skills": [
+            { "slug": "go", "origin": "user_declared", "nominated_primary": true },
+            { "slug": "kubernetes", "origin": "user_declared", "nominated_primary": false }
+          ]
+        }
+      }
+    },
+    {
+      "as": "alice",
+      "request": { "method": "POST", "path": "/claims/{{claim_one}}/submit", "body": {} },
+      "expect": {
+        "status": 202,
+        "body": { "id": "<uuid>", "status": "queued", "version": 1, "submitted_at": "<timestamp>", "estimated_result_within_hours": 24 }
+      }
+    },
+    {
+      "as": "system",
+      "request": { "method": "RUN_EVALUATOR", "path": "/" },
+      "fake": {
+        "ai": {
+          "judgements": [
+            {
+              "pr_number": 55,
+              "skill_slug": "go",
+              "disqualified": false,
+              "dimensions": {
+                "substance": { "score": 72, "remark": "New operator; substantial surface." },
+                "complexity": { "score": 65, "remark": "Follows an established controller pattern." },
+                "conversation_quality": { "score": 62, "remark": "Reviewed thoroughly, revised twice." },
+                "craft": { "score": 70, "remark": "Readable; some duplication in the reconciler." },
+                "skill_specificity": { "score": 45, "remark": "Mostly Kubernetes work expressed in Go." }
+              }
+            },
+            {
+              "pr_number": 55,
+              "skill_slug": "kubernetes",
+              "disqualified": false,
+              "relative_share": 1.15,
+              "_note": "Uncapped. The Kubernetes work carried this change; Go was the vehicle."
+            },
+            {
+              "pr_number": 56,
+              "skill_slug": "go",
+              "disqualified": false,
+              "dimensions": {
+                "substance": { "score": 58, "remark": "Lease reconciliation on restart." },
+                "complexity": { "score": 60, "remark": "Restart semantics needed care." },
+                "conversation_quality": { "score": 48, "remark": "Brief review, one substantive comment." },
+                "craft": { "score": 64, "remark": "Adequate tests." },
+                "skill_specificity": { "score": 50, "remark": "Split between Go and Kubernetes concerns." }
+              }
+            },
+            { "pr_number": 56, "skill_slug": "kubernetes", "disqualified": false, "relative_share": 0.85 },
+            {
+              "pr_number": 101,
+              "skill_slug": "go",
+              "disqualified": false,
+              "dimensions": {
+                "substance": { "score": 84, "remark": "Reworked the retry path to be idempotent." },
+                "complexity": { "score": 88, "remark": "Required reasoning about interleaving." },
+                "conversation_quality": { "score": 79, "remark": "Drove a design discussion." },
+                "craft": { "score": 76, "remark": "Tests cover the redelivery case." },
+                "skill_specificity": { "score": 90, "remark": "Concurrency work in idiomatic Go." }
+              }
+            },
+            {
+              "pr_number": 101,
+              "skill_slug": "kubernetes",
+              "disqualified": true,
+              "disqualification_reason": "not_the_claimed_skill",
+              "_note": "No Kubernetes in this change at all. Disqualify rather than return a near-zero share."
+            }
+          ]
+        }
+      },
+      "expect": {
+        "status": 200,
+        "body": { "processed": 1, "failed": 0 },
+        "db": {
+          "user_skills": {
+            "_note": "Go has 3 scored PRs, Kubernetes 2. Both secondary — neither is ranked.",
+            "where": { "user_id": "{{alice.id}}" },
+            "count": 2,
+            "all_match": { "standing": "secondary" }
+          },
+          "users": { "where": { "id": "{{alice.id}}" }, "all_match": { "overall_score": null, "generalist_score": null } }
+        }
+      }
+    },
+    {
+      "_step": "A second claim nominating Kubernetes, carrying it to five distinct PRs.",
+      "as": "alice",
+      "request": { "method": "POST", "path": "/claims", "body": {} },
+      "capture": { "claim_two": "$.id" },
+      "expect": { "status": 201, "body": { "id": "<uuid>", "status": "draft", "version": 1, "created_at": "<timestamp>" } }
+    },
+    {
+      "as": "alice",
+      "request": {
+        "method": "POST",
+        "path": "/claims/{{claim_two}}/evidence/prs",
+        "body": {
+          "prs": [
+            { "position": 1, "url": "https://github.com/acme/bigrepo/pull/102" },
+            { "position": 2, "url": "https://github.com/indie/smalllib/pull/12" },
+            { "position": 3, "url": "https://github.com/acme/bigrepo/pull/904" }
+          ]
+        }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "prs": [
+            { "position": 1, "repo_owner": "acme", "repo_name": "bigrepo", "pr_number": 102, "role": "author" },
+            { "position": 2, "repo_owner": "indie", "repo_name": "smalllib", "pr_number": 12, "role": "author" },
+            { "position": 3, "repo_owner": "acme", "repo_name": "bigrepo", "pr_number": 904, "role": "author" }
+          ]
+        }
+      }
+    },
+    {
+      "as": "alice",
+      "request": {
+        "method": "POST",
+        "path": "/claims/{{claim_two}}/skills",
+        "body": { "skills": [{ "slug": "kubernetes", "nominated_primary": true }] }
+      },
+      "expect": { "status": 200, "body": { "skills": [{ "slug": "kubernetes", "origin": "user_declared", "nominated_primary": true }] } }
+    },
+    {
+      "as": "alice",
+      "request": { "method": "POST", "path": "/claims/{{claim_two}}/submit", "body": {} },
+      "expect": {
+        "status": 202,
+        "body": { "id": "<uuid>", "status": "queued", "version": 1, "submitted_at": "<timestamp>", "estimated_result_within_hours": 24 }
+      }
+    },
+    {
+      "as": "system",
+      "request": { "method": "RUN_EVALUATOR", "path": "/" },
+      "fake": {
+        "ai": {
+          "judgements": [
+            {
+              "pr_number": 102,
+              "skill_slug": "kubernetes",
+              "disqualified": false,
+              "dimensions": {
+                "substance": { "score": 66, "remark": "Renewal bounds affect the operator's lease handling." },
+                "complexity": { "score": 71, "remark": "Clock skew across nodes." },
+                "conversation_quality": { "score": 55, "remark": "Some review." },
+                "craft": { "score": 68, "remark": "Test added." },
+                "skill_specificity": { "score": 74, "remark": "Squarely about cluster lease semantics." }
+              }
+            },
+            {
+              "pr_number": 12,
+              "skill_slug": "kubernetes",
+              "disqualified": false,
+              "dimensions": {
+                "substance": { "score": 52, "remark": "Small fix, real defect." },
+                "complexity": { "score": 61, "remark": "Off-by-one with a subtle wrap condition." },
+                "conversation_quality": { "score": 88, "remark": "Long, substantive thread the author drove." },
+                "craft": { "score": 70, "remark": "Regression test included." },
+                "skill_specificity": { "score": 40, "remark": "Used by the operator, not itself Kubernetes work." }
+              }
+            },
+            {
+              "pr_number": 904,
+              "skill_slug": "kubernetes",
+              "disqualified": false,
+              "dimensions": {
+                "substance": { "score": 30, "remark": "An index addition." },
+                "complexity": { "score": 25, "remark": "Straightforward." },
+                "conversation_quality": { "score": 0, "remark": "No discussion on this pull request." },
+                "craft": { "score": 45, "remark": "Correct, unremarkable." },
+                "skill_specificity": { "score": 20, "remark": "Barely touches cluster concerns." }
+              }
+            }
+          ]
+        }
+      },
+      "expect": {
+        "status": 200,
+        "body": { "processed": 1, "failed": 0 },
+        "db": {
+          "user_skill_pr_links": {
+            "_note": "Kubernetes now has five distinct scored PRs: 55, 56, 102, 12, 904.",
+            "where": { "user_id": "{{alice.id}}", "skill_slug": "kubernetes", "status": "scored" },
+            "count": 5
+          },
+          "user_skills": {
+            "_note": "Automatic promotion — no resubmission. The evidence already existed and had already been judged.",
+            "where": { "user_id": "{{alice.id}}", "skill_slug": "kubernetes" },
+            "count": 1,
+            "all_match": { "standing": "primary", "distinct_pr_count": 5 }
+          },
+          "users": {
+            "_note": "One primary skill now exists, so both user-level scores become non-null.",
+            "where": { "id": "{{alice.id}}" },
+            "none_match": { "overall_score": null }
+          }
+        }
+      }
+    },
+    {
+      "as": "alice",
+      "request": { "method": "GET", "path": "/me/skills" },
+      "expect": {
+        "status": 200,
+        "_note": "Kubernetes is ranked; Go is not, at three PRs. Score and standing are orthogonal — Go's score is not zero, it is simply unrankable.",
+        "body": {
+          "skills": [
+            { "slug": "kubernetes", "standing": "primary", "distinct_pr_count": 5, "score": 61.8, "promoted_at": "<timestamp>" },
+            { "slug": "go", "standing": "secondary", "distinct_pr_count": 3, "score": 39.4 }
+          ],
+          "overall_score": 61.8,
+          "generalist_score": 61.8
+        }
+      }
+    }
+  ]
+}

@@ -145,6 +145,32 @@ go test ./e2e/... -update           # regenerate expected.json — REVIEW THE DI
 without reading the diff defeats the entire method** — the suite will then assert that the
 code does whatever it currently does, which is not a test.
 
+## Index
+
+18 cases. Each names the decision it pins, so a change to that decision has an obvious
+place to fail.
+
+| Case                                               | Pins                                                                            |
+| -------------------------------------------------- | ------------------------------------------------------------------------------- |
+| **auth/**refresh_rotation_and_reuse_detection      | Replaying a spent token revokes the whole family — including the current holder |
+| **auth/**unverified_hirer_cannot_hire              | Registration ≠ hiring capability; verification is the real gate                 |
+| **auth/**share_link_is_the_only_public_surface     | Full gating, and the one thing a contributor may publish                        |
+| **claims/**submit_valid_five_prs                   | Happy path, and the outbox property                                             |
+| **claims/**submit_invalid_evidence                 | Every failure named, nothing enqueued                                           |
+| **claims/**submit_pair_conflict                    | `(user, PR, skill)` uniqueness; same PR for another skill is fine               |
+| **claims/**withdraw_warns_before_demoting          | Warn, then demote immediately; pairs released                                   |
+| **claims/**seven_day_lock                          | Per claim, not per account; unchanged evidence refused by fingerprint           |
+| **claims/**pr_review_claim_inverts_authorship      | Reviewer role, not author; projects refused                                     |
+| **evaluation/**disqualified_typo_scores_zero       | Typo scores 0 not 18; standing drops to four                                    |
+| **evaluation/**quality_floor_and_conversation_zero | Floor catches what the grounds miss; no discussion → 0                          |
+| **evaluation/**secondary_share_and_promotion       | Linear share, uncapped; automatic promotion at five                             |
+| **evaluation/**partial_enrichment_and_idempotency  | One unreachable PR doesn't fail the claim; redelivery is free                   |
+| **discovery/**search_gates_and_exclusions          | Lapsed availability, secondary skills, and self all excluded in SQL             |
+| **discovery/**contact_request_requires_consent     | Shortlisting discloses nothing; payment label shown                             |
+| **skills/**catalogue_and_requests                  | Aliases resolve but aren't claimable; dedupe before the queue                   |
+| **admin/**verification_and_overdue_flagging        | Alternative evidence path; flag at 80%, never block                             |
+| **admin/**reevaluation_cooldown_escalates          | 28→56→112→224→365; acceptance never counts against you                          |
+
 ## These fixtures must fail
 
 Stage 3 is written before stage 4 exists. **Every case here is expected to fail right now**,

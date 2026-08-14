@@ -1,0 +1,174 @@
+{
+  "name": "manual verification, alternative evidence, and overdue-shortlist flagging",
+  "description": "ADR-0002: verification is manual, targets 48 hours, and must be satisfiable by a small firm with no company domain or LinkedIn page — a three-person studio hiring a contractor is exactly the customer the alternative-evidence path exists for. A scheme only large companies can pass would exclude most freelance hiring.\n\nAlso ADR-0005: an organization with 80% or more of its open shortlists past their tentative date is flagged. Nothing is blocked — blocking would punish a hirer for a candidate's silence as readily as for their own neglect.",
+  "seed": ["principals", "catalogue"],
+  "steps": [
+    {
+      "as": "anonymous",
+      "request": {
+        "method": "POST",
+        "path": "/auth/hirer/register",
+        "body": {
+          "email": "jo@threepersonstudio.example",
+          "password": "correct-horse-battery-staple",
+          "display_name": "Jo Bergström",
+          "organization": { "name": "Three Person Studio" },
+          "proofs": [
+            {
+              "kind": "alternative",
+              "notes": "We are three people, no company domain and no LinkedIn page. Attaching our business registration and a client reference.",
+              "attachment_url": "https://files.example/registration.pdf"
+            },
+            { "kind": "payment_capability", "notes": "Two prior contractor engagements paid through Wise; references available." }
+          ]
+        }
+      },
+      "capture": { "jo": "$.id" },
+      "expect": {
+        "status": 201,
+        "body": { "id": "<uuid>", "kind": "hirer", "verified": false, "verification_request": { "id": "<uuid>", "status": "pending" } }
+      }
+    },
+    {
+      "as": "root",
+      "request": { "method": "GET", "path": "/admin/verifications?status=pending" },
+      "expect": {
+        "status": 200,
+        "body": {
+          "total": 2,
+          "requests": [
+            {
+              "id": "<uuid>",
+              "subject": { "kind": "hirer", "display_name": "Pat Ferreira" },
+              "created_at": "<timestamp>",
+              "age_hours": "<number>",
+              "proofs": []
+            },
+            {
+              "id": "<uuid>",
+              "subject": { "kind": "hirer", "display_name": "Jo Bergström" },
+              "created_at": "<timestamp>",
+              "age_hours": "<number>",
+              "proofs": [
+                { "kind": "alternative", "notes": "<string>", "attachment_url": "<string>" },
+                { "kind": "payment_capability", "notes": "<string>" }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "_step": "Approved on identity. Payment evidence was supplied but is judged insufficient to verify — so it is disclosed rather than blocking.",
+      "as": "root",
+      "request": {
+        "method": "POST",
+        "path": "/admin/verifications/{{verification_request_id}}/decide",
+        "body": {
+          "decision": "approved",
+          "payment_verified": false,
+          "reason": "Registration document and client reference check out. Payment history is self-reported only."
+        }
+      },
+      "expect": {
+        "status": 200,
+        "body": { "id": "<uuid>", "status": "approved", "reviewed_at": "<timestamp>", "reviewed_by": "<uuid>" },
+        "db": {
+          "hirer_accounts": {
+            "where": { "id": "{{jo}}" },
+            "count": 1,
+            "none_match": { "verified_at": null },
+            "all_match": { "payment_verified_at": null }
+          }
+        }
+      }
+    },
+    {
+      "as": "root",
+      "request": {
+        "method": "POST",
+        "path": "/admin/verifications/{{pending_pat.verification_id}}/decide",
+        "body": { "decision": "rejected", "reason": "No verifiable connection to the named organization." }
+      },
+      "expect": { "status": 200, "body": { "id": "<uuid>", "status": "rejected", "reviewed_at": "<timestamp>", "reviewed_by": "<uuid>" } }
+    },
+    {
+      "_step": "A rejection is explainable and therefore appealable — ADR-0002.",
+      "as": "pending_pat",
+      "request": { "method": "GET", "path": "/me/verification" },
+      "expect": {
+        "status": 200,
+        "body": {
+          "status": "rejected",
+          "reason": "No verifiable connection to the named organization.",
+          "reviewed_at": "<timestamp>",
+          "can_appeal": true
+        }
+      }
+    },
+    {
+      "_step": "Acme opens three shortlists, then time passes.",
+      "as": "hank",
+      "request": { "method": "POST", "path": "/shortlists", "body": { "name": "Round A", "tentative_result_date": "2026-08-20" } },
+      "expect": {
+        "status": 201,
+        "body": { "id": "<uuid>", "name": "Round A", "status": "open", "tentative_result_date": "2026-08-20", "created_at": "<timestamp>" }
+      }
+    },
+    {
+      "as": "hank",
+      "request": { "method": "POST", "path": "/shortlists", "body": { "name": "Round B", "tentative_result_date": "2026-08-22" } },
+      "expect": {
+        "status": 201,
+        "body": { "id": "<uuid>", "name": "Round B", "status": "open", "tentative_result_date": "2026-08-22", "created_at": "<timestamp>" }
+      }
+    },
+    {
+      "as": "hank",
+      "request": { "method": "POST", "path": "/shortlists", "body": { "name": "Round C", "tentative_result_date": "2026-12-01" } },
+      "expect": {
+        "status": 201,
+        "body": { "id": "<uuid>", "name": "Round C", "status": "open", "tentative_result_date": "2026-12-01", "created_at": "<timestamp>" }
+      }
+    },
+    {
+      "as": "system",
+      "request": { "method": "ADVANCE_CLOCK", "path": "/" },
+      "fake": { "clock": { "set": "2026-09-01T00:00:00Z" } },
+      "expect": { "status": 200, "body": { "now": "<timestamp>" } }
+    },
+    {
+      "_step": "Two of three overdue is 67% — below the threshold, so nothing fires.",
+      "as": "system",
+      "request": { "method": "RUN_OVERDUE_SWEEP", "path": "/" },
+      "expect": { "status": 200, "body": { "organizations_checked": 3, "flagged": 0 } }
+    },
+    {
+      "_step": "Closing the in-date round leaves 2 of 2 overdue — 100%, over the threshold.",
+      "as": "hank",
+      "request": { "method": "POST", "path": "/shortlists/{{shortlist_c_id}}/close", "body": {} },
+      "expect": { "status": 200, "body": { "id": "<uuid>", "status": "closed", "closed_at": "<timestamp>" } }
+    },
+    {
+      "as": "system",
+      "request": { "method": "RUN_OVERDUE_SWEEP", "path": "/" },
+      "expect": {
+        "status": 200,
+        "body": {
+          "organizations_checked": 3,
+          "flagged": 1,
+          "flagged_organizations": [{ "id": "<uuid>", "name": "Acme Corp", "open_shortlists": 2, "overdue": 2, "ratio": 1.0 }]
+        }
+      }
+    },
+    {
+      "_step": "Flagged, not blocked. Hank can still open another round.",
+      "as": "hank",
+      "request": { "method": "POST", "path": "/shortlists", "body": { "name": "Round D", "tentative_result_date": "2026-10-01" } },
+      "expect": {
+        "status": 201,
+        "body": { "id": "<uuid>", "name": "Round D", "status": "open", "tentative_result_date": "2026-10-01", "created_at": "<timestamp>" }
+      }
+    }
+  ]
+}

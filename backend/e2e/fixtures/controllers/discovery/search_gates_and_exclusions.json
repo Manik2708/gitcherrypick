@@ -1,0 +1,222 @@
+{
+  "name": "search excludes lapsed availability, secondary skills, and yourself",
+  "description": "Three ADR-0005 gates in one query, all applied as SQL rather than post-filters so a hidden contributor never affects a result count.\n\n1. Availability must be set AND unexpired — carol's lapsed 15-day window makes her invisible (ADR-0002).\n2. Only PRIMARY standing matches a skill filter — dave's Go scores 81 as a secondary and is still unsearchable, which is the sharpest statement that score and standing are orthogonal.\n3. AssertNotSelf — dave_hiring shares a GitHub identity with contributor dave and can never see him, while every other result is unaffected.",
+  "seed": ["principals", "catalogue", "repositories", "scored_population"],
+  "steps": [
+    {
+      "as": "hank",
+      "request": { "method": "GET", "path": "/search?skill=go" },
+      "expect": {
+        "status": 200,
+        "_note": "Alice and Bob. Carol has no Go and is lapsed anyway; dave's Go is secondary.",
+        "body": {
+          "total": 2,
+          "results": [
+            {
+              "id": "<uuid>",
+              "display_name": "Alice Okafor",
+              "github_login": "aliceok",
+              "availability": "looking_for_job",
+              "skills": [{ "slug": "go", "standing": "primary", "score": 64.2, "rank": 1 }],
+              "overall_score": 64.2,
+              "generalist_score": 64.2
+            },
+            {
+              "id": "<uuid>",
+              "display_name": "Bob Nakamura",
+              "github_login": "bobn",
+              "availability": "looking_for_freelance",
+              "skills": [{ "slug": "go", "standing": "primary", "score": 55.0, "rank": 2 }],
+              "overall_score": 60.4,
+              "generalist_score": 122.7
+            }
+          ]
+        }
+      }
+    },
+    {
+      "_step": "Dave's Go scores 81 — higher than either result above — and is absent because it is SECONDARY. Standing gates searchability; score does not.",
+      "as": "hank",
+      "request": { "method": "GET", "path": "/search?skill=go&min_skill_score=80" },
+      "expect": { "status": 200, "body": { "total": 0, "results": [] } }
+    },
+    {
+      "_step": "Self-exclusion. Dave (kubernetes 58) is removed for dave_hiring, and Bob is NOT — the exclusion is identity-scoped, not a general hide.",
+      "as": "dave_hiring",
+      "request": { "method": "GET", "path": "/search?skill=kubernetes" },
+      "expect": {
+        "status": 200,
+        "_note": "total is 1, not 2-with-a-gap. The exclusion is a join condition, so a self-match never reaches the count.",
+        "body": {
+          "total": 1,
+          "results": [
+            {
+              "id": "<uuid>",
+              "display_name": "Bob Nakamura",
+              "github_login": "bobn",
+              "availability": "looking_for_freelance",
+              "skills": [{ "slug": "kubernetes", "standing": "primary", "score": 52.0, "rank": 1 }],
+              "overall_score": 60.4,
+              "generalist_score": 122.7
+            }
+          ]
+        }
+      }
+    },
+    {
+      "_step": "Any other verified hirer sees Dave normally.",
+      "as": "hank",
+      "request": { "method": "GET", "path": "/search?skill=kubernetes" },
+      "expect": {
+        "status": 200,
+        "body": {
+          "total": 2,
+          "results": [
+            {
+              "id": "<uuid>",
+              "display_name": "Dave Whitfield",
+              "github_login": "dwhit",
+              "availability": "open_to_freelance",
+              "skills": [{ "slug": "kubernetes", "standing": "primary", "score": 58.0, "rank": 1 }],
+              "overall_score": 58.0,
+              "generalist_score": 58.0
+            },
+            {
+              "id": "<uuid>",
+              "display_name": "Bob Nakamura",
+              "github_login": "bobn",
+              "availability": "looking_for_freelance",
+              "skills": [{ "slug": "kubernetes", "standing": "primary", "score": 52.0, "rank": 2 }],
+              "overall_score": 60.4,
+              "generalist_score": 122.7
+            }
+          ]
+        }
+      }
+    },
+    {
+      "_step": "Multiple skills means AND. Only Bob holds both as primary.",
+      "as": "hank",
+      "request": { "method": "GET", "path": "/search?skill=go&skill=kubernetes" },
+      "expect": {
+        "status": 200,
+        "body": {
+          "total": 1,
+          "results": [
+            {
+              "id": "<uuid>",
+              "display_name": "Bob Nakamura",
+              "github_login": "bobn",
+              "availability": "looking_for_freelance",
+              "skills": [
+                { "slug": "go", "standing": "primary", "score": 55.0 },
+                { "slug": "kubernetes", "standing": "primary", "score": 52.0 }
+              ],
+              "overall_score": 60.4,
+              "generalist_score": 122.7
+            }
+          ]
+        }
+      }
+    },
+    {
+      "_step": "The generalist filter finds people the depth board buries — ADR-0007 §5. Bob ranks THIRD on overall and FIRST on generalist.",
+      "as": "hank",
+      "request": { "method": "GET", "path": "/search?min_generalist_score=100" },
+      "expect": {
+        "status": 200,
+        "body": {
+          "total": 1,
+          "results": [
+            {
+              "id": "<uuid>",
+              "display_name": "Bob Nakamura",
+              "github_login": "bobn",
+              "availability": "looking_for_freelance",
+              "skills": [
+                { "slug": "go", "standing": "primary", "score": 55.0 },
+                { "slug": "kubernetes", "standing": "primary", "score": 52.0 },
+                { "slug": "postgres", "standing": "primary", "score": 48.0 }
+              ],
+              "_note": "Overall 60.4 is below Alice's 64.2. Generalist 122.7 is nearly double hers. Both true, and they rank him differently — which is why there are two numbers.",
+              "overall_score": 60.4,
+              "generalist_score": 122.7
+            }
+          ]
+        }
+      }
+    },
+    {
+      "_step": "Carol has a valid status but an expired window. Invisible until she refreshes.",
+      "as": "hank",
+      "request": { "method": "GET", "path": "/search?q=Carol" },
+      "expect": { "status": 200, "body": { "total": 0, "results": [] } }
+    },
+    {
+      "as": "carol",
+      "request": { "method": "PUT", "path": "/me/availability", "body": { "status": "looking_for_job" } },
+      "expect": {
+        "status": 200,
+        "_note": "Refreshing resets the window to now + 15 days. A visible profile is an actively maintained one.",
+        "body": { "status": "looking_for_job", "expires_at": "<timestamp>" }
+      }
+    },
+    {
+      "as": "hank",
+      "request": { "method": "GET", "path": "/search?q=Carol" },
+      "expect": {
+        "status": 200,
+        "body": {
+          "total": 1,
+          "results": [
+            {
+              "id": "<uuid>",
+              "display_name": "Carol Diaz",
+              "github_login": "cdiaz",
+              "availability": "looking_for_job",
+              "skills": [{ "slug": "postgres", "standing": "primary", "score": 71.5, "rank": 1 }],
+              "overall_score": 71.5,
+              "generalist_score": 71.5
+            }
+          ]
+        }
+      }
+    },
+    {
+      "_step": "Carol now tops the overall board. Ranking is by score, and every skill has its own board alongside overall and generalist.",
+      "as": "hank",
+      "request": { "method": "GET", "path": "/leaderboard?kind=overall" },
+      "expect": {
+        "status": 200,
+        "body": {
+          "kind": "overall",
+          "rubric_version": "v1",
+          "entries": [
+            { "rank": 1, "display_name": "Carol Diaz", "score": 71.5 },
+            { "rank": 2, "display_name": "Alice Okafor", "score": 64.2 },
+            { "rank": 3, "display_name": "Bob Nakamura", "score": 60.4 },
+            { "rank": 4, "display_name": "Dave Whitfield", "score": 58.0 }
+          ]
+        }
+      }
+    },
+    {
+      "as": "hank",
+      "request": { "method": "GET", "path": "/leaderboard?kind=generalist" },
+      "expect": {
+        "status": 200,
+        "_note": "The orders differ. Bob goes from third to first; Carol from first to third.",
+        "body": {
+          "kind": "generalist",
+          "rubric_version": "v1",
+          "entries": [
+            { "rank": 1, "display_name": "Bob Nakamura", "score": 122.7 },
+            { "rank": 2, "display_name": "Carol Diaz", "score": 71.5 },
+            { "rank": 3, "display_name": "Alice Okafor", "score": 64.2 },
+            { "rank": 4, "display_name": "Dave Whitfield", "score": 58.0 }
+          ]
+        }
+      }
+    }
+  ]
+}

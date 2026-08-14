@@ -1,0 +1,84 @@
+{
+  "name": "a pr-review claim requires the reviewer role, not authorship",
+  "description": "ADR-0003: pr-review is claimed like any skill, but validation inverts. The claimant must have REVIEWED the PR and must NOT have authored it — reviewing your own pull request is not review work. Project evidence is also refused, since pr-review is judged_only and projects would contribute nothing.",
+  "seed": ["principals", "catalogue", "repositories"],
+  "steps": [
+    {
+      "as": "alice",
+      "request": { "method": "POST", "path": "/claims", "body": {} },
+      "expect": { "status": 201, "body": { "id": "<uuid>", "status": "draft", "version": 1, "created_at": "<timestamp>" } }
+    },
+    {
+      "as": "alice",
+      "request": {
+        "method": "POST",
+        "path": "/claims/{{claim_id}}/skills",
+        "body": { "skills": [{ "slug": "pr-review", "nominated_primary": true }] }
+      },
+      "expect": {
+        "status": 200,
+        "body": { "skills": [{ "slug": "pr-review", "origin": "user_declared", "nominated_primary": true, "scoring_mode": "judged_only" }] }
+      }
+    },
+    {
+      "_step": "Projects contribute nothing to a judged_only skill and are refused outright.",
+      "as": "alice",
+      "request": {
+        "method": "POST",
+        "path": "/claims/{{claim_id}}/evidence/projects",
+        "body": { "projects": [{ "url": "https://github.com/acme/bigrepo", "contribution_summary": "Maintainer." }] }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "projects_not_accepted",
+          "message": "A pr-review claim is scored on judgement alone. Project evidence would not contribute."
+        }
+      }
+    },
+    {
+      "_step": "PR 903 was authored by bob and reviewed by alice — valid. PR 101 was authored by alice — invalid as review evidence.",
+      "as": "alice",
+      "request": {
+        "method": "POST",
+        "path": "/claims/{{claim_id}}/evidence/prs",
+        "body": {
+          "prs": [
+            { "position": 1, "url": "https://github.com/acme/bigrepo/pull/903", "role": "reviewer" },
+            { "position": 2, "url": "https://github.com/acme/bigrepo/pull/101", "role": "reviewer" },
+            { "position": 3, "url": "https://github.com/acme/bigrepo/pull/102", "role": "reviewer" }
+          ]
+        }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "prs": [
+            { "position": 1, "repo_owner": "acme", "repo_name": "bigrepo", "pr_number": 903, "role": "reviewer" },
+            { "position": 2, "repo_owner": "acme", "repo_name": "bigrepo", "pr_number": 101, "role": "reviewer" },
+            { "position": 3, "repo_owner": "acme", "repo_name": "bigrepo", "pr_number": 102, "role": "reviewer" }
+          ]
+        }
+      }
+    },
+    {
+      "as": "alice",
+      "request": { "method": "POST", "path": "/claims/{{claim_id}}/submit", "body": {} },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "invalid_evidence",
+          "claim_status": "invalid",
+          "items": [
+            {
+              "position": 2,
+              "reason": "authored_by_claimant",
+              "message": "PR 2 (acme/bigrepo#101) was authored by you. Reviewing your own pull request is not review work."
+            },
+            { "position": 3, "reason": "not_reviewed_by_claimant", "message": "PR 3 (acme/bigrepo#102) has no review from you." }
+          ]
+        }
+      }
+    }
+  ]
+}
