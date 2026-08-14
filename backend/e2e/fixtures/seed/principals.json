@@ -1,0 +1,118 @@
+{
+  "description": "Named principals available to any case via steps[].as. IDs are fixed UUIDv7 values so a fixture can reference them directly and so failures are readable.",
+  "contributors": [
+    {
+      "key": "alice",
+      "id": "01920000-0000-7000-8000-00000000a001",
+      "display_name": "Alice Okafor",
+      "email": "alice@example.com",
+      "github_user_id": 100001,
+      "github_login": "aliceok",
+      "availability": { "status": "looking_for_job", "expires_in_days": 15 }
+    },
+    {
+      "key": "bob",
+      "id": "01920000-0000-7000-8000-00000000a002",
+      "display_name": "Bob Nakamura",
+      "email": "bob@example.com",
+      "github_user_id": 100002,
+      "github_login": "bobn",
+      "availability": { "status": "not_looking" }
+    },
+    {
+      "key": "carol",
+      "id": "01920000-0000-7000-8000-00000000a003",
+      "display_name": "Carol Diaz",
+      "email": "carol@example.com",
+      "github_user_id": 100003,
+      "github_login": "cdiaz",
+      "_note": "Availability set but EXPIRED. Must be invisible to hirer search — ADR-0002.",
+      "availability": { "status": "looking_for_job", "expires_in_days": -1 }
+    },
+    {
+      "key": "dave",
+      "id": "01920000-0000-7000-8000-00000000a004",
+      "display_name": "Dave Whitfield",
+      "email": "dave@example.com",
+      "github_user_id": 100004,
+      "github_login": "dwhit",
+      "_note": "Shares github_user_id with hirer 'dave_hiring'. Self-hire exclusion target — ADR-0002.",
+      "availability": { "status": "open_to_freelance", "expires_in_days": 15 }
+    }
+  ],
+  "organizations": [
+    {
+      "key": "acme",
+      "id": "01920000-0000-7000-8000-00000000b001",
+      "name": "Acme Corp",
+      "slug": "acme",
+      "linkedin_url": "https://linkedin.com/company/acme",
+      "verified": true,
+      "payment_verified": true
+    },
+    {
+      "key": "startup",
+      "id": "01920000-0000-7000-8000-00000000b002",
+      "name": "Tiny Studio",
+      "slug": "tiny-studio",
+      "linkedin_url": null,
+      "verified": true,
+      "_note": "Verified on identity but NOT on payment. Contact requests must carry the disclosure label — ADR-0002.",
+      "payment_verified": false
+    },
+    {
+      "key": "unverified_org",
+      "id": "01920000-0000-7000-8000-00000000b003",
+      "name": "Unknown Ltd",
+      "slug": "unknown-ltd",
+      "verified": false,
+      "payment_verified": false
+    }
+  ],
+  "hirers": [
+    {
+      "key": "hank",
+      "id": "01920000-0000-7000-8000-00000000c001",
+      "display_name": "Hank Rivera",
+      "email": "hank@acme.com",
+      "auth_provider": "google",
+      "organization": "acme",
+      "verified": true,
+      "org_role": "owner"
+    },
+    {
+      "key": "pending_pat",
+      "id": "01920000-0000-7000-8000-00000000c002",
+      "display_name": "Pat Ferreira",
+      "email": "pat@unknown.example",
+      "auth_provider": "email",
+      "organization": "unverified_org",
+      "_note": "Registered but NOT verified. May sign in; must not search, view a scorecard, or shortlist — ADR-0002.",
+      "verified": false
+    },
+    {
+      "key": "sam_studio",
+      "id": "01920000-0000-7000-8000-00000000c003",
+      "display_name": "Sam Ortega",
+      "email": "sam@tinystudio.example",
+      "auth_provider": "email",
+      "organization": "startup",
+      "verified": true,
+      "org_role": "owner"
+    },
+    {
+      "key": "dave_hiring",
+      "id": "01920000-0000-7000-8000-00000000c004",
+      "display_name": "Dave Whitfield",
+      "email": "dave.hiring@example.com",
+      "auth_provider": "github",
+      "github_user_id": 100004,
+      "organization": "acme",
+      "verified": true,
+      "_note": "Same github_user_id as contributor 'dave'. AssertNotSelf must exclude dave from every result this hirer sees."
+    }
+  ],
+  "admins": [
+    { "key": "root", "id": "01920000-0000-7000-8000-00000000d001", "display_name": "Root Admin", "email": "admin@gitcherrypick.test" }
+  ]
+}

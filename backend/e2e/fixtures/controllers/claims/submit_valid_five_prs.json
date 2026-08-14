@@ -1,0 +1,98 @@
+{
+  "name": "submit a complete claim with five merged PRs",
+  "description": "The happy path through ADR-0003: draft, evidence, skills, submit. Submission writes user_skill_pr_links as 'pending' and enqueues the job in the SAME transaction — the outbox property from ADR-0004.",
+  "seed": ["principals", "catalogue", "repositories"],
+  "steps": [
+    {
+      "as": "alice",
+      "request": { "method": "POST", "path": "/claims", "body": {} },
+      "expect": { "status": 201, "body": { "id": "<uuid>", "status": "draft", "version": 1, "created_at": "<timestamp>" } }
+    },
+    {
+      "as": "alice",
+      "request": {
+        "method": "POST",
+        "path": "/claims/{{claim_id}}/evidence/prs",
+        "body": {
+          "prs": [
+            { "position": 1, "url": "https://github.com/acme/bigrepo/pull/101" },
+            { "position": 2, "url": "https://github.com/acme/bigrepo/pull/102" },
+            { "position": 3, "url": "https://github.com/acme/platform/pull/55" },
+            { "position": 4, "url": "https://github.com/acme/platform/pull/56" },
+            { "position": 5, "url": "https://github.com/indie/smalllib/pull/12" }
+          ]
+        }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "prs": [
+            { "position": 1, "repo_owner": "acme", "repo_name": "bigrepo", "pr_number": 101, "role": "author" },
+            { "position": 2, "repo_owner": "acme", "repo_name": "bigrepo", "pr_number": 102, "role": "author" },
+            { "position": 3, "repo_owner": "acme", "repo_name": "platform", "pr_number": 55, "role": "author" },
+            { "position": 4, "repo_owner": "acme", "repo_name": "platform", "pr_number": 56, "role": "author" },
+            { "position": 5, "repo_owner": "indie", "repo_name": "smalllib", "pr_number": 12, "role": "author" }
+          ]
+        }
+      }
+    },
+    {
+      "as": "alice",
+      "request": {
+        "method": "POST",
+        "path": "/claims/{{claim_id}}/evidence/projects",
+        "body": {
+          "projects": [
+            {
+              "url": "https://github.com/acme/bigrepo",
+              "contribution_summary": "Core maintainer of the broker package.",
+              "maintainer": { "sources": ["merges_others_prs", "codeowners"] }
+            }
+          ]
+        }
+      },
+      "expect": {
+        "status": 200,
+        "_note": "maintainer_validated stays null until the model checks the declaration — ADR-0003.",
+        "body": {
+          "projects": [{ "repo_owner": "acme", "repo_name": "bigrepo", "maintainer_declared": true, "maintainer_validated": null }]
+        }
+      }
+    },
+    {
+      "as": "alice",
+      "request": {
+        "method": "POST",
+        "path": "/claims/{{claim_id}}/skills",
+        "body": { "skills": [{ "slug": "go", "nominated_primary": true }, { "slug": "kubernetes" }] }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "skills": [
+            { "slug": "go", "origin": "user_declared", "nominated_primary": true },
+            { "slug": "kubernetes", "origin": "user_declared", "nominated_primary": false }
+          ]
+        }
+      }
+    },
+    {
+      "as": "alice",
+      "request": { "method": "POST", "path": "/claims/{{claim_id}}/submit", "body": {} },
+      "expect": {
+        "status": 202,
+        "body": { "id": "<uuid>", "status": "queued", "version": 1, "submitted_at": "<timestamp>", "estimated_result_within_hours": 24 },
+        "db": {
+          "_note": "Links written 'pending' in the SAME transaction as the status change. That is what enforces (user, PR, skill) uniqueness before a model call is spent, and what makes the enqueue an outbox write. 5 PRs x 2 skills = 10.",
+          "user_skill_pr_links": { "where": { "user_id": "{{alice.id}}" }, "count": 10, "all_match": { "status": "pending" } },
+          "evaluation_jobs": { "where": { "topic": "claims.live" }, "count": 1 },
+          "user_skills": {
+            "_note": "Nothing yet — standing derives from SCORED links and nothing has been scored.",
+            "where": { "user_id": "{{alice.id}}" },
+            "count": 0
+          }
+        }
+      }
+    }
+  ]
+}

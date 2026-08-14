@@ -1,0 +1,18 @@
+# The project brief, as written by its author. Not ours to reformat.
+# Prettier renumbers its ordered lists (it "corrected" a deliberate 1,2,4,5,6)
+# and escapes asterisks in paths, both of which rewrite the source spec.
+.claude/Agent.md
+
+# Go owns its own formatting — gofmt runs via a PostToolUse hook.
+*.go
+go.sum
+
+# PostgreSQL DDL. Prettier has no SQL parser and would leave it untouched anyway;
+# listing it makes that explicit rather than accidental.
+*.schema
+*.sql
+
+node_modules/
+frontend/dist/
+backend/bin/
+.git/

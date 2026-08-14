@@ -1,0 +1,12 @@
+{
+  "name": "gitcherrypick-tooling",
+  "private": true,
+  "description": "Repo-root tooling only. The frontend has its own package.json under frontend/.",
+  "devDependencies": {
+    "prettier": "3.6.2"
+  },
+  "scripts": {
+    "fmt": "prettier --write .",
+    "fmt:check": "prettier --check ."
+  }
+}

@@ -1,0 +1,171 @@
+{
+  "description": "Canned GitHub facts. The fake GitHub client serves these; nothing is fetched. A case may override any of it via steps[].fake.github.",
+  "_note": "Three repositories chosen to exercise the four project-reach weight cases in ADR-0007 §7 — a published library with everything, an application with neither dependents nor downloads, and a small library with no dependents.",
+  "repositories": {
+    "acme/bigrepo": {
+      "_case": "Case 1 — all five metrics present. A published library.",
+      "public": true,
+      "stars": 40000,
+      "forks": 6200,
+      "contributors": 890,
+      "dependents": 74000,
+      "downloads": 5400000,
+      "primary_language": "Go",
+      "archived": false
+    },
+    "acme/platform": {
+      "_case": "Case 4 — application. No dependents, no downloads. contributors weighted up to 0.35.",
+      "public": true,
+      "stars": 3100,
+      "forks": 210,
+      "contributors": 64,
+      "dependents": null,
+      "downloads": null,
+      "primary_language": "Go",
+      "archived": false
+    },
+    "indie/smalllib": {
+      "_case": "Case 3 — published, nothing depends on it yet. Deliberately small: proves the log/percentile blend does not collapse it to zero against a 190k-star maximum.",
+      "public": true,
+      "stars": 800,
+      "forks": 41,
+      "contributors": 7,
+      "dependents": null,
+      "downloads": 21000,
+      "primary_language": "Go",
+      "archived": false
+    },
+    "private/hidden": { "_case": "Not public. Evidence referencing it must fail validation with not_public.", "public": false }
+  },
+  "pull_requests": {
+    "acme/bigrepo#101": {
+      "_note": "Alice's strongest evidence. Substantial, complex, well-reviewed.",
+      "merged": true,
+      "merged_at": "2026-03-11T09:14:00Z",
+      "author_github_user_id": 100001,
+      "title": "Make the retry path idempotent across broker redelivery",
+      "additions": 412,
+      "deletions": 96,
+      "changed_files": 11,
+      "review_comments": 34,
+      "reviews": 6,
+      "participants": 5
+    },
+    "acme/bigrepo#102": {
+      "merged": true,
+      "merged_at": "2026-03-20T15:02:00Z",
+      "author_github_user_id": 100001,
+      "title": "Bound the lease renewal loop under clock skew",
+      "additions": 88,
+      "deletions": 21,
+      "changed_files": 3,
+      "review_comments": 12,
+      "reviews": 3,
+      "participants": 3
+    },
+    "acme/platform#55": {
+      "merged": true,
+      "merged_at": "2026-04-02T11:30:00Z",
+      "author_github_user_id": 100001,
+      "title": "Add a Kubernetes operator for tenant provisioning",
+      "additions": 640,
+      "deletions": 12,
+      "changed_files": 18,
+      "review_comments": 21,
+      "reviews": 4,
+      "participants": 4
+    },
+    "acme/platform#56": {
+      "merged": true,
+      "merged_at": "2026-04-09T08:45:00Z",
+      "author_github_user_id": 100001,
+      "title": "Reconcile stale tenant leases on operator restart",
+      "additions": 205,
+      "deletions": 44,
+      "changed_files": 6,
+      "review_comments": 9,
+      "reviews": 2,
+      "participants": 3
+    },
+    "indie/smalllib#12": {
+      "_note": "Small repo, real fix, long discussion. Tests that reach does not dominate quality.",
+      "merged": true,
+      "merged_at": "2026-02-14T17:20:00Z",
+      "author_github_user_id": 100001,
+      "title": "Fix off-by-one in the ring buffer wrap",
+      "additions": 14,
+      "deletions": 6,
+      "changed_files": 2,
+      "review_comments": 27,
+      "reviews": 5,
+      "participants": 4
+    },
+    "acme/bigrepo#900": {
+      "_note": "README typo. Must be disqualified typo_or_wording, NOT floated to ~18 by the repo's reach — ADR-0007 §1.",
+      "merged": true,
+      "merged_at": "2026-05-01T10:00:00Z",
+      "author_github_user_id": 100001,
+      "title": "Fix typo in README",
+      "additions": 1,
+      "deletions": 1,
+      "changed_files": 1,
+      "review_comments": 0,
+      "reviews": 1,
+      "participants": 1
+    },
+    "acme/bigrepo#901": {
+      "_note": "Merged but authored by someone else. Validation must reject with not_authored_by_claimant.",
+      "merged": true,
+      "merged_at": "2026-05-04T10:00:00Z",
+      "author_github_user_id": 999999,
+      "title": "Someone else's change",
+      "additions": 50,
+      "deletions": 10,
+      "changed_files": 2,
+      "review_comments": 3,
+      "reviews": 1,
+      "participants": 2
+    },
+    "acme/bigrepo#902": {
+      "_note": "Open, never merged. Validation must reject with not_merged.",
+      "merged": false,
+      "merged_at": null,
+      "author_github_user_id": 100001,
+      "title": "Work in progress",
+      "additions": 30,
+      "deletions": 2,
+      "changed_files": 1,
+      "review_comments": 1,
+      "reviews": 0,
+      "participants": 1
+    },
+    "acme/bigrepo#903": {
+      "_note": "Merged, authored by bob, REVIEWED by alice. Valid pr-review evidence for alice; invalid as authored evidence.",
+      "merged": true,
+      "merged_at": "2026-05-06T12:00:00Z",
+      "author_github_user_id": 100002,
+      "reviewed_by_github_user_ids": [100001],
+      "title": "Rework the scheduler backoff",
+      "additions": 180,
+      "deletions": 60,
+      "changed_files": 5,
+      "review_comments": 19,
+      "reviews": 3,
+      "participants": 3
+    },
+    "acme/bigrepo#904": {
+      "_note": "Merged with no review conversation at all. conversation_quality must score 0 — ADR-0007 §7.",
+      "merged": true,
+      "merged_at": "2026-05-08T12:00:00Z",
+      "author_github_user_id": 100001,
+      "title": "Add index on claims(user_id)",
+      "additions": 4,
+      "deletions": 0,
+      "changed_files": 1,
+      "review_comments": 0,
+      "reviews": 0,
+      "participants": 1
+    },
+    "acme/bigrepo#905": { "_note": "Enrichment fails for this one. Drives the partial-enrichment path — ADR-0004.", "error": "not_found" }
+  }
+}

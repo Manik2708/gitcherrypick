@@ -1,0 +1,134 @@
+{
+  "name": "the same PR cannot evidence the same skill twice",
+  "description": "The (user, PR, skill) uniqueness rule — ADR-0003. Enforced by the primary key of user_skill_pr_links, so it is a database invariant rather than a check-then-act race. The rejection must NAME the claim already holding the pair, or the contributor cannot find what to remove.\n\nThe final steps prove the other half: the same PR for a DIFFERENT skill is permitted, which is how secondary skills accumulate toward promotion.",
+  "seed": ["principals", "catalogue", "repositories"],
+  "steps": [
+    {
+      "as": "alice",
+      "request": { "method": "POST", "path": "/claims", "body": {} },
+      "capture": { "first_claim": "$.id" },
+      "expect": { "status": 201, "body": { "id": "<uuid>", "status": "draft", "version": 1, "created_at": "<timestamp>" } }
+    },
+    {
+      "as": "alice",
+      "request": {
+        "method": "POST",
+        "path": "/claims/{{first_claim}}/evidence/prs",
+        "body": {
+          "prs": [
+            { "position": 1, "url": "https://github.com/acme/bigrepo/pull/101" },
+            { "position": 2, "url": "https://github.com/acme/bigrepo/pull/102" },
+            { "position": 3, "url": "https://github.com/acme/platform/pull/55" },
+            { "position": 4, "url": "https://github.com/acme/platform/pull/56" },
+            { "position": 5, "url": "https://github.com/indie/smalllib/pull/12" }
+          ]
+        }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "prs": [
+            { "position": 1, "repo_owner": "acme", "repo_name": "bigrepo", "pr_number": 101, "role": "author" },
+            { "position": 2, "repo_owner": "acme", "repo_name": "bigrepo", "pr_number": 102, "role": "author" },
+            { "position": 3, "repo_owner": "acme", "repo_name": "platform", "pr_number": 55, "role": "author" },
+            { "position": 4, "repo_owner": "acme", "repo_name": "platform", "pr_number": 56, "role": "author" },
+            { "position": 5, "repo_owner": "indie", "repo_name": "smalllib", "pr_number": 12, "role": "author" }
+          ]
+        }
+      }
+    },
+    {
+      "as": "alice",
+      "request": {
+        "method": "POST",
+        "path": "/claims/{{first_claim}}/skills",
+        "body": { "skills": [{ "slug": "go", "nominated_primary": true }] }
+      },
+      "expect": { "status": 200, "body": { "skills": [{ "slug": "go", "origin": "user_declared", "nominated_primary": true }] } }
+    },
+    {
+      "as": "alice",
+      "request": { "method": "POST", "path": "/claims/{{first_claim}}/submit", "body": {} },
+      "expect": {
+        "status": 202,
+        "body": { "id": "<uuid>", "status": "queued", "version": 1, "submitted_at": "<timestamp>", "estimated_result_within_hours": 24 }
+      }
+    },
+    {
+      "_step": "A second claim reusing PR 101 for the SAME skill — must be refused.",
+      "as": "alice",
+      "request": { "method": "POST", "path": "/claims", "body": {} },
+      "capture": { "second_claim": "$.id" },
+      "expect": { "status": 201, "body": { "id": "<uuid>", "status": "draft", "version": 1, "created_at": "<timestamp>" } }
+    },
+    {
+      "as": "alice",
+      "request": {
+        "method": "POST",
+        "path": "/claims/{{second_claim}}/evidence/prs",
+        "body": { "prs": [{ "position": 1, "url": "https://github.com/acme/bigrepo/pull/101" }] }
+      },
+      "expect": {
+        "status": 200,
+        "body": { "prs": [{ "position": 1, "repo_owner": "acme", "repo_name": "bigrepo", "pr_number": 101, "role": "author" }] }
+      }
+    },
+    {
+      "as": "alice",
+      "request": {
+        "method": "POST",
+        "path": "/claims/{{second_claim}}/skills",
+        "body": { "skills": [{ "slug": "go", "nominated_primary": true }] }
+      },
+      "expect": { "status": 200, "body": { "skills": [{ "slug": "go", "origin": "user_declared", "nominated_primary": true }] } }
+    },
+    {
+      "as": "alice",
+      "request": { "method": "POST", "path": "/claims/{{second_claim}}/submit", "body": {} },
+      "expect": {
+        "status": 409,
+        "body": {
+          "error": "evidence_pair_conflict",
+          "items": [
+            {
+              "position": 1,
+              "reason": "duplicate_pair",
+              "skill": "go",
+              "conflicting_claim_id": "<uuid>",
+              "message": "PR 1 (acme/bigrepo#101) already evidences Go in another claim."
+            }
+          ]
+        },
+        "db": {
+          "_note": "The uniqueness violation aborted the whole submit — no partial links written.",
+          "user_skill_pr_links": { "where": { "claim_id": "{{second_claim}}" }, "count": 0 }
+        }
+      }
+    },
+    {
+      "_step": "Same PR, DIFFERENT skill — permitted. This is the accumulation path, not a loophole.",
+      "as": "alice",
+      "request": {
+        "method": "POST",
+        "path": "/claims/{{second_claim}}/skills",
+        "body": { "skills": [{ "slug": "postgres", "nominated_primary": true }] }
+      },
+      "expect": { "status": 200, "body": { "skills": [{ "slug": "postgres", "origin": "user_declared", "nominated_primary": true }] } }
+    },
+    {
+      "as": "alice",
+      "request": { "method": "POST", "path": "/claims/{{second_claim}}/submit", "body": {} },
+      "expect": {
+        "status": 202,
+        "body": { "id": "<uuid>", "status": "queued", "version": 1, "submitted_at": "<timestamp>", "estimated_result_within_hours": 24 },
+        "db": {
+          "user_skill_pr_links": {
+            "_note": "One row for go, one for postgres. Same PR, two skills, no conflict.",
+            "where": { "user_id": "{{alice.id}}", "repo_owner": "acme", "repo_name": "bigrepo", "pr_number": 101 },
+            "count": 2
+          }
+        }
+      }
+    }
+  ]
+}
