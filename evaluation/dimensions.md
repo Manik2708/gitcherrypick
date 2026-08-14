@@ -9,6 +9,26 @@ review conversation, and the cached repository facts. Diff statistics are **cont
 score** (ADR-0005) — the model may read that a change touched 4,000 lines and must not
 conclude anything from the number alone.
 
+## Every dimension carries a remark
+
+The model returns **a score and a short remark for each dimension**, not one rationale for
+the PR as a whole:
+
+```json
+"substance": { "score": 78, "remark": "Reworked the retry path to be idempotent; the
+                                       hard part was identifying which operations were
+                                       not safe to repeat." }
+```
+
+A single overall rationale cannot explain a breakdown. A contributor looking at
+`complexity 85, craft 40` needs to know what the 40 was about, and a hirer reading the
+scorecard is buying exactly that specificity. It is also the only way a re-evaluation
+request (see [calibration.md](calibration.md)) can be about something concrete rather than
+"my score feels low".
+
+Remarks are for the contributor and the hirer to read. They are **never** an input to
+arithmetic.
+
 ---
 
 ## 1 · `substance` — how much real engineering this represents
@@ -70,11 +90,19 @@ identifying problems in their own change.
 | 15–39 | Minimal engagement — feedback applied without discussion, or a thread consisting of nits. |
 | 1–14 | No discussion of substance. |
 
-**A PR with no comments is not automatically low.** A self-evident change merged directly by
-a maintainer who trusted it is a different thing from a change nobody looked at. Weigh who
-merged it and whether the change needed discussion. Where the thread is empty and the change
-was non-trivial, score the *absence of needed review* as a property of the project, not a
-failing of the author — around 40, not 5.
+**A PR with no discussion scores 0 on this dimension.** No exceptions, no benefit of the
+doubt for a change that was self-evident or merged by a trusting maintainer. If there was no
+conversation, no conversational skill was demonstrated, and we are not going to infer one.
+
+This is stated plainly to contributors before they submit, because it turns the five-PR
+choice into a real decision. A technically brilliant PR merged in silence contributes
+nothing here; a moderate change with a substantive design thread contributes a lot. **The
+contributor decides which of their five carries which strength** — one for technical depth,
+another for how they argue. That trade-off is theirs to make, and making it well is itself
+a signal.
+
+A zero here does not disqualify the PR. It is one dimension of five, weighted 0.20, and a
+strong change with no discussion still scores respectably overall.
 
 **Must ignore:** comment count, thread length, number of participants, and how polite the
 exchange was. A terse, correct disagreement beats a warm, empty one. Those counts feed the
@@ -82,25 +110,36 @@ exchange was. A terse, correct disagreement beats a warm, empty one. Those count
 
 ---
 
-## 4 · `craft` — the qualities that survive the merge
+## 4 · `craft` — readability and the qualities that survive the merge
 
-Tests, documentation, error handling, backwards compatibility, and whether the change leaves
-the codebase easier or harder to work in.
+Two things, weighed together: **will this be understandable to the next reader**, and **will
+it hold up**.
+
+*Readability:* naming that says what a thing is, functions at one level of abstraction,
+control flow that can be followed without a diagram, design patterns chosen because they fit
+rather than because they are known. Comments that explain constraints rather than restate
+the line below.
+
+*Durability:* tests that would catch a regression, documentation updated where behaviour
+changed, errors handled at the right boundary, backwards compatibility respected.
 
 | Score | Archetype |
 |---|---|
-| 90–100 | Tests that would actually catch a regression, documentation updated where behaviour changed, errors handled at the right boundary, and the change fits the codebase as though it had always been there. |
-| 70–89 | Well-tested and clear. Minor gaps a reviewer would mention but not block on. |
-| 40–69 | Adequate. Works, is readable, testing is thin or partial. |
-| 15–39 | Functional but careless: no tests where tests were warranted, or a change that adds friction for the next reader. |
-| 1–14 | Actively degrades the codebase — copy-paste, dead code left behind, error handling that swallows failures. |
+| 90–100 | Reads as though the codebase always contained it. Names carry meaning, the structure is the obvious one in hindsight, tests would catch a real regression, docs updated where behaviour moved. |
+| 70–89 | Clear and well-tested. A reviewer might name a better abstraction but would not block. |
+| 40–69 | Adequate. Works and can be followed, but naming is vague in places or the testing is thin. |
+| 15–39 | Careless: names that mislead, a function doing three things, no tests where they were warranted, friction added for the next reader. |
+| 1–14 | Actively degrades the codebase — copy-paste, dead code left behind, error handling that swallows failures, a pattern imposed that fights the surrounding code. |
 
 **Judge against the project's own conventions**, not an abstract ideal. A project with no
-test suite cannot be faulted for a PR without tests; a project with a strict one can.
-Comment density, naming style, and formatting are project decisions and are **not** craft.
+test suite cannot be faulted for a PR without tests; a project with a strict one can. The
+same applies to structure: matching the surrounding code is craft, and imposing a
+personally-preferred architecture on a codebase that does not use it is not.
 
-**Must ignore:** whether tests exist in the repository at all, code style preferences, and
-line-length or formatting conventions.
+**Must ignore:** whether tests exist in the repository at all, and **pure formatting** —
+line length, indentation, brace placement, import ordering. Those are settled by the
+project's linter and say nothing about the author. Readability is about whether a human can
+follow the code, not whether a formatter approves of it.
 
 ---
 

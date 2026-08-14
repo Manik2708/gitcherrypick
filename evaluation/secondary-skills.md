@@ -63,3 +63,23 @@ and the whole point of the zero rule is that we do not do that.
 
 **Declared and suggested skills are judged identically.** A skill the model itself proposed
 gets no benefit of the doubt over one the contributor declared.
+
+## The share is the only thing returned for a secondary
+
+Independently scoring each secondary skill on the full dimension set was considered and
+**rejected**. The share is enough, and it is linear:
+
+```
+PR_score(secondary) = relative_share · PR_score(nominated primary)
+```
+
+Worked: a claim nominates `go`, the model scores that PR at **60**, and returns
+`relative_share = 0.3` for `kubernetes`. That PR contributes **18** to the Kubernetes
+evidence. When Kubernetes reaches its fifth distinct scored PR it promotes automatically,
+and its skill score is computed from those accumulated per-PR values exactly like any other
+skill.
+
+Asking the model to score every secondary on all five dimensions would multiply the
+judgement work per claim while producing a number the share already implies. It would also
+invite the two to disagree — a skill scored 70 independently but shared at 0.3 of a 60-point
+primary has two contradictory answers and no rule for choosing.

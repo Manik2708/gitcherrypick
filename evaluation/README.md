@@ -10,8 +10,13 @@ becomes unauditable. ADR-0005 owns the arithmetic and never says what
 ## Status
 
 **Draft — not approved.** No implementation may consume this until the owner approves it
-(stage 2 gate). One item below requires an amendment to ADR-0004 and ADR-0005 before it can
-work at all; it is flagged in `disqualification.md` and needs deciding first.
+(stage 2 gate).
+
+The changes this rubric forces on the approved design are collected in
+[RFC-0007](../rfc/RFC-0007-rubric-contract-and-generalist-score.md), also draft. Approving
+one without the other leaves the rubric unimplementable: the disqualification verdict, the
+per-dimension remarks, and the generalist score all need contract or schema changes that
+RFC-0007 carries.
 
 ## Files
 

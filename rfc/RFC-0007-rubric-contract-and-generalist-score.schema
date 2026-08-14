@@ -1,0 +1,189 @@
+-- RFC-0007 — Rubric contract, disqualification & the generalist score
+-- Schema DELTA. Amends RFC-0002, RFC-0003, RFC-0005.
+--
+-- Applies AFTER RFC-0001..0005. Nothing here rewrites an approved definition;
+-- every statement is an ALTER or a CREATE of something new.
+--
+-- NOTE ON MIGRATION ORDER: `ALTER TYPE ... ADD VALUE` may not be used in the
+-- same transaction that later references the new value. The enum additions
+-- below must therefore be their own migration file, ahead of any migration
+-- that inserts or compares against them.
+
+-- ---------------------------------------------------------------------------
+-- 1 · New enums
+-- ---------------------------------------------------------------------------
+
+-- Why a skill scored zero and was dropped (RFC-0007 §1, §2). An exhaustive
+-- enum rather than free text, so a rejection reason is a value and not
+-- whatever a prompt happened to produce.
+--
+-- The first ten are model verdicts; 'below_quality_floor' is computed in Go
+-- when the mean dimension score falls under 5.
+CREATE TYPE skill_rejection_reason AS ENUM (
+    'typo_or_wording',
+    'formatting_only',
+    'generated_output',
+    'mechanical_dependency_bump',
+    'revert_only',
+    'not_the_claimed_skill',
+    'authored_by_other',
+    'unrelated_to_issue',
+    'maintainer_flagged_unrelated',
+    'ai_generated_slop',
+    'below_quality_floor'
+);
+
+-- Whether a (PR, skill) pair survived evaluation (RFC-0007 §3).
+CREATE TYPE pr_link_status AS ENUM ('pending', 'scored', 'rejected');
+
+-- A NULL skill_id used to mean "the overall score". There are now two
+-- user-level scores, so the discriminator is explicit (RFC-0007 §5).
+CREATE TYPE score_kind AS ENUM ('skill', 'overall', 'generalist');
+
+CREATE TYPE reevaluation_status AS ENUM ('pending', 'accepted', 'rejected');
+
+ALTER TYPE snapshot_reason ADD VALUE IF NOT EXISTS 'reevaluation';
+
+-- ---------------------------------------------------------------------------
+-- 2 · Generalist score (RFC-0007 §5)
+-- ---------------------------------------------------------------------------
+
+-- UNBOUNDED, unlike overall_score: v1 + sum(vi/sqrt(i)) over the ordered skill
+-- list. Eight strong skills exceed 200, so numeric(6,2) and no upper CHECK.
+-- NULL until the contributor holds at least one PRIMARY skill — unproven
+-- breadth must not enter recruiter search.
+ALTER TABLE users ADD COLUMN generalist_score numeric(6,2);
+
+-- Recruiter filter: min_generalist_score.
+CREATE INDEX idx_users_generalist_score ON users (generalist_score DESC)
+    WHERE generalist_score IS NOT NULL;
+
+-- ---------------------------------------------------------------------------
+-- 3 · Rejection reasons become an enum (RFC-0007 §1)
+-- ---------------------------------------------------------------------------
+
+-- claim_skills.rejection_reason was free text. No production rows exist yet,
+-- so this is a plain type change rather than a backfill.
+ALTER TABLE claim_skills
+    ALTER COLUMN rejection_reason TYPE skill_rejection_reason
+    USING rejection_reason::skill_rejection_reason;
+
+-- ---------------------------------------------------------------------------
+-- 4 · Standing counts surviving evidence only (RFC-0007 §3)
+-- ---------------------------------------------------------------------------
+
+-- Written 'pending' inside the submit transaction — that is what enforces the
+-- (user, PR, skill) uniqueness rule BEFORE a model call is spent. Resolved to
+-- 'scored' or 'rejected' when the evaluation persists.
+--
+-- A 'rejected' row is deliberately KEPT rather than deleted: it blocks the same
+-- PR being resubmitted for the same skill in a fresh claim to reroll the
+-- verdict, which the per-claim 7-day lock cannot catch. Released on
+-- withdrawal; re-opened by a rubric version sweep.
+ALTER TABLE user_skill_pr_links
+    ADD COLUMN status           pr_link_status NOT NULL DEFAULT 'pending',
+    ADD COLUMN rejection_reason skill_rejection_reason,
+    ADD COLUMN resolved_at      timestamptz;
+
+-- distinct_pr_count counts ONLY scored rows.
+DROP INDEX IF EXISTS idx_user_skill_pr_links_count;
+CREATE INDEX idx_user_skill_pr_links_scored ON user_skill_pr_links (user_id, skill_id)
+    WHERE status = 'scored';
+
+-- ---------------------------------------------------------------------------
+-- 5 · Snapshots carry a kind (RFC-0007 §5)
+-- ---------------------------------------------------------------------------
+
+ALTER TABLE score_snapshots ADD COLUMN kind score_kind NOT NULL DEFAULT 'skill';
+ALTER TABLE score_snapshots ALTER COLUMN kind DROP DEFAULT;
+
+-- 'generalist' snapshots are unbounded; widen from numeric(5,2).
+ALTER TABLE score_snapshots ALTER COLUMN score TYPE numeric(6,2);
+
+ALTER TABLE score_snapshots DROP CONSTRAINT ck_snapshot_score_range;
+ALTER TABLE score_snapshots ADD CONSTRAINT ck_snapshot_score_range CHECK (
+    score > 0 AND (kind = 'generalist' OR score <= 100)
+);
+ALTER TABLE score_snapshots ADD CONSTRAINT ck_snapshot_skill_id CHECK (
+    (kind = 'skill' AND skill_id IS NOT NULL) OR
+    (kind <> 'skill' AND skill_id IS NULL)
+);
+
+-- ---------------------------------------------------------------------------
+-- 6 · Re-evaluation requests (RFC-0007 §6)
+--
+-- The dispute flow, and the source of the labelled set calibration needs:
+-- every ACCEPTED request is a human-ranked disagreement on real evidence.
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE reevaluation_requests (
+    id            uuid PRIMARY KEY,
+    claim_id      uuid                NOT NULL REFERENCES claims(id) ON DELETE CASCADE,
+    user_id       uuid                NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+
+    -- Which evaluation is being disputed, so the disagreement stays attached to
+    -- the exact scores that prompted it even after a re-run.
+    evaluation_id uuid                REFERENCES evaluations(id) ON DELETE SET NULL,
+
+    reason        text                NOT NULL,
+    status        reevaluation_status NOT NULL DEFAULT 'pending',
+
+    reviewed_by   uuid                REFERENCES admin_accounts(id) ON DELETE SET NULL,
+    reviewed_at   timestamptz,
+    decision_note text,
+
+    created_at    timestamptz NOT NULL DEFAULT now(),
+    updated_at    timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_reeval_pending ON reevaluation_requests (created_at)
+    WHERE status = 'pending';
+CREATE INDEX idx_reeval_user ON reevaluation_requests (user_id, status);
+
+-- One outstanding request per claim.
+CREATE UNIQUE INDEX uq_reeval_open_per_claim ON reevaluation_requests (claim_id)
+    WHERE status = 'pending';
+
+CREATE TRIGGER trg_reevaluation_requests_updated_at
+    BEFORE UPDATE ON reevaluation_requests
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- ---------------------------------------------------------------------------
+-- 7 · Escalating cooldown (RFC-0007 §6)
+--
+-- Only REJECTIONS accumulate. An accepted request neither resets nor increments
+-- the counter, so a contributor who is repeatedly right is never throttled.
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE reevaluation_cooldowns (
+    user_id           uuid PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+
+    -- Rejections since the last cooldown expired. At 3, a cooldown starts and
+    -- this resets to 0.
+    rejection_count   smallint    NOT NULL DEFAULT 0,
+
+    -- 0 = never cooled down. Cooldown length is 28 * 2^(tier-1) days, capped at
+    -- 365: 28, 56, 112, 224, 365, 365...
+    tier              smallint    NOT NULL DEFAULT 0,
+
+    -- Requests are refused while now() < cooldown_until.
+    cooldown_until    timestamptz,
+
+    updated_at        timestamptz NOT NULL DEFAULT now(),
+
+    CONSTRAINT ck_reeval_rejection_count CHECK (rejection_count BETWEEN 0 AND 3),
+    CONSTRAINT ck_reeval_tier CHECK (tier >= 0)
+);
+
+CREATE TRIGGER trg_reevaluation_cooldowns_updated_at
+    BEFORE UPDATE ON reevaluation_cooldowns
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- Cooldown length, kept beside the table it governs:
+--
+--   tier 1 ->  28 days
+--   tier 2 ->  56
+--   tier 3 -> 112
+--   tier 4 -> 224
+--   tier 5+-> 365  (cap — beyond roughly a year a cooldown is a ban, and a ban
+--                   is an admin decision with a recorded reason, not a counter)

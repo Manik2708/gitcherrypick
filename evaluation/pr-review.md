@@ -130,3 +130,9 @@ demonstrated.
   here. A thoughtful review from an outside contributor is worth as much.
 - **Whether the PR they reviewed was any good.** Reviewing a weak change well is still good
   reviewing.
+
+## Remarks
+
+As with the authoring dimensions, the model returns **a score and a short remark per
+dimension** (see [dimensions.md](dimensions.md)), not one rationale for the review as a
+whole.

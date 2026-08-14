@@ -26,12 +26,26 @@ is an RFC with the wrong filename.
 
 ## Changing an approved decision
 
-Amend the ADR in place and record the change in its **Revisions** table with a date and a
-reason. Do not fork a new ADR for a modification — a reader needs one current answer per
-number, not a chain to reconstruct.
+**Write a new RFC, and promote it to a new ADR. Never edit an approved one in place.**
 
-A change large enough to invalidate the original decision gets a **new** ADR that supersedes
-the old one, and the old one is marked `Superseded by ADR-NNNN` rather than deleted.
+An approved document is a record of what was decided and when. Editing it destroys that —
+the reasoning that produced the original choice disappears, and there is no way to see that
+a decision was ever reconsidered, let alone why.
+
+So a change gets its own number:
+
+1. New RFC stating what changes and why, with a `.schema` holding **only the delta** —
+   `ALTER TABLE`, `CREATE TYPE`, not a rewritten table definition.
+2. On approval, promoted to the ADR of the same number.
+3. Both the superseded ADR and the new one gain an **Amendments** row pointing at the other,
+   so a reader arriving at either finds the current answer.
+
+The superseding document says precisely which sections it replaces. Everything it does not
+mention stays in force.
+
+**Reading the current state therefore means reading a number in order**, not reading one
+file. That is the cost, and it buys a design history you can actually audit — which decision
+changed, when, and what argument moved it.
 
 ## Index
 

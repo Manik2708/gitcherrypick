@@ -16,20 +16,29 @@ Changing any value here is a **rubric version bump** — a new file, a re-evalua
 
 ## Project reach — `R`
 
-| Metric | Weight |
-|---|---|
-| `stars` | 0.35 |
-| `forks` | 0.15 |
-| `contributors` | 0.20 |
-| `dependents` | 0.20 |
-| `downloads` | 0.10 |
+**Stars, forks and contributors always exist. Dependents and downloads may not** — a web
+server, a CLI, or an application has neither. Generic renormalisation would silently change
+what the score means depending on the kind of project, so the four cases carry **explicit
+weight sets**:
+
+| Case | stars | forks | contributors | dependents | downloads |
+|---|---:|---:|---:|---:|---:|
+| **1 · All five** — published library with a dependency graph | 0.30 | 0.10 | 0.15 | 0.25 | 0.20 |
+| **2 · No downloads** — depended on, not distributed as a package | 0.35 | 0.15 | 0.20 | 0.30 | — |
+| **3 · No dependents** — published, nothing public depends on it yet | 0.35 | 0.15 | 0.20 | — | 0.30 |
+| **4 · Neither** — application, service, CLI, infrastructure | **0.45** | **0.20** | **0.35** | — | — |
+
+Case 4 is the common one and deserves the most thought. With only three signals available,
+`contributors` is weighted up sharply: for an application, the number of people who have
+successfully landed changes says far more about real scale and complexity than a star count,
+which mostly measures visibility.
+
+**Which case applies is decided by data availability, not by project type.** If a dependents
+count is retrievable it is used, whatever the repository calls itself.
 
 | Constant | Value | Meaning |
 |---|---|---|
 | `maintainer_multiplier` (μ) | `1.25` | Applied when a declared maintainer status is model-validated. `R = min(1, R·μ)` |
-
-Missing metrics are dropped and the remaining weights renormalised, so an unpublished
-repository is not punished for a signal that cannot exist for it.
 
 ## Authoring dimensions — `Q`
 
@@ -76,28 +85,89 @@ Not used for `pr-review` (`judged_only`).
 
 | Constant | Value | Meaning |
 |---|---|---|
-| `pr_component_weight` | `0.85` | Share of the skill score from PR evidence |
-| `project_component_weight` | `0.15` | Share from project evidence (0 for `judged_only`) |
-| `primary_threshold` | `5` | Distinct PRs required for primary standing |
+| `pr_component_weight` | `0.70` | Share of the skill score from PR evidence |
+| `project_component_weight` | `0.30` | Share from project evidence (0 for `judged_only`) |
+| `primary_threshold` | `5` | Distinct **scored** PRs required for primary standing |
 | `best_n` | `5` | Number of best PR scores averaged when `n ≥ 5` |
+| `quality_floor` | `5` | Mean dimension score below this zeroes the pair |
 
 Below the threshold, `PR_component = mean(all n) · (n/5)`.
 
-## Overall score
+The project component is **0.30, raised from 0.15**, so that contributing to a large complex
+project is clearly distinguished from contributing to a basic one. That is a deliberate
+shift of weight from *how well you did it* toward *where you did it* — the trade is that a
+strong contribution to a small project now scores meaningfully below the same contribution
+to a major one.
+
+Promotion is **automatic** at 5 scored PRs. No score threshold. A PR zeroed by
+disqualification or the quality floor does not count toward the total (see
+[disqualification.md](disqualification.md)).
+
+## The two headline scores
+
+Both draw on the same ordered list: primary skill scores at full weight, secondary skill
+scores pre-scaled by `σ`, `pr-review` by `ω`, sorted descending as `v₁ ≥ v₂ ≥ … ≥ vₖ`.
 
 | Constant | Value | Meaning |
 |---|---|---|
 | `breadth_decay` (d) | `0.5` | Each additional skill counts half the previous one |
 | `breadth_cap` (γ) | `0.5` | Breadth may fill at most half the headroom above the best skill |
-| `secondary_discount` (σ) | `0.5` | Applied to secondary skill scores before ordering |
+| `secondary_discount` (σ) | `0.5` | Flat pre-scaling on secondary skill scores |
 | `review_multiplier` (ω) | `1.2` | Applied to `pr-review`, capped at 100 |
+
+### Overall score — depth, bounded 0–100
 
 ```
 Overall = v₁ + (100 − v₁) · γ · B
 B       = Σ(i≥2)(vᵢ/100)·d^(i−1) / Σ(i≥2) d^(i−1)
 ```
 
-No overall score without at least one primary skill — `NULL`, not zero.
+Your best skill is a floor you are guaranteed; breadth fills at most half the headroom above
+it. **`γ` is retained deliberately.** It was briefly removed to give breadth more room, and
+reinstated once the Generalist score existed — with a dedicated breadth metric alongside,
+Overall no longer has to carry both jobs, and it is more useful as a clean depth measure.
+
+Removing `γ` also flipped a ranking: a 90-plus-75 contributor overtook a single 95. With `γ`
+in place the specialist stays ahead on Overall and the two-skill contributor wins on
+Generalist, which is the correct division of labour between the two numbers.
+
+### Generalist score — breadth, unbounded
+
+```
+Generalist = v₁ + Σ(i≥2) vᵢ / √i
+```
+
+Sub-linear so that count alone cannot dominate — the ninth skill is worth about a third of
+the second — but unbounded, so genuinely broad contributors separate from each other rather
+than compressing near a ceiling.
+
+**Recruiters can search on it.** That is the point: a recruiter who needs a generalist
+filters on this number and finds people the depth-ranked board would bury.
+
+| Profile | Overall | Generalist |
+|---|---:|---:|
+| 1 primary @ 95 | **95.0** | 95 |
+| 2 primaries @ 90, 75 | 93.8 | 143 |
+| 4 primaries @ 80, 70, 65, 60 | 86.7 | 197 |
+| 8 primaries @ 55 | 67.4 | **240** |
+
+The two columns rank these profiles in **opposite orders**, which is the point — it is the
+evidence that they measure different things rather than one being a noisier version of the
+other. A specialist tops Overall and sits bottom on Generalist; the eight-skill contributor
+does the reverse. Both are findable, neither is penalised for being what they are.
+
+Maximum reachable Overall for a given best skill, since `B ≤ v₁/100`:
+
+```
+max Overall = v₁ + v₁·(100 − v₁)/200
+```
+
+50 → 62.5 · 80 → 88.0 · 95 → 97.4. No amount of breadth lets a mediocre specialist reach the
+top of the depth board; breadth amplifies depth rather than substituting for it.
+
+**Both require at least one primary skill.** Without one there is no Overall and no
+Generalist score — `NULL`, not zero. Breadth built entirely from secondary skills is
+unproven breadth, and letting it into recruiter search would be a way around the five-PR bar.
 
 ## Model suggestions
 
@@ -109,9 +179,11 @@ No overall score without at least one primary skill — `NULL`, not zero.
 
 Grounds are an exhaustive enum, not a scale: `typo_or_wording`, `formatting_only`,
 `generated_output`, `mechanical_dependency_bump`, `revert_only`, `not_the_claimed_skill`,
-`authored_by_other`. See [disqualification.md](disqualification.md).
+`authored_by_other`, `unrelated_to_issue`, `maintainer_flagged_unrelated`,
+`ai_generated_slop`.
 
-**Requires an ADR amendment before it can be implemented.**
+Plus the **quality floor**: mean dimension score below `5` zeroes the pair regardless of
+verdict. See [disqualification.md](disqualification.md).
 
 ## Confidence in these numbers
 
@@ -122,9 +194,13 @@ ones most likely to be wrong are:
 | Constant | Why it is suspect |
 |---|---|
 | `w_q = 0.70` | The judged/arithmetic balance is the central design bet and is entirely untested. |
-| `d = 0.5` | Halving per skill is a guess. It may punish genuine generalists too hard. |
-| `γ = 0.5` | Caps a strong generalist well below a narrow specialist. Possibly correct, possibly not. |
-| `substance = 0.30` vs `complexity = 0.25` | These two overlap in practice and may be measuring one thing twice. |
+| `project_component = 0.30` | Newly doubled. Weights *where* you contributed heavily against *how well*; may now overshoot. |
+| `d = 0.5` | Halving per skill is a guess, and it now drives two different scores. |
+| `γ = 0.5` | Caps breadth's contribution to Overall. Justifiable now that Generalist exists, but the value is still arbitrary. |
+| `√i` in Generalist | The damping curve is reasoned, not derived. `log₂(i+1)` would be flatter and equally defensible. |
+| Case-4 reach weights | `contributors 0.35` for applications is reasoned from first principles with nothing behind it. |
+| `quality_floor = 5` | Picked as "obviously meaningless". Never tested against a real distribution of dimension means. |
+| `substance` vs `complexity` | These two overlap in practice and may be measuring one thing twice. |
 | `ω = 1.2` | "Reviewers matter more" is a stated value, not a measured effect. |
 
 See [calibration.md](calibration.md).

@@ -1,9 +1,5 @@
 # Disqualification — when a PR scores zero
 
-> ⚠️ **This file requires an amendment to ADR-0004 and ADR-0005 before it can work.**
-> The change is specified at the bottom and needs owner approval. Everything else in this
-> directory is implementable as-is; this is not.
-
 ## The problem
 
 `Agent.md` is explicit: *"if it is a typo fix then 0 score for that PR."* The weighted
@@ -12,11 +8,11 @@ formula cannot produce that.
 Work it through. A typo fix in a large, popular repository scores roughly:
 
 ```
-substance 2 · complexity 1 · conversation_quality 5 · craft 10 · specificity 1
-Q = 0.30(2) + 0.25(1) + 0.20(5) + 0.15(10) + 0.10(1) = 3.45
+substance 2 · complexity 1 · conversation_quality 0 · craft 10 · specificity 1
+Q = 0.30(2) + 0.25(1) + 0.20(0) + 0.15(10) + 0.10(1) = 2.45
 
-PR_score = 100·[0.70·(3.45/100) + 0.20·R + 0.10·E]
-         = 2.4 + 20·R + 10·E
+PR_score = 100·[0.70·(2.45/100) + 0.20·R + 0.10·E]
+         = 1.7 + 20·R + 10·E
 ```
 
 With `R ≈ 0.8` for a well-known repository, that is **≈ 18 before engagement**. The
@@ -27,19 +23,40 @@ score higher than a genuine, careful bug fix in a 200-star library.
 Lowering the dimension scores cannot fix this — they are already near zero. The floor comes
 from `R`, and `R` is doing its job correctly for real contributions.
 
-## The mechanism
+## Two mechanisms
 
-The model returns a **disqualification verdict** alongside the dimension scores. When set,
-`PR_score = 0` for that skill regardless of dimensions, reach, and engagement — the
-arithmetic is bypassed entirely, not merely reduced.
+**1 · Named grounds.** The model returns a disqualification verdict for cases it can
+recognise (below). Deliberate, explicable, and the reason is shown to the contributor.
 
-A disqualified skill scores zero, and **zero means the skill is dropped, never stored**
-(ADR-0003). If every skill on a claim disqualifies, the claim is evaluated and stores
-nothing but the reason.
+**2 · The quality floor.** If the **mean of the five dimension scores is below 5**, the pair
+scores 0 regardless of the verdict. This is the backstop for everything the named grounds
+miss — and there will be cases they miss, which is fine for v1. A meaningless contribution
+to a large repository must score 0 no matter how large the repository is.
 
-Disqualification is **per (PR, skill)**, not per PR. A dependency bump disqualifies for `go`
-but may legitimately evidence `security` if the bump was a vulnerability response the author
-diagnosed and explained.
+```
+mean(substance, complexity, conversation_quality, craft, skill_specificity) < 5
+    →  PR_score = 0
+```
+
+Either mechanism bypasses the arithmetic entirely rather than reducing it.
+
+## Scope: per (PR, skill), never the whole claim
+
+A zeroed pair is dropped. **The other four PRs and the other skills on the same PR are
+unaffected.** One weak PR does not reject a claim containing four good ones.
+
+But it does have a consequence for standing:
+
+> **A rejected PR does not count toward the distinct-PR total.**
+
+A claim of five PRs where one floors out gives that skill **four** distinct PRs — secondary,
+unranked, until the contributor supplies a fifth that survives. Standing follows surviving
+evidence, not submitted evidence. This is why the floor does not need to reject the whole
+claim to be a real deterrent: including padding costs the contributor their primary standing.
+
+Disqualification is per (PR, skill) for the same reason. A dependency bump disqualifies for
+`go` but may legitimately evidence `security` if the bump was a vulnerability response the
+author diagnosed and explained.
 
 ## Grounds for disqualification
 
@@ -56,6 +73,17 @@ zero is one where nobody can predict what happens.
 | `revert_only` | Reverts an earlier change with no new reasoning. Reverting is often correct and rarely evidences skill. |
 | `not_the_claimed_skill` | The change is real but does not exercise this skill at all. `skill_specificity` would be scoring 0, not 5. |
 | `authored_by_other` | The claimant is not meaningfully the author — the diff is someone else's work merged under their name. |
+| `unrelated_to_issue` | The PR claims to address an issue and does something else, or nothing the issue asked for. |
+| `maintainer_flagged_unrelated` | A maintainer stated in the thread that the change was unrelated, unwanted, or merged for a reason other than its merit. The people who own the project are the authority on this. |
+| `ai_generated_slop` | Machine-generated code submitted without evident understanding: plausible-looking changes that do not fit the codebase, invented APIs, a description that does not match the diff, or a thread where the author cannot answer questions about their own change. |
+
+`ai_generated_slop` is the hardest of these to apply and the most important to get right.
+**The ground is unreviewed generation, not use of a tool.** An engineer who used a model to
+draft a change, understood it, adapted it, and defended it in review has done the work. The
+signals that distinguish the two are in the review thread: whether the author can explain
+their own decisions, whether the change fits the surrounding code, and whether the
+description describes what the diff actually does. When genuinely uncertain, **score low
+rather than disqualify** — the quality floor will catch it if it deserves catching.
 
 ### Deliberately not grounds
 
@@ -108,20 +136,23 @@ Three changes follow:
 | **ADR-0005** | `PRScore()` takes the verdict and returns 0 without evaluating the weighted sum. |
 | **RFC-0004 schema** | `pr_skill_scores` cannot store the row at all — its `CHECK (score > 0)` forbids zero, and zero-scoring skills are dropped by design. The **reason** should be recorded on `claim_skills.rejection_reason`, which already exists, using these enum values. |
 
-That last row matters: the schema needs **no new column**, because the existing
-"zero is dropped, reason recorded on the claim skill" design already has the right shape.
-The only change is that `rejection_reason` gains a defined vocabulary instead of free text.
+That last row matters: the schema needs **no new column** for the reason, because the
+existing "zero is dropped, reason recorded on the claim skill" design already has the right
+shape. `rejection_reason` becomes a **Postgres enum** carrying these ten values, so a
+rejection reason is a value rather than a string a prompt happened to produce.
 
-**Recommended:** promote the seven reasons to a Postgres enum, so a rejection reason is a
-value rather than a string a prompt happened to produce.
+One column *is* added: `user_skill_pr_links.status` (`pending` | `scored` | `rejected`), so
+that standing counts surviving evidence only (see Scope above).
 
-## Open question for the owner
+## Where the judgement lives
 
-Is the model the right place for this judgement at all? The alternative is a pre-filter in
-Go — refuse a PR whose diff is only whitespace before spending a model call.
+**In the model, not in a Go pre-filter.** Settled.
 
-I recommend **against** it, for the reason you gave when rejecting a trivial-PR pre-filter
-in RFC-0003: a small or odd-looking diff may still be valuable, and splitting the judgement
-between validation code and the rubric puts two authorities on the same question. The model
-already reads the diff; it can tell a typo from a fix, and it can tell a mechanical version
-bump from a security response, which a whitespace check cannot.
+A pre-filter — refusing a PR whose diff is only whitespace before spending a model call —
+would be cheaper, and it is the wrong trade for the reason a trivial-PR pre-filter was
+rejected in RFC-0003: a small or odd-looking diff may still be valuable, and splitting the
+judgement between validation code and the rubric puts two authorities on the same question.
+
+The model already reads the diff. It can tell a typo from a fix, a mechanical version bump
+from a security response, and generated slop from a tool used well. A whitespace check
+cannot do any of those.

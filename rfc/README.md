@@ -47,9 +47,15 @@ one.
 
 ## Index
 
-**All six were approved on 2026-08-02 and promoted to ADRs.** These documents are now the
-record of *why*; the ADRs in [`../adr/`](../adr/) are what implementers build against. If
-the two disagree, the ADR wins.
+**RFC-0001 through 0006 were approved on 2026-08-02 and promoted to ADRs.** Those documents
+are now the record of *why*; the ADRs in [`../adr/`](../adr/) are what implementers build
+against. If the two disagree, the ADR wins.
+
+**Approved documents are never edited.** A change gets its own number, and its `.schema`
+holds only the delta — `ALTER TABLE`, not a rewritten definition. RFC-0007 is the first of
+these: it amends four approved RFCs without touching one of them. Reading the current state
+means reading the numbers in order, which is the cost of having a design history you can
+audit.
 
 | # | Title | Binding form |
 |---|-------|--------------|
@@ -59,6 +65,7 @@ the two disagree, the ADR wins.
 | [0004](RFC-0004-evaluation-pipeline.md) | Evaluation pipeline & broker | [ADR-0004](../adr/ADR-0004-evaluation-pipeline.md) |
 | [0005](RFC-0005-ranking-and-discovery.md) | Scoring formulas, ranking & discovery | [ADR-0005](../adr/ADR-0005-scoring-and-discovery.md) |
 | [0006](RFC-0006-technology-selection.md) | Technology selection | [ADR-0006](../adr/ADR-0006-technology-selection.md) |
+| [0007](RFC-0007-rubric-contract-and-generalist-score.md) | Rubric contract, disqualification & the generalist score | **Draft** — amends 0002–0005 |
 
 Read them in numeric order; each assumes the ones before it.
 
