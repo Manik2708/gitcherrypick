@@ -1,6 +1,7 @@
 # RFC-0008 — The discovery HTTP surface
 
-**Status:** Proposed 2026-08-15 · **Schema:** [RFC-0008-discovery-http-surface.schema](RFC-0008-discovery-http-surface.schema)
+**Status:** Approved 2026-08-15 · **Binding form:** [ADR-0008](../adr/ADR-0008-discovery-http-surface.md)
+· **Schema:** [RFC-0008-discovery-http-surface.schema](RFC-0008-discovery-http-surface.schema)
 · **Amends:** RFC-0002, RFC-0005 (and ADR-0002, ADR-0005), RFC-0003 §Endpoints, RFC-0007 §Endpoints
 
 ## Summary

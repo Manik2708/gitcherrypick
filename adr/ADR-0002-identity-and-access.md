@@ -140,7 +140,8 @@ no rank against others, no navigation to anyone else.
 
 ## Amendments
 
-| Date       | Change                                                                                                                                                                                        |
-| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 2026-08-02 | Accepted from RFC-0002                                                                                                                                                                        |
-| 2026-08-14 | **Amended by [ADR-0007](ADR-0007-rubric-contract-and-generalist-score.md)** — `users.generalist_score` added: a second user-level score, unbounded and searchable, alongside `overall_score`. |
+| Date       | Change                                                                                                                                                                                                                                                                |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-08-02 | Accepted from RFC-0002                                                                                                                                                                                                                                                |
+| 2026-08-14 | **Amended by [ADR-0007](ADR-0007-rubric-contract-and-generalist-score.md)** — `users.generalist_score` added: a second user-level score, unbounded and searchable, alongside `overall_score`.                                                                         |
+| 2026-08-15 | **Amended by [ADR-0008](ADR-0008-discovery-http-surface.md)** — §6 second sentence replaced. A lapsed contributor is hidden by default, **ranked regardless**, and reachable via `include_inactive=true`. `not_looking` remains excluded everywhere and by no toggle. |

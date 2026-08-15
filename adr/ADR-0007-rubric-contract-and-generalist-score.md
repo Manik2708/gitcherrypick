@@ -214,6 +214,7 @@ Search gains `min_generalist_score`, served by `idx_users_generalist_score`.
 
 ## Amendments
 
-| Date       | Change                                                     |
-| ---------- | ---------------------------------------------------------- |
-| 2026-08-14 | Accepted from RFC-0007. Amends ADR-0002, 0003, 0004, 0005. |
+| Date       | Change                                                                                                                                                                            |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-08-14 | Accepted from RFC-0007. Amends ADR-0002, 0003, 0004, 0005.                                                                                                                        |
+| 2026-08-15 | **Amended by [ADR-0008](ADR-0008-discovery-http-surface.md)** — `min_generalist_score` gains its parameter shape and `ranked_by: generalist`; adds `GET /me/reevaluation-status`. |
