@@ -1,0 +1,159 @@
+{
+  "name": "GitHub OAuth creates a contributor on first callback and reuses it on the second",
+  "description": "ADR-0002. The only way a contributor account comes into existence. Every other fixture starts from a seeded principal, so this case is the one place the account-creation path is exercised at all.\n\nFour properties: state is bound to the start call and a mismatched state is refused before the code is exchanged; the first callback creates the user and the github identity together; a second callback for the same github_user_id resolves to the SAME account rather than minting a duplicate; and a github identity already held by a HIRER still resolves to the contributor namespace, because the two are separate account types that happen to share an identity provider.",
+  "seed": ["principals"],
+  "steps": [
+    {
+      "_step": "Unauthenticated. Returns the authorize URL and sets the state cookie.",
+      "request": { "method": "POST", "path": "/auth/github/start", "body": {} },
+      "capture": { "state": "$.state" },
+      "expect": {
+        "status": 200,
+        "_note": "state is echoed so the fixture can replay it. In production it is compared against the cookie, never against a body field.",
+        "body": {
+          "authorize_url": "https://github.com/login/oauth/authorize?client_id=<redacted>&scope=read%3Auser&state=<token>",
+          "state": "<token>"
+        }
+      }
+    },
+    {
+      "_step": "A callback whose state does not match the cookie is refused BEFORE the code is exchanged. An attacker-supplied code must never reach GitHub.",
+      "request": { "method": "GET", "path": "/auth/github/callback?code=gho_valid&state=not-the-state-we-issued" },
+      "expect": {
+        "status": 400,
+        "body": { "error": "invalid_state" },
+        "db": {
+          "_note": "No user created, and the fake records no exchange attempt.",
+          "users": { "where": { "github_login": "newcomer" }, "count": 0 }
+        }
+      }
+    },
+    {
+      "_step": "First real callback. Creates users + user_github_identities + sessions in one transaction.",
+      "request": { "method": "GET", "path": "/auth/github/callback?code=gho_valid&state={{state}}" },
+      "fake": {
+        "github": {
+          "oauth_exchange": {
+            "gho_valid": { "github_user_id": 100077, "login": "newcomer", "name": "Nina Ferrer", "email": "nina@example.com" }
+          }
+        }
+      },
+      "capture": { "refresh_token": "$.refresh_token" },
+      "expect": {
+        "status": 200,
+        "body": {
+          "user": {
+            "id": "<uuid>",
+            "display_name": "Nina Ferrer",
+            "github_login": "newcomer",
+            "principal_type": "contributor",
+            "created": true
+          },
+          "access_token": "<token>",
+          "refresh_token": "<token>",
+          "expires_in": 900
+        },
+        "db": {
+          "users": { "where": { "github_login": "newcomer" }, "count": 1 },
+          "user_github_identities": { "where": { "github_user_id": 100077 }, "count": 1 },
+          "user_availability": {
+            "_note": "No availability row on signup. A new contributor is invisible to search until they choose to be visible — ADR-0002.",
+            "where": { "github_user_id": 100077 },
+            "count": 0
+          }
+        }
+      }
+    },
+    {
+      "_step": "Second login, same GitHub user. Resolves to the existing account — created is false and no second row appears.",
+      "request": { "method": "POST", "path": "/auth/github/start", "body": {} },
+      "capture": { "state_two": "$.state" },
+      "expect": { "status": 200, "body": { "authorize_url": "<string>", "state": "<token>" } }
+    },
+    {
+      "request": { "method": "GET", "path": "/auth/github/callback?code=gho_again&state={{state_two}}" },
+      "fake": {
+        "github": {
+          "oauth_exchange": {
+            "gho_again": { "github_user_id": 100077, "login": "newcomer-renamed", "name": "Nina Ferrer", "email": "nina@example.com" }
+          }
+        }
+      },
+      "expect": {
+        "status": 200,
+        "_note": "The login changed on GitHub's side. Identity is the immutable github_user_id, never the login, so this is the same account with a refreshed login.",
+        "body": {
+          "user": {
+            "id": "<uuid>",
+            "display_name": "Nina Ferrer",
+            "github_login": "newcomer-renamed",
+            "principal_type": "contributor",
+            "created": false
+          },
+          "access_token": "<token>",
+          "refresh_token": "<token>",
+          "expires_in": 900
+        },
+        "db": { "users": { "where": { "github_user_id": 100077 }, "count": 1 } }
+      }
+    },
+    {
+      "_step": "github_user_id 100004 belongs to contributor dave AND to hirer dave_hiring. A GitHub callback resolves the CONTRIBUTOR — the namespaces are separate.",
+      "request": { "method": "POST", "path": "/auth/github/start", "body": {} },
+      "capture": { "state_three": "$.state" },
+      "expect": { "status": 200, "body": { "authorize_url": "<string>", "state": "<token>" } }
+    },
+    {
+      "request": { "method": "GET", "path": "/auth/github/callback?code=gho_dave&state={{state_three}}" },
+      "fake": {
+        "github": {
+          "oauth_exchange": {
+            "gho_dave": { "github_user_id": 100004, "login": "dwhit", "name": "Dave Whitfield", "email": "dave@example.com" }
+          }
+        }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "user": {
+            "id": "01920000-0000-7000-8000-00000000a004",
+            "display_name": "Dave Whitfield",
+            "github_login": "dwhit",
+            "principal_type": "contributor",
+            "created": false
+          },
+          "access_token": "<token>",
+          "refresh_token": "<token>",
+          "expires_in": 900
+        }
+      }
+    },
+    {
+      "_step": "GET /me confirms the session resolves to a Contributor principal.",
+      "as": "alice",
+      "request": { "method": "GET", "path": "/me" },
+      "expect": {
+        "status": 200,
+        "body": {
+          "id": "01920000-0000-7000-8000-00000000a001",
+          "display_name": "Alice Okafor",
+          "github_login": "aliceok",
+          "email": "alice@example.com",
+          "principal_type": "contributor",
+          "availability": { "status": "looking_for_job", "expires_at": "<timestamp>" }
+        }
+      }
+    },
+    {
+      "_step": "An expired authorization code is refused by the exchange itself.",
+      "request": { "method": "POST", "path": "/auth/github/start", "body": {} },
+      "capture": { "state_four": "$.state" },
+      "expect": { "status": 200, "body": { "authorize_url": "<string>", "state": "<token>" } }
+    },
+    {
+      "request": { "method": "GET", "path": "/auth/github/callback?code=gho_expired&state={{state_four}}" },
+      "fake": { "github": { "oauth_exchange": { "gho_expired": { "error": "bad_verification_code" } } } },
+      "expect": { "status": 401, "body": { "error": "oauth_exchange_failed" } }
+    }
+  ]
+}

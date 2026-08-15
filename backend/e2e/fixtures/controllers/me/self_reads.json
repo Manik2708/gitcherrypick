@@ -1,0 +1,328 @@
+{
+  "name": "a contributor sees their own rank and nobody else's position",
+  "description": "RFC-0008 §7. ADR-0005 says contributors see only their own rank. Without a dedicated endpoint that number has no home, and the temptation is to leak it into a leaderboard response the contributor is not allowed to read.\n\nThe rule under test is asymmetric on purpose: 'you are 3rd' is your own standing, while 'who is 1st and 2nd' is other people's. So /me/rank carries a position and a total and nothing identifying anyone else — no neighbours, no names, no adjacent scores. A ladder showing who is immediately above you turns the platform into a competition against named individuals, which is the failure mode the ADR is guarding.\n\nRank is computed over the SAME population the leaderboard shows — availability set and unexpired. Ranking a lapsed contributor against a board they do not appear on would make the two numbers disagree, so a lapsed contributor's rank is null rather than a position nobody else can see. Their SCORES are unaffected: going quiet hides you, it does not unmake what your evidence was worth.\n\n/me/verification and /me/reevaluation-status are the other two self-reads: both make a gate legible before someone spends an attempt on it.",
+  "seed": ["principals", "catalogue", "repositories", "scored_population"],
+  "steps": [
+    {
+      "as": "alice",
+      "request": { "method": "GET", "path": "/me" },
+      "expect": {
+        "status": 200,
+        "body": {
+          "id": "01920000-0000-7000-8000-00000000a001",
+          "display_name": "Alice Okafor",
+          "github_login": "aliceok",
+          "email": "alice@example.com",
+          "principal_type": "contributor",
+          "availability": { "status": "looking_for_job", "expires_at": "<timestamp>" },
+          "overall_score": 64.2,
+          "generalist_score": 64.2
+        }
+      }
+    },
+    {
+      "as": "alice",
+      "request": { "method": "GET", "path": "/me/rank" },
+      "expect": {
+        "status": 200,
+        "_note": "Positions and totals only. No neighbours, no names, no adjacent scores — that is the ADR-0005 rule made concrete. out_of is 3, not 4: Carol is lapsed and out of the ranked population.",
+        "body": {
+          "rubric_version": "v1",
+          "overall": { "score": 64.2, "rank": 1, "out_of": 3 },
+          "generalist": { "score": 64.2, "rank": 2, "out_of": 3 },
+          "skills": [{ "slug": "go", "name": "Go", "standing": "primary", "score": 64.2, "rank": 1, "out_of": 2 }]
+        }
+      }
+    },
+    {
+      "_step": "Bob is 2nd on depth and 1st on breadth. Both true, and the two numbers rank him differently — ADR-0007 §5.",
+      "as": "bob",
+      "request": { "method": "GET", "path": "/me/rank" },
+      "expect": {
+        "status": 200,
+        "body": {
+          "rubric_version": "v1",
+          "overall": { "score": 60.4, "rank": 2, "out_of": 3 },
+          "generalist": { "score": 122.7, "rank": 1, "out_of": 3 },
+          "skills": [
+            { "slug": "go", "name": "Go", "standing": "primary", "score": 55.0, "rank": 2, "out_of": 2 },
+            { "slug": "kubernetes", "name": "Kubernetes", "standing": "primary", "score": 52.0, "rank": 2, "out_of": 2 },
+            {
+              "_note": "out_of is 1. Carol is the only other Postgres primary and she is lapsed, so Bob is alone on a board of one — top of it, on his lowest score.",
+              "slug": "postgres",
+              "name": "PostgreSQL",
+              "standing": "primary",
+              "score": 48.0,
+              "rank": 1,
+              "out_of": 1
+            }
+          ]
+        }
+      }
+    },
+    {
+      "_step": "Dave's SECONDARY Go scores 81 — the highest Go score on the platform — and carries NO rank. Score and standing are orthogonal.",
+      "as": "dave",
+      "request": { "method": "GET", "path": "/me/rank" },
+      "expect": {
+        "status": 200,
+        "body": {
+          "rubric_version": "v1",
+          "overall": { "score": 58.0, "rank": 3, "out_of": 3 },
+          "generalist": { "score": 58.0, "rank": 3, "out_of": 3 },
+          "skills": [
+            { "slug": "kubernetes", "name": "Kubernetes", "standing": "primary", "score": 58.0, "rank": 1, "out_of": 2 },
+            {
+              "_note": "rank and out_of are null. An unranked skill has no position, and reporting one would contradict the standing rule.",
+              "slug": "go",
+              "name": "Go",
+              "standing": "secondary",
+              "score": 81.0,
+              "rank": null,
+              "out_of": null
+            }
+          ]
+        }
+      }
+    },
+    {
+      "_step": "Carol is LAPSED. Her SCORES survive — going quiet does not unmake what her evidence was worth — but she has no rank, because she is on no board.",
+      "as": "carol",
+      "request": { "method": "GET", "path": "/me/rank" },
+      "expect": {
+        "status": 200,
+        "_note": "71.5 is the highest overall score on the platform and it ranks nowhere. Reporting rank 1 would contradict every board, none of which lists her.",
+        "body": {
+          "rubric_version": "v1",
+          "ranked": false,
+          "unranked_reason": "availability_lapsed",
+          "overall": { "score": 71.5, "rank": null, "out_of": 3 },
+          "generalist": { "score": 71.5, "rank": null, "out_of": 3 },
+          "skills": [{ "slug": "postgres", "name": "PostgreSQL", "standing": "primary", "score": 71.5, "rank": null, "out_of": 1 }]
+        }
+      }
+    },
+    {
+      "_step": "Refreshing availability puts her back on every board at once, and displaces Alice from the top.",
+      "as": "carol",
+      "request": { "method": "PUT", "path": "/me/availability", "body": { "status": "looking_for_job" } },
+      "expect": { "status": 200, "body": { "status": "looking_for_job", "expires_at": "<timestamp>" } }
+    },
+    {
+      "as": "carol",
+      "request": { "method": "GET", "path": "/me/rank" },
+      "expect": {
+        "status": 200,
+        "body": {
+          "rubric_version": "v1",
+          "ranked": true,
+          "unranked_reason": null,
+          "overall": { "score": 71.5, "rank": 1, "out_of": 4 },
+          "generalist": { "score": 71.5, "rank": 2, "out_of": 4 },
+          "skills": [{ "slug": "postgres", "name": "PostgreSQL", "standing": "primary", "score": 71.5, "rank": 1, "out_of": 2 }]
+        }
+      }
+    },
+    {
+      "_step": "Alice's own rank moved without Alice doing anything. Rank is relative, and the fixture states it rather than leaving it implied.",
+      "as": "alice",
+      "request": { "method": "GET", "path": "/me/rank" },
+      "expect": {
+        "status": 200,
+        "body": {
+          "rubric_version": "v1",
+          "ranked": true,
+          "unranked_reason": null,
+          "overall": { "score": 64.2, "rank": 2, "out_of": 4 },
+          "generalist": { "score": 64.2, "rank": 3, "out_of": 4 },
+          "skills": [{ "slug": "go", "name": "Go", "standing": "primary", "score": 64.2, "rank": 1, "out_of": 2 }]
+        }
+      }
+    },
+    {
+      "_step": "A contributor with no primary skill has no rank, and null is not 0 — ADR-0007. Zero would claim we measured something.",
+      "as": "anonymous",
+      "request": { "method": "POST", "path": "/auth/github/start", "body": {} },
+      "capture": { "state": "$.state" },
+      "expect": { "status": 200, "body": { "authorize_url": "<string>", "state": "<token>" } }
+    },
+    {
+      "as": "anonymous",
+      "request": { "method": "GET", "path": "/auth/github/callback?code=gho_fresh&state={{state}}" },
+      "fake": {
+        "github": {
+          "oauth_exchange": {
+            "gho_fresh": { "github_user_id": 100088, "login": "freshstart", "name": "Fresh Start", "email": "fresh@example.com" }
+          }
+        }
+      },
+      "capture": { "fresh_token": "$.access_token" },
+      "expect": {
+        "status": 200,
+        "body": {
+          "user": {
+            "id": "<uuid>",
+            "display_name": "Fresh Start",
+            "github_login": "freshstart",
+            "principal_type": "contributor",
+            "created": true
+          },
+          "access_token": "<token>",
+          "refresh_token": "<token>",
+          "expires_in": 900
+        }
+      }
+    },
+    {
+      "as": "anonymous",
+      "request": { "method": "GET", "path": "/me/rank", "headers": { "Authorization": "Bearer {{fresh_token}}" } },
+      "expect": {
+        "status": 200,
+        "body": {
+          "rubric_version": "v1",
+          "overall": { "score": null, "rank": null, "out_of": 3 },
+          "generalist": { "score": null, "rank": null, "out_of": 3 },
+          "skills": []
+        }
+      }
+    },
+    {
+      "_step": "A HIRER has no rank. They are not in the ranked population.",
+      "as": "hank",
+      "request": { "method": "GET", "path": "/me/rank" },
+      "expect": { "status": 403, "body": { "error": "contributor_required" } }
+    },
+    {
+      "as": "anonymous",
+      "request": { "method": "GET", "path": "/me/rank" },
+      "expect": { "status": 401, "body": { "error": "unauthenticated" } }
+    },
+    {
+      "_step": "/me/verification is the hirer's view of their own gate. Pat can see exactly why nothing works yet.",
+      "as": "pending_pat",
+      "request": { "method": "GET", "path": "/me/verification" },
+      "expect": {
+        "status": 200,
+        "body": {
+          "status": "pending",
+          "hirer_verified": false,
+          "organization": {
+            "id": "01920000-0000-7000-8000-00000000b003",
+            "name": "Unknown Ltd",
+            "verified": false,
+            "payment_verified": false
+          },
+          "submitted_at": "<timestamp>",
+          "reviewed_at": null,
+          "reason": null
+        }
+      }
+    },
+    {
+      "as": "hank",
+      "request": { "method": "GET", "path": "/me/verification" },
+      "expect": {
+        "status": 200,
+        "body": {
+          "status": "approved",
+          "hirer_verified": true,
+          "organization": { "id": "01920000-0000-7000-8000-00000000b001", "name": "Acme Corp", "verified": true, "payment_verified": true },
+          "submitted_at": "<timestamp>",
+          "reviewed_at": "<timestamp>",
+          "reason": null
+        }
+      }
+    },
+    {
+      "_step": "A contributor has no verification. The endpoint belongs to the hirer surface.",
+      "as": "alice",
+      "request": { "method": "GET", "path": "/me/verification" },
+      "expect": { "status": 403, "body": { "error": "hirer_required" } }
+    },
+    {
+      "_step": "/me/reevaluation-status makes the ADR-0007 cooldown legible BEFORE a contributor spends a request on a 429.",
+      "as": "alice",
+      "request": { "method": "GET", "path": "/me/reevaluation-status" },
+      "expect": {
+        "status": 200,
+        "_note": "Never disputed. tier 0, no cooldown, and the next request is free.",
+        "body": {
+          "rejection_count": 0,
+          "tier": 0,
+          "cooldown_until": null,
+          "can_request": true,
+          "claims_eligible": ["01920000-0000-7000-8000-0000000f0001"]
+        }
+      }
+    },
+    {
+      "as": "alice",
+      "request": {
+        "method": "POST",
+        "path": "/claims/01920000-0000-7000-8000-0000000f0001/reevaluation",
+        "body": { "reason": "PR 102 was judged as a dependency bump; it reworks the renewal bound." }
+      },
+      "capture": { "reeval": "$.id" },
+      "expect": {
+        "status": 201,
+        "body": { "id": "<uuid>", "claim_id": "01920000-0000-7000-8000-0000000f0001", "status": "pending", "created_at": "<timestamp>" }
+      }
+    },
+    {
+      "as": "alice",
+      "request": { "method": "GET", "path": "/me/reevaluation-status" },
+      "expect": {
+        "status": 200,
+        "_note": "A pending dispute blocks another on the same claim, without touching the cooldown — nothing has been rejected yet.",
+        "body": {
+          "rejection_count": 0,
+          "tier": 0,
+          "cooldown_until": null,
+          "can_request": false,
+          "blocked_by": "pending_request",
+          "pending_request_id": "<uuid>",
+          "claims_eligible": []
+        }
+      }
+    },
+    {
+      "as": "root",
+      "request": {
+        "method": "POST",
+        "path": "/admin/reevaluations/{{reeval}}/decide",
+        "body": { "decision": "rejected", "reason": "The renewal bound is a constant change; the judgement stands." }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "id": "<uuid>",
+          "status": "rejected",
+          "reason": "The renewal bound is a constant change; the judgement stands.",
+          "reviewed_at": "<timestamp>"
+        }
+      }
+    },
+    {
+      "as": "alice",
+      "request": { "method": "GET", "path": "/me/reevaluation-status" },
+      "expect": {
+        "status": 200,
+        "_note": "First rejection puts her on the 28-day tier — ADR-0007. The number is shown rather than discovered by hitting a 429.",
+        "body": {
+          "rejection_count": 1,
+          "tier": 1,
+          "cooldown_until": "<timestamp>",
+          "cooldown_days": 28,
+          "can_request": false,
+          "blocked_by": "cooldown",
+          "claims_eligible": []
+        }
+      }
+    },
+    {
+      "as": "hank",
+      "request": { "method": "GET", "path": "/me/reevaluation-status" },
+      "expect": { "status": 403, "body": { "error": "contributor_required" } }
+    }
+  ]
+}

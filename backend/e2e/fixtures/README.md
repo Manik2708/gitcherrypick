@@ -147,29 +147,55 @@ code does whatever it currently does, which is not a test.
 
 ## Index
 
-18 cases. Each names the decision it pins, so a change to that decision has an obvious
-place to fail.
+31 cases covering **all 58 specified endpoints**. Each names the decision it pins, so a
+change to that decision has an obvious place to fail.
 
 | Case                                               | Pins                                                                            |
 | -------------------------------------------------- | ------------------------------------------------------------------------------- |
+| **auth/**github_oauth_signup_and_login             | The only path that creates a contributor; state binding; identity ≠ login       |
+| **auth/**hirer_email_and_google_login              | Two hirer entry points, one account; no cross-type credential reuse             |
+| **auth/**admin_login_and_logout                    | No OAuth path to an admin; logout revokes the family, not the token             |
 | **auth/**refresh_rotation_and_reuse_detection      | Replaying a spent token revokes the whole family — including the current holder |
 | **auth/**unverified_hirer_cannot_hire              | Registration ≠ hiring capability; verification is the real gate                 |
 | **auth/**share_link_is_the_only_public_surface     | Full gating, and the one thing a contributor may publish                        |
+| **orgs/**invitations_and_seat_grants               | Org self-administers seats; capability is inherited, never earned individually  |
 | **claims/**submit_valid_five_prs                   | Happy path, and the outbox property                                             |
 | **claims/**submit_invalid_evidence                 | Every failure named, nothing enqueued                                           |
 | **claims/**submit_pair_conflict                    | `(user, PR, skill)` uniqueness; same PR for another skill is fine               |
+| **claims/**edit_draft_and_lock_conflict            | PUT is an atomic replace; version conflicts; the lock closes the endpoint       |
 | **claims/**withdraw_warns_before_demoting          | Warn, then demote immediately; pairs released                                   |
 | **claims/**seven_day_lock                          | Per claim, not per account; unchanged evidence refused by fingerprint           |
 | **claims/**pr_review_claim_inverts_authorship      | Reviewer role, not author; projects refused                                     |
+| **claims/**ai_suggested_skills                     | Suggestions contribute nothing until accepted; the model never promotes         |
+| **claims/**claim_reads_are_owner_scoped            | 404 not 403, so the endpoint is not an existence oracle                         |
 | **evaluation/**disqualified_typo_scores_zero       | Typo scores 0 not 18; standing drops to four                                    |
 | **evaluation/**quality_floor_and_conversation_zero | Floor catches what the grounds miss; no discussion → 0                          |
 | **evaluation/**secondary_share_and_promotion       | Linear share, uncapped; automatic promotion at five                             |
 | **evaluation/**partial_enrichment_and_idempotency  | One unreachable PR doesn't fail the claim; redelivery is free                   |
 | **discovery/**search_gates_and_exclusions          | Lapsed availability, secondary skills, and self all excluded in SQL             |
+| **discovery/**leaderboard_and_scorecard_gating     | Three board kinds; three scorecard gates; hirer view ≠ public view              |
 | **discovery/**contact_request_requires_consent     | Shortlisting discloses nothing; payment label shown                             |
+| **discovery/**shortlist_lifecycle                  | Org-scoped, not recruiter-scoped; release is the irreversible boundary          |
+| **discovery/**saved_searches                       | Filter keys are the query parameters; gates evaluate as the caller              |
+| **me/**self_reads                                  | Own rank only — no neighbours; lapsed means unranked, not unscored              |
 | **skills/**catalogue_and_requests                  | Aliases resolve but aren't claimable; dedupe before the queue                   |
 | **admin/**verification_and_overdue_flagging        | Alternative evidence path; flag at 80%, never block                             |
 | **admin/**reevaluation_cooldown_escalates          | 28→56→112→224→365; acceptance never counts against you                          |
+| **admin/**skill_request_queue                      | The only way the catalogue grows; slug collisions refused against aliases too   |
+| **admin/**evaluations_sweep                        | A rubric bump empties search until it drains; half-swept must not be searchable |
+
+## Validation
+
+The fixture format is a schema, not a convention. `fixture.schema.json` describes the
+structure; `scripts/validate_fixtures.py` checks it plus the things a schema cannot express
+— that every `seed` name resolves, every `as` is a seeded principal, every `{{placeholder}}`
+is bound by an earlier step, and every case name is unique.
+
+```bash
+make validate-fixtures     # or: make check, which also runs prettier
+```
+
+It runs in CI on every push. A fixture that does not validate is not a fixture.
 
 ## These fixtures must fail
 

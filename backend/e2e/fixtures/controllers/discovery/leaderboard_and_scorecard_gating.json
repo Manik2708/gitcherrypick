@@ -1,0 +1,293 @@
+{
+  "name": "leaderboards come in three kinds, and a scorecard is gated three ways",
+  "description": "RFC-0008 §1 and §2. search_gates_and_exclusions pins the overall and generalist boards; this case adds kind=skill and the scorecard access rules.\n\nA scorecard is the full evidence dossier, so it is the most valuable thing a hirer can read and the thing most worth scraping. Three gates: hiring capability, AssertNotSelf (the second of the three places ADR-0002 requires it), and the availability window — a contributor who has gone quiet is not readable just because a hirer kept the id.\n\nThe hirer scorecard and the public share-link scorecard are different documents. A hirer without capability gets 403 rather than a redacted body, because a partial scorecard is exactly the scraping surface the gate exists to prevent.",
+  "seed": ["principals", "catalogue", "repositories", "scored_population"],
+  "steps": [
+    {
+      "as": "hank",
+      "request": { "method": "GET", "path": "/leaderboard?kind=skill&skill=go" },
+      "expect": {
+        "status": 200,
+        "_note": "Dave's Go scores 81 — higher than anyone here — and is absent because it is SECONDARY. Standing gates the board; score orders it.",
+        "body": {
+          "kind": "skill",
+          "skill": { "slug": "go", "name": "Go" },
+          "rubric_version": "v1",
+          "entries": [
+            { "rank": 1, "user_id": "<uuid>", "display_name": "Alice Okafor", "github_login": "aliceok", "score": 64.2 },
+            { "rank": 2, "user_id": "<uuid>", "display_name": "Bob Nakamura", "github_login": "bobn", "score": 55.0 }
+          ]
+        }
+      }
+    },
+    {
+      "as": "hank",
+      "request": { "method": "GET", "path": "/leaderboard?kind=skill" },
+      "expect": {
+        "status": 422,
+        "body": { "error": "invalid_query", "items": [{ "field": "skill", "reason": "required_for_kind_skill" }] }
+      }
+    },
+    {
+      "as": "hank",
+      "request": { "method": "GET", "path": "/leaderboard?kind=popularity" },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "invalid_query",
+          "items": [{ "field": "kind", "reason": "unknown", "allowed": ["overall", "generalist", "skill"] }]
+        }
+      }
+    },
+    {
+      "_step": "A skill nobody holds as primary is an empty board, not a 404. The skill exists; the ranked population does not.",
+      "as": "hank",
+      "request": { "method": "GET", "path": "/leaderboard?kind=skill&skill=pr-review" },
+      "expect": {
+        "status": 200,
+        "body": { "kind": "skill", "skill": { "slug": "pr-review", "name": "PR Review" }, "rubric_version": "v1", "entries": [] }
+      }
+    },
+    {
+      "_step": "Tie-breakers order the board but are NEVER serialized — ADR-0005. No field here exposes merged-contribution counts or follower numbers.",
+      "as": "hank",
+      "request": { "method": "GET", "path": "/leaderboard?kind=overall" },
+      "expect": {
+        "status": 200,
+        "body": {
+          "kind": "overall",
+          "rubric_version": "v1",
+          "entries": [
+            { "rank": 1, "user_id": "<uuid>", "display_name": "Alice Okafor", "github_login": "aliceok", "score": 64.2 },
+            { "rank": 2, "user_id": "<uuid>", "display_name": "Bob Nakamura", "github_login": "bobn", "score": 60.4 },
+            { "rank": 3, "user_id": "<uuid>", "display_name": "Dave Whitfield", "github_login": "dwhit", "score": 58.0 }
+          ]
+        }
+      }
+    },
+    {
+      "_step": "A contributor cannot read a leaderboard at all. They see only their own rank — ADR-0005.",
+      "as": "alice",
+      "request": { "method": "GET", "path": "/leaderboard?kind=overall" },
+      "expect": { "status": 403, "body": { "error": "hirer_required" } }
+    },
+    {
+      "as": "anonymous",
+      "request": { "method": "GET", "path": "/leaderboard?kind=overall" },
+      "expect": { "status": 401, "body": { "error": "unauthenticated" } }
+    },
+    {
+      "_step": "GATE 1 — hiring capability. 403 rather than a redacted body.",
+      "as": "pending_pat",
+      "request": { "method": "GET", "path": "/contributors/01920000-0000-7000-8000-00000000a001/scorecard" },
+      "expect": {
+        "status": 403,
+        "body": { "error": "hiring_capability_required", "hirer_verified": false, "organization_verified": false }
+      }
+    },
+    {
+      "as": "hank",
+      "request": { "method": "GET", "path": "/contributors/01920000-0000-7000-8000-00000000a001/scorecard" },
+      "expect": {
+        "status": 200,
+        "_note": "The full dossier: every scored PR with its per-skill score. This is the product.",
+        "body": {
+          "user": {
+            "id": "01920000-0000-7000-8000-00000000a001",
+            "display_name": "Alice Okafor",
+            "github_login": "aliceok",
+            "availability": "looking_for_job"
+          },
+          "overall_score": 64.2,
+          "generalist_score": 64.2,
+          "rubric_version": "v1",
+          "skills": [
+            {
+              "slug": "go",
+              "name": "Go",
+              "standing": "primary",
+              "distinct_pr_count": 5,
+              "score": 64.2,
+              "rank": 1,
+              "evidence": [
+                { "repo": "acme/bigrepo", "pr_number": 101, "merged_at": "<timestamp>", "score": 79.3 },
+                { "repo": "indie/smalllib", "pr_number": 12, "merged_at": "<timestamp>", "score": 64.4 },
+                { "repo": "acme/bigrepo", "pr_number": 102, "merged_at": "<timestamp>", "score": 62.1 },
+                { "repo": "acme/platform", "pr_number": 55, "merged_at": "<timestamp>", "score": 60.4 },
+                { "repo": "acme/platform", "pr_number": 56, "merged_at": "<timestamp>", "score": 54.8 }
+              ]
+            }
+          ],
+          "email": null
+        }
+      }
+    },
+    {
+      "_step": "email is null until a contact request is accepted. The scorecard is evidence, not contact details.",
+      "as": "hank",
+      "request": { "method": "GET", "path": "/contributors/01920000-0000-7000-8000-00000000a004/scorecard" },
+      "expect": {
+        "status": 200,
+        "_note": "Dave's SECONDARY Go (81.0) appears here, unranked. Standing gates SEARCHABILITY, not disclosure to a hirer already looking at the person.",
+        "body": {
+          "user": {
+            "id": "01920000-0000-7000-8000-00000000a004",
+            "display_name": "Dave Whitfield",
+            "github_login": "dwhit",
+            "availability": "open_to_freelance"
+          },
+          "overall_score": 58.0,
+          "generalist_score": 58.0,
+          "rubric_version": "v1",
+          "skills": [
+            { "slug": "go", "name": "Go", "standing": "secondary", "distinct_pr_count": 4, "score": 81.0, "rank": null, "evidence": [] },
+            {
+              "slug": "kubernetes",
+              "name": "Kubernetes",
+              "standing": "primary",
+              "distinct_pr_count": 5,
+              "score": 58.0,
+              "rank": 1,
+              "evidence": []
+            }
+          ],
+          "email": null
+        }
+      }
+    },
+    {
+      "_step": "GATE 2 — AssertNotSelf. dave_hiring shares a GitHub identity with contributor dave.",
+      "as": "dave_hiring",
+      "request": { "method": "GET", "path": "/contributors/01920000-0000-7000-8000-00000000a004/scorecard" },
+      "expect": {
+        "status": 404,
+        "_note": "404, matching how search excludes rather than explains. A 403 would confirm the identity link.",
+        "body": { "error": "contributor_not_found" }
+      }
+    },
+    {
+      "as": "dave_hiring",
+      "request": { "method": "GET", "path": "/contributors/01920000-0000-7000-8000-00000000a001/scorecard" },
+      "expect": {
+        "status": 200,
+        "_note": "Everyone else is unaffected. The exclusion is identity-scoped, not a general hide.",
+        "body": {
+          "user": {
+            "id": "01920000-0000-7000-8000-00000000a001",
+            "display_name": "Alice Okafor",
+            "github_login": "aliceok",
+            "availability": "looking_for_job"
+          },
+          "overall_score": 64.2,
+          "generalist_score": 64.2,
+          "rubric_version": "v1",
+          "skills": [
+            { "slug": "go", "name": "Go", "standing": "primary", "distinct_pr_count": 5, "score": 64.2, "rank": 1, "evidence": [] }
+          ],
+          "email": null
+        }
+      }
+    },
+    {
+      "_step": "GATE 3 — the availability window. Carol is seeded with a LAPSED window and is unreadable even by id.",
+      "as": "hank",
+      "request": { "method": "GET", "path": "/contributors/01920000-0000-7000-8000-00000000a003/scorecard" },
+      "expect": {
+        "status": 404,
+        "_note": "Same gate as search, applied to the direct read. Otherwise a hirer who noted the id once keeps access forever.",
+        "body": { "error": "contributor_not_found" }
+      }
+    },
+    {
+      "as": "carol",
+      "request": { "method": "PUT", "path": "/me/availability", "body": { "status": "looking_for_job" } },
+      "expect": { "status": 200, "body": { "status": "looking_for_job", "expires_at": "<timestamp>" } }
+    },
+    {
+      "as": "hank",
+      "request": { "method": "GET", "path": "/contributors/01920000-0000-7000-8000-00000000a003/scorecard" },
+      "expect": {
+        "status": 200,
+        "body": {
+          "user": {
+            "id": "01920000-0000-7000-8000-00000000a003",
+            "display_name": "Carol Diaz",
+            "github_login": "cdiaz",
+            "availability": "looking_for_job"
+          },
+          "overall_score": 71.5,
+          "generalist_score": 71.5,
+          "rubric_version": "v1",
+          "skills": [
+            {
+              "slug": "postgres",
+              "name": "PostgreSQL",
+              "standing": "primary",
+              "distinct_pr_count": 5,
+              "score": 71.5,
+              "rank": 1,
+              "evidence": []
+            }
+          ],
+          "email": null
+        }
+      }
+    },
+    {
+      "_step": "A contributor cannot read another contributor's scorecard. This is not a social network.",
+      "as": "bob",
+      "request": { "method": "GET", "path": "/contributors/01920000-0000-7000-8000-00000000a001/scorecard" },
+      "expect": { "status": 403, "body": { "error": "hirer_required" } }
+    },
+    {
+      "_step": "The PUBLIC scorecard is a different document, reached only by a share token the contributor minted — ADR-0002.",
+      "as": "alice",
+      "request": { "method": "POST", "path": "/me/share-link", "body": {} },
+      "capture": { "share_token": "$.token", "share_link_id": "$.id" },
+      "expect": { "status": 201, "body": { "id": "<uuid>", "token": "<token>", "url": "<string>", "created_at": "<timestamp>" } }
+    },
+    {
+      "as": "anonymous",
+      "request": { "method": "GET", "path": "/public/scorecard/{{share_token}}" },
+      "expect": {
+        "status": 200,
+        "_note": "No rank, no generalist score, no email — a contributor publishing their own evidence is not publishing their position against other people.",
+        "body": {
+          "user": { "display_name": "Alice Okafor", "github_login": "aliceok" },
+          "overall_score": 64.2,
+          "rubric_version": "v1",
+          "skills": [
+            {
+              "slug": "go",
+              "name": "Go",
+              "standing": "primary",
+              "distinct_pr_count": 5,
+              "score": 64.2,
+              "evidence": [{ "repo": "acme/bigrepo", "pr_number": 101, "merged_at": "<timestamp>", "score": 79.3 }]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "_step": "The share link is NOT subject to the availability gate — it is the contributor's own publication, not a search result.",
+      "as": "anonymous",
+      "request": { "method": "GET", "path": "/public/scorecard/not-a-real-token" },
+      "expect": { "status": 404, "body": { "error": "scorecard_not_found" } }
+    },
+    {
+      "as": "alice",
+      "request": { "method": "DELETE", "path": "/me/share-link/{{share_link_id}}" },
+      "expect": { "status": 204, "body": null }
+    },
+    {
+      "as": "anonymous",
+      "request": { "method": "GET", "path": "/public/scorecard/{{share_token}}" },
+      "expect": {
+        "status": 404,
+        "_note": "Revocation is immediate. A published link the contributor withdrew must stop resolving.",
+        "body": { "error": "scorecard_not_found" }
+      }
+    }
+  ]
+}

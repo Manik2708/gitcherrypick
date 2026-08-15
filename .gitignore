@@ -24,3 +24,6 @@ npm-debug.log*
 
 # Claude Code — machine-local overrides only; settings.json IS committed
 .claude/settings.local.json
+
+# Python tooling venv (scripts/requirements.txt)
+.venv/

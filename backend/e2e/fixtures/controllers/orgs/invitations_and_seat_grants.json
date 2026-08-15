@@ -1,0 +1,378 @@
+{
+  "name": "an organization self-administers its seats, and an invitation inherits verification",
+  "description": "ADR-0002: 'org self-administers (no admin involvement)'. Once an organization is verified, adding a colleague is the org's decision, not a platform decision — requiring an admin to approve every recruiter at a verified company would make the queue unworkable and buys nothing, since the org already vouched for itself.\n\nThe consequence under test is that an invited member inherits hiring capability from the ORGANIZATION rather than earning it individually. That is the whole point of verifying an org rather than a person. The counterpart is that an UNVERIFIED org's invitation grants nothing, so invitation is not a route around verification.",
+  "seed": ["principals"],
+  "steps": [
+    {
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/orgs/01920000-0000-7000-8000-00000000b001/invitations",
+        "body": {
+          "email": "rita@acme.com",
+          "role": "member"
+        }
+      },
+      "capture": {
+        "invite_token": "$.token"
+      },
+      "expect": {
+        "status": 201,
+        "_note": "The token is returned once, at creation, and only the hash is stored. It is delivered by email through port.Notifier.",
+        "body": {
+          "id": "<uuid>",
+          "email": "rita@acme.com",
+          "role": "member",
+          "organization": {
+            "id": "01920000-0000-7000-8000-00000000b001",
+            "name": "Acme Corp"
+          },
+          "invited_by": "01920000-0000-7000-8000-00000000c001",
+          "token": "<token>",
+          "expires_at": "<timestamp>",
+          "created_at": "<timestamp>"
+        },
+        "db": {
+          "organization_invitations": {
+            "where": {
+              "email": "rita@acme.com"
+            },
+            "count": 1,
+            "all_match": {
+              "accepted_at": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "_step": "A member of ANOTHER org cannot invite into Acme, even though sam is a verified hirer with an owner role in their own org.",
+      "as": "sam_studio",
+      "request": {
+        "method": "POST",
+        "path": "/orgs/01920000-0000-7000-8000-00000000b001/invitations",
+        "body": {
+          "email": "intruder@acme.com",
+          "role": "owner"
+        }
+      },
+      "expect": {
+        "status": 403,
+        "body": {
+          "error": "not_an_org_member"
+        },
+        "db": {
+          "organization_invitations": {
+            "where": {
+              "email": "intruder@acme.com"
+            },
+            "count": 0
+          }
+        }
+      }
+    },
+    {
+      "_step": "Accepting creates the hirer account and the membership together. No admin touched this.",
+      "as": "anonymous",
+      "request": {
+        "method": "POST",
+        "path": "/orgs/invitations/{{invite_token}}/accept",
+        "body": {
+          "display_name": "Rita Sandoval",
+          "password": "correct-horse-battery"
+        }
+      },
+      "expect": {
+        "status": 201,
+        "body": {
+          "hirer": {
+            "id": "<uuid>",
+            "display_name": "Rita Sandoval",
+            "email": "rita@acme.com",
+            "principal_type": "hirer",
+            "_note": "verified is true because ACME is verified. Capability is a property of the organization — ADR-0002.",
+            "verified": true,
+            "organization": {
+              "id": "01920000-0000-7000-8000-00000000b001",
+              "name": "Acme Corp",
+              "verified": true,
+              "payment_verified": true
+            }
+          },
+          "access_token": "<token>",
+          "refresh_token": "<token>",
+          "expires_in": 900
+        },
+        "db": {
+          "organization_members": {
+            "where": {
+              "organization_id": "01920000-0000-7000-8000-00000000b001"
+            },
+            "count": 3
+          },
+          "organization_invitations": {
+            "where": {
+              "email": "rita@acme.com"
+            },
+            "none_match": {
+              "accepted_at": null
+            }
+          },
+          "verification_requests": {
+            "_note": "No verification request is created. The org already carries one.",
+            "where": {
+              "hirer_email": "rita@acme.com"
+            },
+            "count": 0
+          }
+        }
+      }
+    },
+    {
+      "_step": "A token is single-use. Replaying it after acceptance is refused.",
+      "as": "anonymous",
+      "request": {
+        "method": "POST",
+        "path": "/orgs/invitations/{{invite_token}}/accept",
+        "body": {
+          "display_name": "Someone Else",
+          "password": "correct-horse-battery"
+        }
+      },
+      "expect": {
+        "status": 410,
+        "body": {
+          "error": "invitation_already_accepted"
+        }
+      }
+    },
+    {
+      "as": "anonymous",
+      "request": {
+        "method": "POST",
+        "path": "/orgs/invitations/not-a-real-token/accept",
+        "body": {
+          "display_name": "Nobody",
+          "password": "correct-horse-battery"
+        }
+      },
+      "expect": {
+        "status": 404,
+        "_note": "404 and not 403. A distinguishable response would let an attacker probe for live invitation tokens.",
+        "body": {
+          "error": "invitation_not_found"
+        }
+      }
+    },
+    {
+      "_step": "An UNVERIFIED org may still invite — it is their seat to fill — but the seat carries no capability.",
+      "as": "pending_pat",
+      "request": {
+        "method": "POST",
+        "path": "/orgs/01920000-0000-7000-8000-00000000b003/invitations",
+        "body": {
+          "email": "colleague@unknown.example",
+          "role": "member"
+        }
+      },
+      "capture": {
+        "unverified_invite": "$.token"
+      },
+      "expect": {
+        "status": 201,
+        "body": {
+          "id": "<uuid>",
+          "email": "colleague@unknown.example",
+          "role": "member",
+          "organization": {
+            "id": "01920000-0000-7000-8000-00000000b003",
+            "name": "Unknown Ltd"
+          },
+          "invited_by": "01920000-0000-7000-8000-00000000c002",
+          "token": "<token>",
+          "expires_at": "<timestamp>",
+          "created_at": "<timestamp>"
+        }
+      }
+    },
+    {
+      "as": "anonymous",
+      "request": {
+        "method": "POST",
+        "path": "/orgs/invitations/{{unverified_invite}}/accept",
+        "body": {
+          "display_name": "Colleague Chen",
+          "password": "correct-horse-battery"
+        }
+      },
+      "capture": {
+        "colleague_id": "$.hirer.id",
+        "colleague_access_token": "$.access_token"
+      },
+      "expect": {
+        "status": 201,
+        "_note": "verified is FALSE. Invitation is not a route around verification — an unverified org can only ever invite people into an unverified org.",
+        "body": {
+          "hirer": {
+            "id": "<uuid>",
+            "display_name": "Colleague Chen",
+            "email": "colleague@unknown.example",
+            "principal_type": "hirer",
+            "verified": false,
+            "organization": {
+              "id": "01920000-0000-7000-8000-00000000b003",
+              "name": "Unknown Ltd",
+              "verified": false,
+              "payment_verified": false
+            }
+          },
+          "access_token": "<token>",
+          "refresh_token": "<token>",
+          "expires_in": 900
+        }
+      }
+    },
+    {
+      "_step": "The invited colleague inherits exactly what the org has, which is nothing.",
+      "as": "anonymous",
+      "request": {
+        "method": "GET",
+        "path": "/search?skills=go",
+        "headers": {
+          "Authorization": "Bearer {{colleague_access_token}}"
+        }
+      },
+      "expect": {
+        "status": 403,
+        "body": {
+          "error": "hiring_capability_required",
+          "hirer_verified": false,
+          "organization_verified": false
+        }
+      }
+    },
+    {
+      "_step": "Verifying the ORG lifts every seat at once, including the one invited while unverified.",
+      "as": "root",
+      "request": {
+        "method": "POST",
+        "path": "/admin/verifications/{{pending_pat.verification_id}}/decide",
+        "body": {
+          "decision": "approved",
+          "note": "Companies House record matches; domain verified."
+        }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "id": "<uuid>",
+          "status": "approved",
+          "reviewed_by": "01920000-0000-7000-8000-00000000d001",
+          "reviewed_at": "<timestamp>"
+        },
+        "db": {
+          "hirer_accounts": {
+            "_note": "Both Pat and the colleague they invited become capable. Verification is per organization.",
+            "where": {
+              "organization_id": "01920000-0000-7000-8000-00000000b003"
+            },
+            "count": 2,
+            "all_match": {
+              "verified": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "as": "pending_pat",
+      "request": {
+        "method": "GET",
+        "path": "/search?skills=go"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "total": 0,
+          "results": [],
+          "page": 1,
+          "per_page": 20
+        }
+      }
+    },
+    {
+      "_step": "An expired invitation cannot be accepted. 14 days, per ADR-0002.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/orgs/01920000-0000-7000-8000-00000000b001/invitations",
+        "body": {
+          "email": "slow@acme.com",
+          "role": "member"
+        }
+      },
+      "capture": {
+        "stale_invite": "$.token"
+      },
+      "expect": {
+        "status": 201,
+        "body": {
+          "id": "<uuid>",
+          "email": "slow@acme.com",
+          "role": "member",
+          "organization": {
+            "id": "01920000-0000-7000-8000-00000000b001",
+            "name": "Acme Corp"
+          },
+          "invited_by": "01920000-0000-7000-8000-00000000c001",
+          "token": "<token>",
+          "expires_at": "<timestamp>",
+          "created_at": "<timestamp>"
+        }
+      }
+    },
+    {
+      "as": "system",
+      "request": {
+        "method": "ADVANCE_CLOCK",
+        "path": "/"
+      },
+      "fake": {
+        "clock": {
+          "advance": "15d"
+        }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "now": "<timestamp>"
+        }
+      }
+    },
+    {
+      "as": "anonymous",
+      "request": {
+        "method": "POST",
+        "path": "/orgs/invitations/{{stale_invite}}/accept",
+        "body": {
+          "display_name": "Slow Coach",
+          "password": "correct-horse-battery"
+        }
+      },
+      "expect": {
+        "status": 410,
+        "body": {
+          "error": "invitation_expired"
+        },
+        "db": {
+          "hirer_accounts": {
+            "where": {
+              "email": "slow@acme.com"
+            },
+            "count": 0
+          }
+        }
+      }
+    }
+  ]
+}

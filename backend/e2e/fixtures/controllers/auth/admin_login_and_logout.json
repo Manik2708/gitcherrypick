@@ -1,0 +1,105 @@
+{
+  "name": "admin sign-in is its own path, and logout revokes the whole family",
+  "description": "ADR-0002. Admins authenticate through POST /auth/admin/login only — there is no OAuth path to an admin session, because an admin decides hirer verification and could otherwise be minted by whoever controls an identity provider account.\n\nLogout revokes the refresh FAMILY rather than the presented token. The reuse-detection case already proves a replayed token kills the family; this proves a deliberate sign-out does the same thing, so a stolen refresh token issued before logout is dead afterwards.",
+  "seed": ["principals"],
+  "steps": [
+    {
+      "as": "anonymous",
+      "request": {
+        "method": "POST",
+        "path": "/auth/admin/login",
+        "body": { "email": "admin@gitcherrypick.test", "password": "correct-horse-battery" }
+      },
+      "capture": { "admin_refresh": "$.refresh_token" },
+      "expect": {
+        "status": 200,
+        "body": {
+          "admin": {
+            "id": "01920000-0000-7000-8000-00000000d001",
+            "display_name": "Root Admin",
+            "email": "admin@gitcherrypick.test",
+            "principal_type": "admin"
+          },
+          "access_token": "<token>",
+          "refresh_token": "<token>",
+          "expires_in": 900
+        }
+      }
+    },
+    {
+      "_step": "A hirer's credentials are not admin credentials, even though both are email/password.",
+      "as": "anonymous",
+      "request": {
+        "method": "POST",
+        "path": "/auth/admin/login",
+        "body": { "email": "hank@acme.com", "password": "correct-horse-battery" }
+      },
+      "expect": { "status": 401, "body": { "error": "invalid_credentials" } }
+    },
+    {
+      "_step": "The admin session reaches an admin surface.",
+      "as": "root",
+      "request": { "method": "GET", "path": "/admin/verifications" },
+      "expect": {
+        "status": 200,
+        "body": {
+          "total": 1,
+          "requests": [
+            {
+              "id": "<uuid>",
+              "hirer": { "id": "01920000-0000-7000-8000-00000000c002", "display_name": "Pat Ferreira", "email": "pat@unknown.example" },
+              "organization": { "id": "01920000-0000-7000-8000-00000000b003", "name": "Unknown Ltd" },
+              "status": "pending",
+              "created_at": "<timestamp>"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "_step": "A verified hirer is still not an admin. Principal type is checked, not merely authentication.",
+      "as": "hank",
+      "request": { "method": "GET", "path": "/admin/verifications" },
+      "expect": { "status": 403, "body": { "error": "admin_required" } }
+    },
+    {
+      "as": "alice",
+      "request": { "method": "GET", "path": "/admin/verifications" },
+      "expect": { "status": 403, "body": { "error": "admin_required" } }
+    },
+    {
+      "_step": "Now log out. The refresh token captured above belongs to this family.",
+      "as": "root",
+      "request": { "method": "POST", "path": "/auth/logout", "body": {} },
+      "expect": {
+        "status": 204,
+        "body": null,
+        "db": {
+          "sessions": {
+            "_note": "Every session in the family is revoked, not only the one that presented the access token.",
+            "where": { "principal_id": "01920000-0000-7000-8000-00000000d001", "revoked_at": null },
+            "count": 0
+          }
+        }
+      }
+    },
+    {
+      "_step": "The refresh token issued at login is dead after sign-out.",
+      "as": "anonymous",
+      "request": { "method": "POST", "path": "/auth/refresh", "body": { "refresh_token": "{{admin_refresh}}" } },
+      "expect": { "status": 401, "body": { "error": "invalid_refresh_token" } }
+    },
+    {
+      "_step": "And the access token no longer resolves to a principal.",
+      "as": "root",
+      "request": { "method": "GET", "path": "/admin/verifications" },
+      "expect": { "status": 401, "body": { "error": "unauthenticated" } }
+    },
+    {
+      "_step": "Logout is idempotent — signing out twice is not an error worth surfacing.",
+      "as": "anonymous",
+      "request": { "method": "POST", "path": "/auth/logout", "body": {} },
+      "expect": { "status": 204, "body": null }
+    }
+  ]
+}

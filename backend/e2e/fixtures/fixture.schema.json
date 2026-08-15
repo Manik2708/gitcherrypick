@@ -1,0 +1,156 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gitcherrypick.dev/schemas/fixture.schema.json",
+  "title": "GitCherryPick integration fixture",
+  "description": "One snapshot case. Structure only — cross-file checks (seed names, capture resolution, principal keys) are enforced by scripts/validate-fixtures.mjs, which validates against this schema first.",
+  "type": "object",
+  "required": ["name", "description", "seed", "steps"],
+  "additionalProperties": false,
+  "properties": {
+    "name": {
+      "type": "string",
+      "minLength": 8,
+      "description": "Human label. Becomes the Go subtest name."
+    },
+    "description": {
+      "type": "string",
+      "minLength": 40,
+      "description": "Why this case exists and which ADR it encodes. A fixture nobody can explain is a fixture nobody can safely change, so this is required and cannot be a stub."
+    },
+    "seed": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/seedSet" },
+      "uniqueItems": true,
+      "description": "Named seed sets loaded before the case. Empty means a bare database."
+    },
+    "steps": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/step" }
+    }
+  },
+  "patternProperties": { "^_": { "description": "Comment. Ignored by the runner, preserved by -update." } },
+  "$defs": {
+    "seedSet": {
+      "enum": ["principals", "catalogue", "repositories", "alice_go_primary", "scored_population"],
+      "description": "Closed set. A seed name not listed here does not exist in seed/ and would silently load nothing."
+    },
+    "principal": {
+      "enum": ["anonymous", "system", "alice", "bob", "carol", "dave", "hank", "pending_pat", "sam_studio", "dave_hiring", "root"],
+      "description": "Keys from seed/principals.json, plus 'anonymous' (no session) and 'system' (harness-driven, not an HTTP caller)."
+    },
+    "step": {
+      "type": "object",
+      "required": ["request", "expect"],
+      "additionalProperties": false,
+      "properties": {
+        "as": { "$ref": "#/$defs/principal" },
+        "request": { "$ref": "#/$defs/request" },
+        "expect": { "$ref": "#/$defs/expect" },
+        "capture": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": { "type": "string", "pattern": "^\\$\\." },
+          "propertyNames": { "pattern": "^[a-z][a-z0-9_]*$" },
+          "description": "Explicit captures, when the automatic ^[a-z_]+_id$ rule is not enough. Values are JSONPath rooted at $."
+        },
+        "fake": { "$ref": "#/$defs/fake" }
+      },
+      "patternProperties": { "^_": {} }
+    },
+    "request": {
+      "type": "object",
+      "required": ["method", "path"],
+      "additionalProperties": false,
+      "properties": {
+        "method": {
+          "enum": [
+            "GET",
+            "POST",
+            "PUT",
+            "PATCH",
+            "DELETE",
+            "RUN_EVALUATOR",
+            "RUN_OVERDUE_SWEEP",
+            "ADVANCE_CLOCK",
+            "REDELIVER_LAST_JOB",
+            "REJECT_N_REEVALUATIONS"
+          ],
+          "description": "HTTP verbs, plus harness pseudo-methods that drive the evaluator, the clock, and the daily jobs. A pseudo-method is not an endpoint and must never appear in the routing table."
+        },
+        "path": { "type": "string", "pattern": "^/" },
+        "headers": { "type": "object", "additionalProperties": { "type": "string" } },
+        "body": {}
+      },
+      "patternProperties": { "^_": {} }
+    },
+    "expect": {
+      "type": "object",
+      "required": ["status"],
+      "additionalProperties": false,
+      "properties": {
+        "status": { "type": "integer", "minimum": 100, "maximum": 599 },
+        "body": {},
+        "db": {
+          "type": "object",
+          "minProperties": 1,
+          "patternProperties": { "^_": {} },
+          "additionalProperties": { "$ref": "#/$defs/dbAssertion" },
+          "propertyNames": {
+            "pattern": "^_|^[a-z][a-z0-9_]*$",
+            "description": "A table name, or a _-prefixed comment."
+          },
+          "description": "SQL assertions for state the API does not return — standing, link status, cooldown tier."
+        }
+      },
+      "patternProperties": { "^_": {} }
+    },
+    "dbAssertion": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": false,
+      "properties": {
+        "where": { "type": "object" },
+        "count": { "type": "integer", "minimum": 0 },
+        "all_match": { "type": "object", "minProperties": 1 },
+        "none_match": { "type": "object", "minProperties": 1 },
+        "same_value": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+          "minItems": 1,
+          "uniqueItems": true,
+          "description": "Columns that must hold the same value across every matched row — e.g. a rotated session family sharing one family_id."
+        }
+      },
+      "patternProperties": { "^_": {} }
+    },
+    "fake": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": false,
+      "properties": {
+        "github": { "type": "object" },
+        "google": { "type": "object" },
+        "ai": { "type": "object" },
+        "clock": {
+          "type": "object",
+          "minProperties": 1,
+          "maxProperties": 1,
+          "additionalProperties": false,
+          "properties": {
+            "set": { "type": "string", "format": "date-time", "description": "Absolute. Pins the clock to an instant." },
+            "advance": {
+              "type": "string",
+              "pattern": "^([0-9]+d)?([0-9]+h)?([0-9]+m)?$",
+              "minLength": 2,
+              "description": "Relative, as a Go-style duration with a day unit — '28d', '7d1h'. One form only: 'advance_days: 15' and 'advance: 15d' would be two spellings of one idea."
+            }
+          }
+        },
+        "rubric": { "type": "object" }
+      },
+      "patternProperties": { "^_": {} },
+      "description": "Fake-adapter state for this step. Every external dependency is an interface (ADR-0001), so a fixture states the facts it needs and nothing is fetched."
+    }
+  }
+}

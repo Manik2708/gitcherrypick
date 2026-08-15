@@ -1,0 +1,273 @@
+{
+  "name": "the admin skill-request queue is the only way the catalogue grows",
+  "description": "RFC-0008 §8. RFC-0003 specifies POST /skill-requests and its auto-dedupe, but nothing that drains the queue — so without this endpoint the catalogue is immutable after seeding and every contributor working outside the seeded four is permanently unclaimable.\n\nThe skills/ case covers the contributor side: aliases, trigram dedupe, the 3-per-week limit. This is the admin side. Approving is a WRITE to the catalogue and therefore the sharpest privilege on the platform — a bad slug fragments a population forever, since standing is per skill and the two spellings never merge. So: admin only, slug uniqueness enforced against names and aliases both, and rejection carries a reason the requester can read.",
+  "seed": ["principals", "catalogue"],
+  "steps": [
+    {
+      "as": "alice",
+      "request": {
+        "method": "POST",
+        "path": "/skill-requests",
+        "body": { "proposed_name": "WebAssembly", "rationale": "Compiled three runtimes to wasm; no catalogue entry covers it." }
+      },
+      "capture": { "wasm_request": "$.id" },
+      "expect": {
+        "status": 201,
+        "body": { "id": "<uuid>", "proposed_name": "WebAssembly", "status": "pending", "created_at": "<timestamp>" }
+      }
+    },
+    {
+      "as": "bob",
+      "request": {
+        "method": "POST",
+        "path": "/skill-requests",
+        "body": { "proposed_name": "Rust", "rationale": "Three years of systems work." }
+      },
+      "capture": { "rust_request": "$.id" },
+      "expect": { "status": 201, "body": { "id": "<uuid>", "proposed_name": "Rust", "status": "pending", "created_at": "<timestamp>" } }
+    },
+    {
+      "as": "carol",
+      "request": { "method": "POST", "path": "/skill-requests", "body": { "proposed_name": "Agile", "rationale": "I run our standups." } },
+      "capture": { "agile_request": "$.id" },
+      "expect": { "status": 201, "body": { "id": "<uuid>", "proposed_name": "Agile", "status": "pending", "created_at": "<timestamp>" } }
+    },
+    {
+      "_step": "The queue is admin-only. A contributor cannot read what others proposed, and a hirer has no business here at all.",
+      "as": "alice",
+      "request": { "method": "GET", "path": "/admin/skill-requests" },
+      "expect": { "status": 403, "body": { "error": "admin_required" } }
+    },
+    {
+      "as": "hank",
+      "request": { "method": "GET", "path": "/admin/skill-requests" },
+      "expect": { "status": 403, "body": { "error": "admin_required" } }
+    },
+    {
+      "as": "root",
+      "request": { "method": "GET", "path": "/admin/skill-requests" },
+      "expect": {
+        "status": 200,
+        "_note": "Oldest first — a queue, not a feed. The requester is shown because a pattern of junk from one account is itself signal.",
+        "body": {
+          "total": 3,
+          "requests": [
+            {
+              "id": "<uuid>",
+              "proposed_name": "WebAssembly",
+              "rationale": "Compiled three runtimes to wasm; no catalogue entry covers it.",
+              "requested_by": { "id": "01920000-0000-7000-8000-00000000a001", "display_name": "Alice Okafor" },
+              "status": "pending",
+              "created_at": "<timestamp>"
+            },
+            {
+              "id": "<uuid>",
+              "proposed_name": "Rust",
+              "rationale": "Three years of systems work.",
+              "requested_by": { "id": "01920000-0000-7000-8000-00000000a002", "display_name": "Bob Nakamura" },
+              "status": "pending",
+              "created_at": "<timestamp>"
+            },
+            {
+              "id": "<uuid>",
+              "proposed_name": "Agile",
+              "rationale": "I run our standups.",
+              "requested_by": { "id": "01920000-0000-7000-8000-00000000a003", "display_name": "Carol Diaz" },
+              "status": "pending",
+              "created_at": "<timestamp>"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "as": "root",
+      "request": {
+        "method": "POST",
+        "path": "/admin/skill-requests/{{wasm_request}}/decide",
+        "body": { "decision": "approved", "slug": "webassembly", "name": "WebAssembly", "category": "language", "aliases": ["wasm"] }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "id": "<uuid>",
+          "status": "approved",
+          "created_skill": { "id": "<uuid>", "slug": "webassembly", "name": "WebAssembly", "category": "language" },
+          "reviewed_by": "01920000-0000-7000-8000-00000000d001",
+          "reviewed_at": "<timestamp>"
+        },
+        "db": {
+          "skills": { "where": { "slug": "webassembly" }, "count": 1 },
+          "skill_aliases": { "where": { "alias": "wasm" }, "count": 1 }
+        }
+      }
+    },
+    {
+      "_step": "Approving with a slug that collides with an existing SKILL is refused. This is the fragmentation guard.",
+      "as": "root",
+      "request": {
+        "method": "POST",
+        "path": "/admin/skill-requests/{{rust_request}}/decide",
+        "body": { "decision": "approved", "slug": "go", "name": "Rust", "category": "language", "aliases": [] }
+      },
+      "expect": {
+        "status": 409,
+        "body": { "error": "slug_taken", "existing_skill": { "slug": "go", "name": "Go" } },
+        "db": { "skills": { "where": { "name": "Rust" }, "count": 0 } }
+      }
+    },
+    {
+      "_step": "...and a slug colliding with an existing ALIAS is refused too. 'golang' is not claimable, so it must not become claimable through the back door.",
+      "as": "root",
+      "request": {
+        "method": "POST",
+        "path": "/admin/skill-requests/{{rust_request}}/decide",
+        "body": { "decision": "approved", "slug": "golang", "name": "Rust", "category": "language", "aliases": [] }
+      },
+      "expect": {
+        "status": 409,
+        "body": { "error": "slug_taken", "conflicting_alias": "golang", "existing_skill": { "slug": "go", "name": "Go" } }
+      }
+    },
+    {
+      "_step": "An alias that collides is refused on the same grounds.",
+      "as": "root",
+      "request": {
+        "method": "POST",
+        "path": "/admin/skill-requests/{{rust_request}}/decide",
+        "body": { "decision": "approved", "slug": "rust", "name": "Rust", "category": "language", "aliases": ["k8s"] }
+      },
+      "expect": {
+        "status": 409,
+        "body": { "error": "alias_taken", "conflicting_alias": "k8s", "existing_skill": { "slug": "kubernetes", "name": "Kubernetes" } }
+      }
+    },
+    {
+      "as": "root",
+      "request": {
+        "method": "POST",
+        "path": "/admin/skill-requests/{{rust_request}}/decide",
+        "body": { "decision": "approved", "slug": "rust", "name": "Rust", "category": "language", "aliases": ["rustlang"] }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "id": "<uuid>",
+          "status": "approved",
+          "created_skill": { "id": "<uuid>", "slug": "rust", "name": "Rust", "category": "language" },
+          "reviewed_by": "01920000-0000-7000-8000-00000000d001",
+          "reviewed_at": "<timestamp>"
+        }
+      }
+    },
+    {
+      "_step": "Rejection requires a reason the requester will read. 'No' without a reason produces a resubmission.",
+      "as": "root",
+      "request": { "method": "POST", "path": "/admin/skill-requests/{{agile_request}}/decide", "body": { "decision": "rejected" } },
+      "expect": { "status": 422, "body": { "error": "reason_required", "message": "A rejection must carry a reason." } }
+    },
+    {
+      "as": "root",
+      "request": {
+        "method": "POST",
+        "path": "/admin/skill-requests/{{agile_request}}/decide",
+        "body": {
+          "decision": "rejected",
+          "reason": "Not demonstrable from a merged pull request. The catalogue holds skills a diff can evidence."
+        }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "id": "<uuid>",
+          "status": "rejected",
+          "reason": "Not demonstrable from a merged pull request. The catalogue holds skills a diff can evidence.",
+          "reviewed_by": "01920000-0000-7000-8000-00000000d001",
+          "reviewed_at": "<timestamp>"
+        },
+        "db": { "skills": { "where": { "slug": "agile" }, "count": 0 } }
+      }
+    },
+    {
+      "_step": "A decision is final. Re-deciding is a conflict, not an overwrite — the catalogue is not edited through this queue.",
+      "as": "root",
+      "request": {
+        "method": "POST",
+        "path": "/admin/skill-requests/{{agile_request}}/decide",
+        "body": { "decision": "approved", "slug": "agile", "name": "Agile", "category": "process", "aliases": [] }
+      },
+      "expect": { "status": 409, "body": { "error": "request_already_decided", "status": "rejected" } }
+    },
+    {
+      "as": "root",
+      "request": { "method": "GET", "path": "/admin/skill-requests" },
+      "expect": {
+        "status": 200,
+        "_note": "The queue holds only what still needs a decision. Decided requests are read through ?status=.",
+        "body": { "total": 0, "requests": [] }
+      }
+    },
+    {
+      "as": "root",
+      "request": { "method": "GET", "path": "/admin/skill-requests?status=rejected" },
+      "expect": {
+        "status": 200,
+        "body": {
+          "total": 1,
+          "requests": [
+            {
+              "id": "<uuid>",
+              "proposed_name": "Agile",
+              "rationale": "I run our standups.",
+              "requested_by": { "id": "01920000-0000-7000-8000-00000000a003", "display_name": "Carol Diaz" },
+              "status": "rejected",
+              "reason": "Not demonstrable from a merged pull request. The catalogue holds skills a diff can evidence.",
+              "created_at": "<timestamp>",
+              "reviewed_at": "<timestamp>"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "_step": "The approved skills are immediately claimable, aliases and all. This is the catalogue growing.",
+      "as": "alice",
+      "request": { "method": "GET", "path": "/skills?q=wasm" },
+      "expect": {
+        "status": 200,
+        "body": {
+          "results": [
+            { "slug": "webassembly", "name": "WebAssembly", "category": "language", "matched_via": "alias", "matched_alias": "wasm" }
+          ]
+        }
+      }
+    },
+    {
+      "as": "bob",
+      "request": { "method": "GET", "path": "/skills?q=rustlang" },
+      "expect": {
+        "status": 200,
+        "body": {
+          "results": [{ "slug": "rust", "name": "Rust", "category": "language", "matched_via": "alias", "matched_alias": "rustlang" }]
+        }
+      }
+    },
+    {
+      "_step": "And the newly-approved name now deduplicates future requests, so the same proposal cannot queue twice.",
+      "as": "dave",
+      "request": {
+        "method": "POST",
+        "path": "/skill-requests",
+        "body": { "proposed_name": "Web Assembly", "rationale": "Wasm runtime work." }
+      },
+      "expect": {
+        "status": 409,
+        "body": {
+          "error": "skill_already_exists",
+          "matched_skill": { "slug": "webassembly", "name": "WebAssembly" },
+          "message": "'Web Assembly' matches the existing skill 'WebAssembly'."
+        }
+      }
+    }
+  ]
+}

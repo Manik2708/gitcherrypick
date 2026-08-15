@@ -1,0 +1,33 @@
+name: check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: scripts/requirements.txt
+
+      - run: npm ci
+      - run: pip install -r scripts/requirements.txt
+
+      # Same commands as `make check`, split so a failure names which one broke.
+      - name: formatting
+        run: npx prettier --check .
+
+      - name: fixtures
+        run: python scripts/validate_fixtures.py

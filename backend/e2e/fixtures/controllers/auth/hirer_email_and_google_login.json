@@ -1,0 +1,169 @@
+{
+  "name": "hirers sign in by email or Google, and never through the contributor path",
+  "description": "ADR-0002. Hirers have two entry points — an email/password path created by registration, and Google OAuth. Both land on the same account when the email matches, because an org buys seats for people, not for authentication methods.\n\nThe security property under test is that the paths are not interchangeable across principal types: a contributor's email is not a hirer credential, and a hirer cannot obtain a contributor session by presenting a GitHub identity. An unverified hirer may sign in — registration is not the gate, verification is (ADR-0002) — and gets a session that fails RequireHiringCapability on first use.",
+  "seed": ["principals"],
+  "steps": [
+    {
+      "as": "anonymous",
+      "request": {
+        "method": "POST",
+        "path": "/auth/hirer/login",
+        "body": { "email": "sam@tinystudio.example", "password": "correct-horse-battery" }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "hirer": {
+            "id": "01920000-0000-7000-8000-00000000c003",
+            "display_name": "Sam Ortega",
+            "email": "sam@tinystudio.example",
+            "principal_type": "hirer",
+            "verified": true,
+            "organization": {
+              "id": "01920000-0000-7000-8000-00000000b002",
+              "name": "Tiny Studio",
+              "verified": true,
+              "payment_verified": false
+            }
+          },
+          "access_token": "<token>",
+          "refresh_token": "<token>",
+          "expires_in": 900
+        }
+      }
+    },
+    {
+      "_step": "Wrong password. Same shape and same timing as an unknown email — neither confirms the account exists.",
+      "as": "anonymous",
+      "request": { "method": "POST", "path": "/auth/hirer/login", "body": { "email": "sam@tinystudio.example", "password": "wrong" } },
+      "expect": { "status": 401, "body": { "error": "invalid_credentials" } }
+    },
+    {
+      "as": "anonymous",
+      "request": { "method": "POST", "path": "/auth/hirer/login", "body": { "email": "nobody@nowhere.example", "password": "wrong" } },
+      "expect": {
+        "status": 401,
+        "_note": "Byte-identical to the wrong-password response. An enumeration oracle on hirer emails would leak which companies are recruiting.",
+        "body": { "error": "invalid_credentials" }
+      }
+    },
+    {
+      "_step": "A CONTRIBUTOR's email is not a hirer credential, even with a real address.",
+      "as": "anonymous",
+      "request": { "method": "POST", "path": "/auth/hirer/login", "body": { "email": "alice@example.com", "password": "anything" } },
+      "expect": { "status": 401, "body": { "error": "invalid_credentials" } }
+    },
+    {
+      "_step": "Unverified Pat CAN sign in. Registration is not the gate.",
+      "as": "anonymous",
+      "request": {
+        "method": "POST",
+        "path": "/auth/hirer/login",
+        "body": { "email": "pat@unknown.example", "password": "correct-horse-battery" }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "hirer": {
+            "id": "01920000-0000-7000-8000-00000000c002",
+            "display_name": "Pat Ferreira",
+            "email": "pat@unknown.example",
+            "principal_type": "hirer",
+            "verified": false,
+            "organization": {
+              "id": "01920000-0000-7000-8000-00000000b003",
+              "name": "Unknown Ltd",
+              "verified": false,
+              "payment_verified": false
+            }
+          },
+          "access_token": "<token>",
+          "refresh_token": "<token>",
+          "expires_in": 900
+        }
+      }
+    },
+    {
+      "_step": "...and the session fails at the first capability check, not at the door. RequireHiringCapability is a SERVICE gate — ADR-0002.",
+      "as": "pending_pat",
+      "request": { "method": "GET", "path": "/search?skills=go" },
+      "expect": {
+        "status": 403,
+        "body": { "error": "hiring_capability_required", "hirer_verified": false, "organization_verified": false }
+      }
+    },
+    {
+      "_step": "Google is the other hirer entry point. Same account when the email matches — hank is seeded auth_provider google.",
+      "as": "anonymous",
+      "request": { "method": "GET", "path": "/auth/google/start" },
+      "capture": { "gstate": "$.state" },
+      "expect": { "status": 200, "body": { "authorize_url": "<string>", "state": "<token>" } }
+    },
+    {
+      "as": "anonymous",
+      "request": { "method": "GET", "path": "/auth/google/callback?code=goog_valid&state={{gstate}}" },
+      "fake": {
+        "google": { "oauth_exchange": { "goog_valid": { "email": "hank@acme.com", "email_verified": true, "name": "Hank Rivera" } } }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "hirer": {
+            "id": "01920000-0000-7000-8000-00000000c001",
+            "display_name": "Hank Rivera",
+            "email": "hank@acme.com",
+            "principal_type": "hirer",
+            "verified": true,
+            "created": false,
+            "organization": {
+              "id": "01920000-0000-7000-8000-00000000b001",
+              "name": "Acme Corp",
+              "verified": true,
+              "payment_verified": true
+            }
+          },
+          "access_token": "<token>",
+          "refresh_token": "<token>",
+          "expires_in": 900
+        }
+      }
+    },
+    {
+      "_step": "An unverified Google email is refused. Anyone can put any address in a Google profile they control.",
+      "as": "anonymous",
+      "request": { "method": "GET", "path": "/auth/google/start" },
+      "capture": { "gstate_two": "$.state" },
+      "expect": { "status": 200, "body": { "authorize_url": "<string>", "state": "<token>" } }
+    },
+    {
+      "as": "anonymous",
+      "request": { "method": "GET", "path": "/auth/google/callback?code=goog_unverified&state={{gstate_two}}" },
+      "fake": {
+        "google": { "oauth_exchange": { "goog_unverified": { "email": "hank@acme.com", "email_verified": false, "name": "Not Hank" } } }
+      },
+      "expect": { "status": 401, "body": { "error": "email_not_verified" } }
+    },
+    {
+      "_step": "Google sign-in for an address with no hirer account does NOT silently create one. Accounts come from registration, which is what creates the verification request.",
+      "as": "anonymous",
+      "request": { "method": "GET", "path": "/auth/google/start" },
+      "capture": { "gstate_three": "$.state" },
+      "expect": { "status": 200, "body": { "authorize_url": "<string>", "state": "<token>" } }
+    },
+    {
+      "as": "anonymous",
+      "request": { "method": "GET", "path": "/auth/google/callback?code=goog_stranger&state={{gstate_three}}" },
+      "fake": {
+        "google": {
+          "oauth_exchange": { "goog_stranger": { "email": "stranger@elsewhere.example", "email_verified": true, "name": "A Stranger" } }
+        }
+      },
+      "expect": {
+        "status": 404,
+        "_note": "An auto-created hirer would bypass registration and therefore bypass the verification request entirely.",
+        "body": { "error": "no_hirer_account", "message": "Register an organization account before signing in with Google." },
+        "db": { "hirer_accounts": { "where": { "email": "stranger@elsewhere.example" }, "count": 0 } }
+      }
+    }
+  ]
+}

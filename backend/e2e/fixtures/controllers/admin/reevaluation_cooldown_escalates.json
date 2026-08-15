@@ -8,26 +8,48 @@
       "request": {
         "method": "POST",
         "path": "/claims/{{alice_go_claim.id}}/reevaluation",
-        "body": { "reason": "PR 3 was scored 12 on craft but it added the first test suite this package ever had." }
+        "body": {
+          "reason": "PR 3 was scored 12 on craft but it added the first test suite this package ever had."
+        }
       },
-      "expect": { "status": 201, "body": { "id": "<uuid>", "status": "pending", "created_at": "<timestamp>" } }
+      "expect": {
+        "status": 201,
+        "body": {
+          "id": "<uuid>",
+          "status": "pending",
+          "created_at": "<timestamp>"
+        }
+      },
+      "capture": {
+        "reevaluation_id": "$.id"
+      }
     },
     {
       "as": "alice",
       "request": {
         "method": "POST",
         "path": "/claims/{{alice_go_claim.id}}/reevaluation",
-        "body": { "reason": "Still think craft is wrong." }
+        "body": {
+          "reason": "Still think craft is wrong."
+        }
       },
       "expect": {
         "status": 409,
         "_note": "One outstanding request per claim — the partial unique index enforces it.",
-        "body": { "error": "request_already_open" }
+        "body": {
+          "error": "request_already_open"
+        }
+      },
+      "capture": {
+        "reevaluation_id": "$.id"
       }
     },
     {
       "as": "root",
-      "request": { "method": "GET", "path": "/admin/reevaluations?status=pending" },
+      "request": {
+        "method": "GET",
+        "path": "/admin/reevaluations?status=pending"
+      },
       "expect": {
         "status": 200,
         "body": {
@@ -35,7 +57,9 @@
           "requests": [
             {
               "id": "<uuid>",
-              "user": { "display_name": "Alice Okafor" },
+              "user": {
+                "display_name": "Alice Okafor"
+              },
               "claim_id": "<uuid>",
               "reason": "<string>",
               "created_at": "<timestamp>"
@@ -50,19 +74,38 @@
       "request": {
         "method": "POST",
         "path": "/admin/reevaluations/{{reevaluation_id}}/decide",
-        "body": { "decision": "accepted", "note": "Agreed — craft undervalued the introduction of a test suite." }
+        "body": {
+          "decision": "accepted",
+          "note": "Agreed — craft undervalued the introduction of a test suite."
+        }
       },
       "expect": {
         "status": 200,
-        "body": { "id": "<uuid>", "status": "accepted", "reviewed_at": "<timestamp>", "claim_requeued": true },
+        "body": {
+          "id": "<uuid>",
+          "status": "accepted",
+          "reviewed_at": "<timestamp>",
+          "claim_requeued": true
+        },
         "db": {
           "reevaluation_cooldowns": {
             "_note": "Untouched by an acceptance. Being right costs nothing.",
-            "where": { "user_id": "{{alice.id}}" },
+            "where": {
+              "user_id": "{{alice.id}}"
+            },
             "count": 1,
-            "all_match": { "rejection_count": 0, "tier": 0, "cooldown_until": null }
+            "all_match": {
+              "rejection_count": 0,
+              "tier": 0,
+              "cooldown_until": null
+            }
           },
-          "evaluation_jobs": { "where": { "topic": "claims.live" }, "count": 1 }
+          "evaluation_jobs": {
+            "where": {
+              "topic": "claims.live"
+            },
+            "count": 1
+          }
         }
       }
     },
@@ -72,47 +115,50 @@
       "request": {
         "method": "POST",
         "path": "/claims/{{alice_go_claim.id}}/reevaluation",
-        "body": { "reason": "Complexity should be higher." }
-      },
-      "expect": { "status": 201, "body": { "id": "<uuid>", "status": "pending", "created_at": "<timestamp>" } }
-    },
-    {
-      "as": "root",
-      "request": {
-        "method": "POST",
-        "path": "/admin/reevaluations/{{reevaluation_id}}/decide",
-        "body": { "decision": "rejected", "note": "Complexity is assessed on the problem, not the diff size." }
+        "body": {
+          "reason": "Complexity should be higher."
+        }
       },
       "expect": {
-        "status": 200,
-        "body": { "id": "<uuid>", "status": "rejected", "reviewed_at": "<timestamp>", "claim_requeued": false },
-        "db": {
-          "reevaluation_cooldowns": {
-            "where": { "user_id": "{{alice.id}}" },
-            "all_match": { "rejection_count": 1, "tier": 0, "cooldown_until": null }
-          }
+        "status": 201,
+        "body": {
+          "id": "<uuid>",
+          "status": "pending",
+          "created_at": "<timestamp>"
         }
+      },
+      "capture": {
+        "reevaluation_id": "$.id"
       }
     },
     {
-      "as": "alice",
-      "request": { "method": "POST", "path": "/claims/{{alice_go_claim.id}}/reevaluation", "body": { "reason": "Substance too low." } },
-      "expect": { "status": 201, "body": { "id": "<uuid>", "status": "pending", "created_at": "<timestamp>" } }
-    },
-    {
       "as": "root",
       "request": {
         "method": "POST",
         "path": "/admin/reevaluations/{{reevaluation_id}}/decide",
-        "body": { "decision": "rejected", "note": "Assessment stands." }
+        "body": {
+          "decision": "rejected",
+          "note": "Complexity is assessed on the problem, not the diff size."
+        }
       },
       "expect": {
         "status": 200,
-        "body": { "id": "<uuid>", "status": "rejected", "reviewed_at": "<timestamp>", "claim_requeued": false },
+        "body": {
+          "id": "<uuid>",
+          "status": "rejected",
+          "reviewed_at": "<timestamp>",
+          "claim_requeued": false
+        },
         "db": {
           "reevaluation_cooldowns": {
-            "where": { "user_id": "{{alice.id}}" },
-            "all_match": { "rejection_count": 2, "tier": 0, "cooldown_until": null }
+            "where": {
+              "user_id": "{{alice.id}}"
+            },
+            "all_match": {
+              "rejection_count": 1,
+              "tier": 0,
+              "cooldown_until": null
+            }
           }
         }
       }
@@ -122,33 +168,119 @@
       "request": {
         "method": "POST",
         "path": "/claims/{{alice_go_claim.id}}/reevaluation",
-        "body": { "reason": "Reconsider the whole claim." }
+        "body": {
+          "reason": "Substance too low."
+        }
       },
-      "expect": { "status": 201, "body": { "id": "<uuid>", "status": "pending", "created_at": "<timestamp>" } }
+      "expect": {
+        "status": 201,
+        "body": {
+          "id": "<uuid>",
+          "status": "pending",
+          "created_at": "<timestamp>"
+        }
+      },
+      "capture": {
+        "reevaluation_id": "$.id"
+      }
     },
     {
       "as": "root",
       "request": {
         "method": "POST",
         "path": "/admin/reevaluations/{{reevaluation_id}}/decide",
-        "body": { "decision": "rejected", "note": "Assessment stands." }
+        "body": {
+          "decision": "rejected",
+          "note": "Assessment stands."
+        }
       },
       "expect": {
         "status": 200,
-        "body": { "id": "<uuid>", "status": "rejected", "reviewed_at": "<timestamp>", "claim_requeued": false },
+        "body": {
+          "id": "<uuid>",
+          "status": "rejected",
+          "reviewed_at": "<timestamp>",
+          "claim_requeued": false
+        },
         "db": {
           "reevaluation_cooldowns": {
-            "_note": "Third rejection: tier 1, 28 days, and the counter resets to 0.",
-            "where": { "user_id": "{{alice.id}}" },
-            "all_match": { "rejection_count": 0, "tier": 1 },
-            "none_match": { "cooldown_until": null }
+            "where": {
+              "user_id": "{{alice.id}}"
+            },
+            "all_match": {
+              "rejection_count": 2,
+              "tier": 0,
+              "cooldown_until": null
+            }
           }
         }
       }
     },
     {
       "as": "alice",
-      "request": { "method": "POST", "path": "/claims/{{alice_go_claim.id}}/reevaluation", "body": { "reason": "One more." } },
+      "request": {
+        "method": "POST",
+        "path": "/claims/{{alice_go_claim.id}}/reevaluation",
+        "body": {
+          "reason": "Reconsider the whole claim."
+        }
+      },
+      "expect": {
+        "status": 201,
+        "body": {
+          "id": "<uuid>",
+          "status": "pending",
+          "created_at": "<timestamp>"
+        }
+      },
+      "capture": {
+        "reevaluation_id": "$.id"
+      }
+    },
+    {
+      "as": "root",
+      "request": {
+        "method": "POST",
+        "path": "/admin/reevaluations/{{reevaluation_id}}/decide",
+        "body": {
+          "decision": "rejected",
+          "note": "Assessment stands."
+        }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "id": "<uuid>",
+          "status": "rejected",
+          "reviewed_at": "<timestamp>",
+          "claim_requeued": false
+        },
+        "db": {
+          "reevaluation_cooldowns": {
+            "_note": "Third rejection: tier 1, 28 days, and the counter resets to 0.",
+            "where": {
+              "user_id": "{{alice.id}}"
+            },
+            "all_match": {
+              "rejection_count": 0,
+              "tier": 1
+            },
+            "none_match": {
+              "cooldown_until": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "as": "alice",
+      "request": {
+        "method": "POST",
+        "path": "/claims/{{alice_go_claim.id}}/reevaluation",
+        "body": {
+          "reason": "One more."
+        }
+      },
       "expect": {
         "status": 429,
         "_note": "The expiry date is in the error, so the contributor knows when they may try again.",
@@ -157,13 +289,28 @@
           "cooldown_until": "<timestamp>",
           "message": "You have three rejected re-evaluation requests. You can request again after the cooldown ends."
         }
+      },
+      "capture": {
+        "reevaluation_id": "$.id"
       }
     },
     {
       "as": "system",
-      "request": { "method": "ADVANCE_CLOCK", "path": "/" },
-      "fake": { "clock": { "advance": "28d1h" } },
-      "expect": { "status": 200, "body": { "now": "<timestamp>" } }
+      "request": {
+        "method": "ADVANCE_CLOCK",
+        "path": "/"
+      },
+      "fake": {
+        "clock": {
+          "advance": "28d1h"
+        }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "now": "<timestamp>"
+        }
+      }
     },
     {
       "_step": "Cooldown expired — three fresh attempts, but tier stays at 1 so the next one is 56 days.",
@@ -171,45 +318,106 @@
       "request": {
         "method": "POST",
         "path": "/claims/{{alice_go_claim.id}}/reevaluation",
-        "body": { "reason": "Fresh attempt after the cooldown." }
+        "body": {
+          "reason": "Fresh attempt after the cooldown."
+        }
       },
-      "expect": { "status": 201, "body": { "id": "<uuid>", "status": "pending", "created_at": "<timestamp>" } }
+      "expect": {
+        "status": 201,
+        "body": {
+          "id": "<uuid>",
+          "status": "pending",
+          "created_at": "<timestamp>"
+        }
+      },
+      "capture": {
+        "reevaluation_id": "$.id"
+      }
     },
     {
       "as": "root",
       "request": {
         "method": "POST",
         "path": "/admin/reevaluations/{{reevaluation_id}}/decide",
-        "body": { "decision": "rejected", "note": "Assessment stands." }
+        "body": {
+          "decision": "rejected",
+          "note": "Assessment stands."
+        }
       },
       "expect": {
         "status": 200,
-        "body": { "id": "<uuid>", "status": "rejected", "reviewed_at": "<timestamp>", "claim_requeued": false },
-        "db": { "reevaluation_cooldowns": { "where": { "user_id": "{{alice.id}}" }, "all_match": { "rejection_count": 1, "tier": 1 } } }
+        "body": {
+          "id": "<uuid>",
+          "status": "rejected",
+          "reviewed_at": "<timestamp>",
+          "claim_requeued": false
+        },
+        "db": {
+          "reevaluation_cooldowns": {
+            "where": {
+              "user_id": "{{alice.id}}"
+            },
+            "all_match": {
+              "rejection_count": 1,
+              "tier": 1
+            }
+          }
+        }
       }
     },
     {
       "_step": "Two more rejections reach the second cooldown, which must be 56 days rather than another 28.",
       "as": "system",
-      "request": { "method": "REJECT_N_REEVALUATIONS", "path": "/", "body": { "user": "alice", "count": 2 } },
+      "request": {
+        "method": "REJECT_N_REEVALUATIONS",
+        "path": "/",
+        "body": {
+          "user": "alice",
+          "count": 2
+        }
+      },
       "expect": {
         "status": 200,
-        "body": { "rejected": 2 },
-        "db": { "reevaluation_cooldowns": { "where": { "user_id": "{{alice.id}}" }, "all_match": { "rejection_count": 0, "tier": 2 } } }
+        "body": {
+          "rejected": 2
+        },
+        "db": {
+          "reevaluation_cooldowns": {
+            "where": {
+              "user_id": "{{alice.id}}"
+            },
+            "all_match": {
+              "rejection_count": 0,
+              "tier": 2
+            }
+          }
+        }
       }
     },
     {
       "as": "alice",
-      "request": { "method": "GET", "path": "/me/reevaluation-status" },
+      "request": {
+        "method": "GET",
+        "path": "/me/reevaluation-status"
+      },
       "expect": {
         "status": 200,
-        "body": { "can_request": false, "cooldown_until": "<timestamp>", "cooldown_days": 56, "tier": 2, "rejections_since_reset": 0 }
+        "body": {
+          "can_request": false,
+          "cooldown_until": "<timestamp>",
+          "cooldown_days": 56,
+          "tier": 2,
+          "rejections_since_reset": 0
+        }
       }
     },
     {
       "_step": "The accepted request from the start is the labelled-set record — retrievable for tuning.",
       "as": "root",
-      "request": { "method": "GET", "path": "/admin/reevaluations?status=accepted" },
+      "request": {
+        "method": "GET",
+        "path": "/admin/reevaluations?status=accepted"
+      },
       "expect": {
         "status": 200,
         "body": {
@@ -217,7 +425,9 @@
           "requests": [
             {
               "id": "<uuid>",
-              "user": { "display_name": "Alice Okafor" },
+              "user": {
+                "display_name": "Alice Okafor"
+              },
               "claim_id": "<uuid>",
               "reason": "<string>",
               "decision_note": "<string>",

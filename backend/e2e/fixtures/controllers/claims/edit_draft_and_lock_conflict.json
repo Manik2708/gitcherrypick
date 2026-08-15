@@ -1,0 +1,259 @@
+{
+  "name": "PUT replaces a draft atomically, and 409s once the claim is locked",
+  "description": "ADR-0003 §Endpoints: 'PUT /claims/{id} edit; 409 while locked_until > now()'. The claims table has no editable scalar columns, so a PUT is a whole-claim REPLACE of evidence and skills together — the atomic form of the three POST sub-resources. That is exactly why the lock check lives here: a partial edit through the sub-resources leaves a claim half-changed, while a replace either happens or does not.\n\nThree properties: the replace is atomic and removes what it does not mention; version is optimistic-concurrency control, so a stale writer loses rather than silently overwriting; and once locked_until is in the future the whole endpoint is closed, which is the ADR-0003 anti-reroll rule stated at the level of the edit rather than the submit.",
+  "seed": ["principals", "catalogue", "repositories", "alice_go_primary"],
+  "steps": [
+    {
+      "as": "alice",
+      "request": { "method": "POST", "path": "/claims", "body": {} },
+      "expect": { "status": 201, "body": { "id": "<uuid>", "status": "draft", "version": 1, "created_at": "<timestamp>" } }
+    },
+    {
+      "as": "alice",
+      "request": {
+        "method": "PUT",
+        "path": "/claims/{{claim_id}}",
+        "body": {
+          "version": 1,
+          "prs": [
+            { "position": 1, "url": "https://github.com/acme/platform/pull/55" },
+            { "position": 2, "url": "https://github.com/acme/platform/pull/56" }
+          ],
+          "projects": [],
+          "skills": [{ "slug": "kubernetes", "nominated_primary": true }]
+        }
+      },
+      "expect": {
+        "status": 200,
+        "_note": "version increments on every accepted write, so the next edit must present 2.",
+        "body": {
+          "id": "<uuid>",
+          "status": "draft",
+          "version": 2,
+          "prs": [
+            { "position": 1, "repo_owner": "acme", "repo_name": "platform", "pr_number": 55, "role": "author" },
+            { "position": 2, "repo_owner": "acme", "repo_name": "platform", "pr_number": 56, "role": "author" }
+          ],
+          "projects": [],
+          "skills": [{ "slug": "kubernetes", "origin": "user_declared", "nominated_primary": true }],
+          "updated_at": "<timestamp>"
+        }
+      }
+    },
+    {
+      "_step": "A replace REMOVES what it does not mention. PR 56 and the Kubernetes nomination are gone, not merged with.",
+      "as": "alice",
+      "request": {
+        "method": "PUT",
+        "path": "/claims/{{claim_id}}",
+        "body": {
+          "version": 2,
+          "prs": [{ "position": 1, "url": "https://github.com/acme/bigrepo/pull/101" }],
+          "projects": [{ "url": "https://github.com/acme/platform", "contribution_summary": "Wrote the lease controller." }],
+          "skills": [{ "slug": "go", "nominated_primary": true }]
+        }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "id": "<uuid>",
+          "status": "draft",
+          "version": 3,
+          "prs": [{ "position": 1, "repo_owner": "acme", "repo_name": "bigrepo", "pr_number": 101, "role": "author" }],
+          "projects": [{ "repo_owner": "acme", "repo_name": "platform", "contribution_summary": "Wrote the lease controller." }],
+          "skills": [{ "slug": "go", "origin": "user_declared", "nominated_primary": true }],
+          "updated_at": "<timestamp>"
+        },
+        "db": {
+          "claim_pr_evidence": { "where": { "claim_id": "{{claim_id}}" }, "count": 1 },
+          "claim_skills": {
+            "_note": "One row. The Kubernetes row is deleted, not left orphaned with a null.",
+            "where": { "claim_id": "{{claim_id}}" },
+            "count": 1
+          }
+        }
+      }
+    },
+    {
+      "_step": "A stale version loses. Two browser tabs editing the same draft must not silently clobber each other.",
+      "as": "alice",
+      "request": {
+        "method": "PUT",
+        "path": "/claims/{{claim_id}}",
+        "body": { "version": 2, "prs": [], "projects": [], "skills": [{ "slug": "postgres", "nominated_primary": true }] }
+      },
+      "expect": {
+        "status": 409,
+        "body": { "error": "version_conflict", "expected_version": 3, "provided_version": 2 },
+        "db": { "claim_skills": { "where": { "claim_id": "{{claim_id}}" }, "count": 1, "all_match": { "skill_slug": "go" } } }
+      }
+    },
+    {
+      "_step": "Cardinality is enforced on the replace, not only on submit. Six PRs is refused whole.",
+      "as": "alice",
+      "request": {
+        "method": "PUT",
+        "path": "/claims/{{claim_id}}",
+        "body": {
+          "version": 3,
+          "prs": [
+            { "position": 1, "url": "https://github.com/acme/bigrepo/pull/101" },
+            { "position": 2, "url": "https://github.com/acme/bigrepo/pull/102" },
+            { "position": 3, "url": "https://github.com/acme/platform/pull/55" },
+            { "position": 4, "url": "https://github.com/acme/platform/pull/56" },
+            { "position": 5, "url": "https://github.com/indie/smalllib/pull/12" },
+            { "position": 6, "url": "https://github.com/acme/bigrepo/pull/904" }
+          ],
+          "projects": [],
+          "skills": [{ "slug": "go", "nominated_primary": true }]
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": { "error": "invalid_claim", "items": [{ "field": "prs", "reason": "too_many", "max": 5, "provided": 6 }] },
+        "db": {
+          "_note": "Atomic. The rejected replace left version and evidence untouched.",
+          "claims": { "where": { "id": "{{claim_id}}" }, "all_match": { "version": 3 } },
+          "claim_pr_evidence": { "where": { "claim_id": "{{claim_id}}" }, "count": 1 }
+        }
+      }
+    },
+    {
+      "_step": "Exactly one nominated primary. Two is as invalid as none.",
+      "as": "alice",
+      "request": {
+        "method": "PUT",
+        "path": "/claims/{{claim_id}}",
+        "body": {
+          "version": 3,
+          "prs": [{ "position": 1, "url": "https://github.com/acme/bigrepo/pull/101" }],
+          "projects": [],
+          "skills": [
+            { "slug": "go", "nominated_primary": true },
+            { "slug": "kubernetes", "nominated_primary": true }
+          ]
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": { "error": "invalid_claim", "items": [{ "field": "skills", "reason": "multiple_nominated_primary", "provided": 2 }] }
+      }
+    },
+    {
+      "as": "alice",
+      "request": {
+        "method": "PUT",
+        "path": "/claims/{{claim_id}}",
+        "body": {
+          "version": 3,
+          "prs": [{ "position": 1, "url": "https://github.com/acme/bigrepo/pull/101" }],
+          "projects": [],
+          "skills": [{ "slug": "go" }]
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": { "error": "invalid_claim", "items": [{ "field": "skills", "reason": "no_nominated_primary", "provided": 0 }] }
+      }
+    },
+    {
+      "_step": "Another contributor's draft is not editable, and does not exist as far as they are told.",
+      "as": "bob",
+      "request": {
+        "method": "PUT",
+        "path": "/claims/{{claim_id}}",
+        "body": { "version": 3, "prs": [], "projects": [], "skills": [{ "slug": "go", "nominated_primary": true }] }
+      },
+      "expect": { "status": 404, "body": { "error": "claim_not_found" } }
+    },
+    {
+      "_step": "THE LOCK. alice_go_claim is seeded evaluated at 2026-08-10 with locked_until 2026-08-17.",
+      "as": "alice",
+      "request": {
+        "method": "PUT",
+        "path": "/claims/{{alice_go_claim.id}}",
+        "body": {
+          "version": 1,
+          "prs": [{ "position": 1, "url": "https://github.com/acme/bigrepo/pull/904" }],
+          "projects": [],
+          "skills": [{ "slug": "go", "nominated_primary": true }]
+        }
+      },
+      "expect": {
+        "status": 409,
+        "_note": "locked_until is returned so the client can say when rather than only that. ADR-0003 wants the contributor informed, not stonewalled.",
+        "body": {
+          "error": "claim_locked",
+          "locked_until": "2026-08-17T09:00:00Z",
+          "reason": "A scored claim cannot be edited for seven days."
+        }
+      }
+    },
+    {
+      "_step": "The lock is per claim. The other draft is still editable in the same instant.",
+      "as": "alice",
+      "request": {
+        "method": "PUT",
+        "path": "/claims/{{claim_id}}",
+        "body": {
+          "version": 3,
+          "prs": [{ "position": 1, "url": "https://github.com/acme/bigrepo/pull/102" }],
+          "projects": [],
+          "skills": [{ "slug": "go", "nominated_primary": true }]
+        }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "id": "<uuid>",
+          "status": "draft",
+          "version": 4,
+          "prs": [{ "position": 1, "repo_owner": "acme", "repo_name": "bigrepo", "pr_number": 102, "role": "author" }],
+          "projects": [],
+          "skills": [{ "slug": "go", "origin": "user_declared", "nominated_primary": true }],
+          "updated_at": "<timestamp>"
+        }
+      }
+    },
+    {
+      "as": "system",
+      "request": { "method": "ADVANCE_CLOCK", "path": "/" },
+      "fake": { "clock": { "advance": "8d" } },
+      "expect": { "status": 200, "body": { "now": "<timestamp>" } }
+    },
+    {
+      "_step": "Lock expired. The endpoint reopens with no action required from anyone.",
+      "as": "alice",
+      "request": {
+        "method": "PUT",
+        "path": "/claims/{{alice_go_claim.id}}",
+        "body": {
+          "version": 1,
+          "prs": [{ "position": 1, "url": "https://github.com/acme/bigrepo/pull/904" }],
+          "projects": [],
+          "skills": [{ "slug": "go", "nominated_primary": true }]
+        }
+      },
+      "expect": {
+        "status": 200,
+        "_note": "Editing an evaluated claim returns it to draft. The old scores stand until a new submission replaces them — RFC-0003.",
+        "body": {
+          "id": "<uuid>",
+          "status": "draft",
+          "version": 2,
+          "prs": [{ "position": 1, "repo_owner": "acme", "repo_name": "bigrepo", "pr_number": 904, "role": "author" }],
+          "projects": [],
+          "skills": [{ "slug": "go", "origin": "user_declared", "nominated_primary": true }],
+          "updated_at": "<timestamp>"
+        },
+        "db": {
+          "user_skills": {
+            "_note": "Standing is untouched by an edit. Only a completed evaluation moves it.",
+            "where": { "user_id": "{{alice.id}}", "skill_slug": "go" },
+            "all_match": { "standing": "primary", "distinct_pr_count": 5 }
+          }
+        }
+      }
+    }
+  ]
+}
