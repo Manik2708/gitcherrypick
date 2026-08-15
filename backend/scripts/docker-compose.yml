@@ -1,0 +1,51 @@
+# Postgres for the e2e suite. Nothing else runs in a container — the API and the
+# evaluator are built and run on the host so a failing test can be attached to a
+# debugger without rebuilding an image.
+#
+# Started and torn down by e2e.sh. Not intended to be run directly.
+
+name: gitcherrypick-e2e
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: gitcherrypick
+      POSTGRES_PASSWORD: e2e
+      POSTGRES_DB: gitcherrypick_e2e
+      # The suite drops and recreates schemas constantly and the volume is
+      # ephemeral, so durability buys nothing and costs wall-clock.
+      POSTGRES_INITDB_ARGS: "--no-sync"
+    command:
+      - postgres
+      - -c
+      - fsync=off
+      - -c
+      - full_page_writes=off
+      - -c
+      - synchronous_commit=off
+      # Every fixture runs in its own schema; the default 100 is not enough
+      # once the suite parallelises across cases.
+      - -c
+      - max_connections=200
+    ports:
+      # Fixed, because e2e.sh writes it into the DSN and a developer will want
+      # to psql into a failing run.
+      - "55432:5432"
+    tmpfs:
+      # No named volume. A suite that can be poisoned by yesterday's run is not
+      # reproducible, and there is nothing here worth keeping.
+      - /var/lib/postgresql/data
+    healthcheck:
+      # The readiness gate e2e.sh polls. pg_isready alone is not enough —
+      # the postgres image starts, runs init, and restarts, so a naive probe
+      # can succeed against the server that is about to go away.
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U gitcherrypick -d gitcherrypick_e2e -q && psql -U gitcherrypick -d gitcherrypick_e2e -c 'select 1' -q",
+        ]
+      interval: 1s
+      timeout: 3s
+      retries: 30
+      start_period: 2s

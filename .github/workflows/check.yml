@@ -22,12 +22,57 @@ jobs:
           cache: pip
           cache-dependency-path: scripts/requirements.txt
 
+      - uses: actions/setup-go@v5
+        with:
+          # Matches the go directive in backend/go.mod. Raising it silently is
+          # how a dependency drags the whole project onto a newer toolchain.
+          go-version: "1.24"
+          cache-dependency-path: backend/go.sum
+
       - run: npm ci
       - run: pip install -r scripts/requirements.txt
 
-      # Same commands as `make check`, split so a failure names which one broke.
-      - name: formatting
+      # Split so a failure names which check broke, rather than "make check".
+      - name: formatting (prettier)
         run: npx prettier --check .
+
+      - name: formatting (go)
+        run: make go-fmt-check
+
+      - name: go vet
+        run: make go-vet
+
+      # depguard enforces the CLAUDE.md layering here: internal/domain imports
+      # nothing from internal/, and internal/port names no vendor.
+      - name: lint
+        run: make go-lint
+
+      - name: go.mod is tidy
+        run: make go-tidy-check
 
       - name: fixtures
         run: python scripts/validate_fixtures.py
+
+      - name: unit tests
+        run: make go-test
+
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+          cache-dependency-path: backend/go.sum
+
+      # STAGE 3: this job is EXPECTED TO FAIL. The fixtures are written before
+      # the implementation, and every one of them must be red until stages 4
+      # and 5 make it green. A pass here would mean a fixture asserts something
+      # no implementation provides.
+      #
+      # continue-on-error keeps the branch mergeable while stage 3 is the open
+      # gate. It comes off the moment stage 4 starts turning cases green — at
+      # which point a regression must break the build.
+      - name: integration suite (expected red until stage 4)
+        continue-on-error: true
+        run: make e2e

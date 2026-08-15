@@ -8,7 +8,8 @@
       "name": "Go",
       "category": "language",
       "scoring_mode": "standard",
-      "aliases": ["golang"]
+      "aliases": ["golang"],
+      "description": "The Go programming language: concurrency, interfaces, and the standard library."
     },
     {
       "key": "kubernetes",
@@ -17,7 +18,8 @@
       "name": "Kubernetes",
       "category": "infrastructure",
       "scoring_mode": "standard",
-      "aliases": ["k8s"]
+      "aliases": ["k8s"],
+      "description": "Operating on Kubernetes: controllers, operators, and cluster APIs."
     },
     {
       "key": "postgres",
@@ -26,7 +28,8 @@
       "name": "PostgreSQL",
       "category": "database",
       "scoring_mode": "standard",
-      "aliases": ["postgresql", "psql"]
+      "aliases": ["postgresql", "psql"],
+      "description": "PostgreSQL: schema design, query performance, and transactional correctness."
     },
     {
       "key": "pr_review",
@@ -36,7 +39,8 @@
       "category": "practice",
       "_note": "judged_only — no PR-level arithmetic, project reach still applies (ADR-0007).",
       "scoring_mode": "judged_only",
-      "aliases": ["code-review"]
+      "aliases": ["code-review"],
+      "description": "Reviewing other people's pull requests: judgement, rigour, and communication."
     }
   ],
   "_norms_note": "Fixed so every scoring assertion is reproducible. Chosen to make the normalisation visible: 'bigrepo' at 40000 stars sits near the maximum, 'smalllib' at 800 sits low, and the log/percentile blend keeps the small one from collapsing to zero.",
@@ -45,44 +49,105 @@
       "metric": "repo_stars",
       "generation": 1,
       "max_value": 190000,
-      "quantiles": { "p10": 5, "p25": 30, "p50": 240, "p75": 2100, "p90": 12000, "p99": 90000 }
+      "quantiles": {
+        "p10": 5,
+        "p25": 30,
+        "p50": 240,
+        "p75": 2100,
+        "p90": 12000,
+        "p99": 90000
+      }
     },
     {
       "metric": "repo_forks",
       "generation": 1,
       "max_value": 52000,
-      "quantiles": { "p10": 1, "p25": 8, "p50": 60, "p75": 500, "p90": 3000, "p99": 22000 }
+      "quantiles": {
+        "p10": 1,
+        "p25": 8,
+        "p50": 60,
+        "p75": 500,
+        "p90": 3000,
+        "p99": 22000
+      }
     },
     {
       "metric": "repo_contributors",
       "generation": 1,
       "max_value": 3400,
-      "quantiles": { "p10": 1, "p25": 3, "p50": 12, "p75": 60, "p90": 240, "p99": 1400 }
+      "quantiles": {
+        "p10": 1,
+        "p25": 3,
+        "p50": 12,
+        "p75": 60,
+        "p90": 240,
+        "p99": 1400
+      }
     },
     {
       "metric": "dependents",
       "generation": 1,
       "max_value": 480000,
-      "quantiles": { "p10": 0, "p25": 2, "p50": 40, "p75": 900, "p90": 11000, "p99": 160000 }
+      "quantiles": {
+        "p10": 0,
+        "p25": 2,
+        "p50": 40,
+        "p75": 900,
+        "p90": 11000,
+        "p99": 160000
+      }
     },
     {
       "metric": "package_downloads",
       "generation": 1,
       "max_value": 92000000,
-      "quantiles": { "p10": 0, "p25": 120, "p50": 4000, "p75": 90000, "p90": 1200000, "p99": 28000000 }
+      "quantiles": {
+        "p10": 0,
+        "p25": 120,
+        "p50": 4000,
+        "p75": 90000,
+        "p90": 1200000,
+        "p99": 28000000
+      }
     },
     {
       "metric": "review_comments",
       "generation": 1,
       "max_value": 340,
-      "quantiles": { "p10": 0, "p25": 1, "p50": 4, "p75": 12, "p90": 31, "p99": 140 }
+      "quantiles": {
+        "p10": 0,
+        "p25": 1,
+        "p50": 4,
+        "p75": 12,
+        "p90": 31,
+        "p99": 140
+      }
     },
-    { "metric": "reviews", "generation": 1, "max_value": 46, "quantiles": { "p10": 0, "p25": 1, "p50": 2, "p75": 4, "p90": 9, "p99": 24 } },
+    {
+      "metric": "reviews",
+      "generation": 1,
+      "max_value": 46,
+      "quantiles": {
+        "p10": 0,
+        "p25": 1,
+        "p50": 2,
+        "p75": 4,
+        "p90": 9,
+        "p99": 24
+      }
+    },
     {
       "metric": "participants",
       "generation": 1,
       "max_value": 28,
-      "quantiles": { "p10": 1, "p25": 1, "p50": 2, "p75": 4, "p90": 8, "p99": 18 }
+      "quantiles": {
+        "p10": 1,
+        "p25": 1,
+        "p50": 2,
+        "p75": 4,
+        "p90": 8,
+        "p99": 18
+      }
     }
   ],
   "rubric_version": "v1"

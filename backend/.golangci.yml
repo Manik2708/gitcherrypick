@@ -1,0 +1,111 @@
+# golangci-lint configuration (v2 schema — settings live under `linters:`).
+#
+# The selection is deliberately opinionated rather than "everything on": a
+# linter that fires constantly gets disabled, and a disabled linter catches
+# nothing. Each entry is here because it protects a rule this codebase depends
+# on.
+
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  default: none
+  enable:
+    # --- correctness ---
+    - errcheck # an unchecked error is the most common real bug in Go
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - bodyclose # a leaked response body exhausts connections under load
+    - rowserrcheck # pgx rows.Err() is easy to forget and silently truncates
+    - sqlclosecheck
+    - nilerr # `if err != nil { return nil }` swallows the error
+    - errorlint # %v on an error breaks errors.Is against port's sentinels
+
+    # --- concurrency ---
+    - copyloopvar
+    - noctx # an HTTP request without a context cannot be cancelled
+
+    # --- architecture ---
+    # The layering rules from CLAUDE.md, enforced rather than remembered.
+    - depguard
+
+    # --- style that carries meaning ---
+    - misspell
+    - unconvert
+    - wastedassign
+    - revive
+
+  settings:
+    errcheck:
+      check-type-assertions: true
+
+    errorlint:
+      errorf: true
+      asserts: true
+      comparison: true
+
+    depguard:
+      rules:
+        # internal/domain imports NOTHING from internal/. That is what makes
+        # the layering real: a domain type cannot mention a row, a request or a
+        # queue message, so a repository is forced to translate.
+        domain:
+          files:
+            - "**/internal/domain/**"
+          deny:
+            - pkg: github.com/Manik2708/gitcherrypick/backend/internal/port
+              desc: internal/domain is the bottom of the stack and imports nothing from internal/
+            - pkg: github.com/jackc/pgx
+              desc: a domain type must not know a database exists
+            - pkg: net/http
+              desc: a domain type must not know HTTP exists
+
+        # internal/port is the only package both sides import, so it must not
+        # name a vendor. An interface that mentions pgx is not an interface.
+        port:
+          files:
+            - "**/internal/port/**"
+          deny:
+            - pkg: github.com/jackc/pgx
+              desc: port must not name a database driver — that is what the interface exists to hide
+            - pkg: github.com/go-chi/chi
+              desc: port must not name a web framework
+            - pkg: github.com/anthropics
+              desc: port must not name a model vendor — ADR-0001 requires the evaluator to be vendor-agnostic
+            - pkg: github.com/google/go-github
+              desc: port must not name the GitHub client library
+
+    revive:
+      rules:
+        - name: exported
+          arguments: [checkPrivateReceivers, disableStutteringCheck]
+        - name: context-as-argument
+          # A *testing.T after the context is the standard test-helper shape.
+          arguments:
+            - allowTypesBefore: "*testing.T"
+        - name: error-return
+        - name: error-strings
+        - name: indent-error-flow
+
+  exclusions:
+    generated: lax
+    rules:
+      # The e2e harness is a test runner, not a service. It talks to Postgres
+      # directly ON PURPOSE — a suite that seeded through the repository layer
+      # could not detect a repository bug, because the same wrong mapping would
+      # write the fixture and read it back.
+      - path: e2e/
+        linters: [depguard, errcheck, noctx]
+
+      # Generated mocks.
+      - path: mocks/
+        linters: [revive, errcheck, staticcheck, unused]
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

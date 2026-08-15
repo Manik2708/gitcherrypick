@@ -27,3 +27,6 @@ npm-debug.log*
 
 # Python tooling venv (scripts/requirements.txt)
 .venv/
+
+# Go tool binaries installed by `make setup`
+.tools/

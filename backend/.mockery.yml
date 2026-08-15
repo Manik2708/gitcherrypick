@@ -1,0 +1,28 @@
+# Mocks are GENERATED from the port interfaces, never hand-written.
+#
+# A hand-written mock drifts from its interface silently: the compiler is happy
+# because the mock still satisfies the old signature somewhere, and the test
+# keeps passing against behaviour that no longer exists. Generating them means
+# an interface change breaks the build until every test is updated, which is the
+# point.
+#
+#   make mocks
+#
+# Unit tests mock the layer BELOW: controller tests mock services, service tests
+# mock repositories (CLAUDE.md). Nothing mocks a concrete type, because no
+# dependency crosses a layer boundary as one.
+
+all: true
+dir: "{{.InterfaceDirRelative}}/../../mocks/{{.PackageName}}"
+outpkg: "mocks"
+filename: "{{.InterfaceName}}.go"
+structname: "{{.InterfaceName}}"
+
+# Assert expectations by default. A mock whose expectations are never checked
+# is an elaborate way of returning a zero value.
+with-expecter: true
+
+packages:
+  github.com/Manik2708/gitcherrypick/backend/internal/port:
+    config:
+      all: true
