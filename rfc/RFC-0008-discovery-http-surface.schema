@@ -1,0 +1,76 @@
+-- ---------------------------------------------------------------------------
+-- RFC-0008 — The discovery HTTP surface
+--
+-- Delta only. Everything not mentioned here stays as RFC-0005 defined it.
+--
+-- Two changes, both consequences of making shortlisting a two-phase act:
+-- entries are staged privately, and only a deliberate confirm discloses them.
+-- ---------------------------------------------------------------------------
+
+-- ---------------------------------------------------------------------------
+-- 1. Shortlists start as drafts.
+--
+-- A shortlist is now built before it is sent. 'draft' means no contributor has
+-- been told anything; 'open' means at least one confirm has happened and the
+-- disclosures it made are permanent.
+--
+-- MIGRATION ORDER: this ALTER TYPE must be its own migration file, applied
+-- ahead of anything referencing 'draft'. Postgres forbids using a new enum
+-- value in the same transaction that added it — the same constraint ADR-0007
+-- step 2 called out for 'reevaluation'.
+--
+-- Verified against PostgreSQL 16, not assumed. Wrapping this file in a single
+-- transaction fails on the very next statement:
+--
+--     ERROR:  unsafe use of new value "draft" of enum type shortlist_status
+--
+-- It passes under psql's autocommit, so a migration runner that batches a file
+-- into one transaction breaks while a manual apply appears fine.
+-- ---------------------------------------------------------------------------
+
+ALTER TYPE shortlist_status ADD VALUE 'draft' BEFORE 'open';
+
+-- New shortlists are unsent. A shortlist that notified someone the moment it
+-- was created is what the confirm step exists to prevent.
+ALTER TABLE shortlists ALTER COLUMN status SET DEFAULT 'draft';
+
+-- Stamped by the first successful confirm. NULL means nothing has ever been
+-- sent from this shortlist, so every entry on it is still removable.
+ALTER TABLE shortlists ADD COLUMN first_confirmed_at timestamptz;
+
+-- ---------------------------------------------------------------------------
+-- 2. An entry records whether it has been disclosed.
+--
+-- Removal is permitted while notified_at IS NULL and refused afterwards, so
+-- the rule "once shortlisted you cannot be removed" is enforced against a
+-- column rather than inferred from the existence of a contact_requests row.
+--
+-- It also makes re-confirming cheap and correct: confirm notifies exactly the
+-- entries where notified_at IS NULL, so adding a fourth candidate on day 3 and
+-- confirming again emails that person and nobody else.
+-- ---------------------------------------------------------------------------
+
+ALTER TABLE shortlist_entries ADD COLUMN notified_at timestamptz;
+
+-- The confirm sweep and the removal check both filter on this.
+CREATE INDEX idx_shortlist_entries_unnotified
+    ON shortlist_entries (shortlist_id)
+    WHERE notified_at IS NULL;
+
+-- ---------------------------------------------------------------------------
+-- Not changed, deliberately
+--
+-- * contact_requests keeps uq_contact_request (shortlist_id, user_id). Confirm
+--   is idempotent through that constraint: a second confirm cannot duplicate a
+--   request even if notified_at were somehow stale.
+--
+-- * user_availability is untouched. "Inactive" stays a query-time comparison of
+--   expires_at against now(), never a stored flag — ADR-0002 requires the row
+--   to survive a lapse so a returning contributor finds their setting intact.
+--   `last_confirmed_at` in the API is user_availability.updated_at, and
+--   `inactive_for` is now() - expires_at. Both are derived, neither is stored.
+--
+-- * No column records rank. Rank is a window function over the scored
+--   population at query time; storing it would need rewriting on every
+--   evaluation and would go stale between nightly recomputes.
+-- ---------------------------------------------------------------------------

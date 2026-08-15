@@ -1,6 +1,6 @@
 {
   "name": "manual verification, alternative evidence, and overdue-shortlist flagging",
-  "description": "ADR-0002: verification is manual, targets 48 hours, and must be satisfiable by a small firm with no company domain or LinkedIn page — a three-person studio hiring a contractor is exactly the customer the alternative-evidence path exists for. A scheme only large companies can pass would exclude most freelance hiring.\n\nAlso ADR-0005: an organization with 80% or more of its open shortlists past their tentative date is flagged. Nothing is blocked — blocking would punish a hirer for a candidate's silence as readily as for their own neglect.",
+  "description": "ADR-0002: verification is manual, targets 48 hours, and must be satisfiable by a small firm with no company domain or LinkedIn page — a three-person studio hiring a contractor is exactly the customer the alternative-evidence path exists for. A scheme only large companies can pass would exclude most freelance hiring.\n\nAlso ADR-0005: an organization with 80% or more of its open shortlists past their tentative date is flagged. Nothing is blocked — blocking would punish a hirer for a candidate's silence as readily as for their own neglect.\n\nUpdated for RFC-0008 §3a. The overdue ratio counts CONFIRMED rounds only: a draft promised nothing to anyone, so counting it would flag an organization for failing to deliver on a search it never announced. Each round here is therefore confirmed before the clock advances, and Round D is deliberately left as a draft to prove a draft cannot be overdue.",
   "seed": ["principals", "catalogue"],
   "steps": [
     {
@@ -178,7 +178,7 @@
         "body": {
           "id": "<uuid>",
           "name": "Round A",
-          "status": "open",
+          "status": "draft",
           "tentative_result_date": "2026-08-20",
           "created_at": "<timestamp>"
         }
@@ -202,7 +202,7 @@
         "body": {
           "id": "<uuid>",
           "name": "Round B",
-          "status": "open",
+          "status": "draft",
           "tentative_result_date": "2026-08-22",
           "created_at": "<timestamp>"
         }
@@ -226,13 +226,169 @@
         "body": {
           "id": "<uuid>",
           "name": "Round C",
-          "status": "open",
+          "status": "draft",
           "tentative_result_date": "2026-12-01",
           "created_at": "<timestamp>"
         }
       },
       "capture": {
         "shortlist_c_id": "$.id"
+      }
+    },
+    {
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/shortlists/{{shortlist_a_id}}/entries",
+        "body": {
+          "user_id": "01920000-0000-7000-8000-00000000a001"
+        }
+      },
+      "expect": {
+        "status": 201,
+        "body": {
+          "shortlist_id": "<uuid>",
+          "user": {
+            "id": "01920000-0000-7000-8000-00000000a001",
+            "display_name": "Alice Okafor",
+            "github_login": "<string>"
+          },
+          "note": null,
+          "added_by": "01920000-0000-7000-8000-00000000c001",
+          "notified_at": null,
+          "added_at": "<timestamp>"
+        }
+      }
+    },
+    {
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/shortlists/{{shortlist_a_id}}/confirm",
+        "body": {}
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "id": "<uuid>",
+          "status": "open",
+          "notified": 1,
+          "already_notified": 0,
+          "irreversible": true,
+          "first_confirmed_at": "<timestamp>",
+          "entries": [
+            {
+              "user_id": "01920000-0000-7000-8000-00000000a001",
+              "display_name": "Alice Okafor",
+              "contact_request_id": "<uuid>",
+              "notified_at": "<timestamp>"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/shortlists/{{shortlist_b_id}}/entries",
+        "body": {
+          "user_id": "01920000-0000-7000-8000-00000000a002"
+        }
+      },
+      "expect": {
+        "status": 201,
+        "body": {
+          "shortlist_id": "<uuid>",
+          "user": {
+            "id": "01920000-0000-7000-8000-00000000a002",
+            "display_name": "Bob Nakamura",
+            "github_login": "<string>"
+          },
+          "note": null,
+          "added_by": "01920000-0000-7000-8000-00000000c001",
+          "notified_at": null,
+          "added_at": "<timestamp>"
+        }
+      }
+    },
+    {
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/shortlists/{{shortlist_b_id}}/confirm",
+        "body": {}
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "id": "<uuid>",
+          "status": "open",
+          "notified": 1,
+          "already_notified": 0,
+          "irreversible": true,
+          "first_confirmed_at": "<timestamp>",
+          "entries": [
+            {
+              "user_id": "01920000-0000-7000-8000-00000000a002",
+              "display_name": "Bob Nakamura",
+              "contact_request_id": "<uuid>",
+              "notified_at": "<timestamp>"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/shortlists/{{shortlist_c_id}}/entries",
+        "body": {
+          "user_id": "01920000-0000-7000-8000-00000000a004"
+        }
+      },
+      "expect": {
+        "status": 201,
+        "body": {
+          "shortlist_id": "<uuid>",
+          "user": {
+            "id": "01920000-0000-7000-8000-00000000a004",
+            "display_name": "Dave Whitfield",
+            "github_login": "<string>"
+          },
+          "note": null,
+          "added_by": "01920000-0000-7000-8000-00000000c001",
+          "notified_at": null,
+          "added_at": "<timestamp>"
+        }
+      }
+    },
+    {
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/shortlists/{{shortlist_c_id}}/confirm",
+        "body": {}
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "id": "<uuid>",
+          "status": "open",
+          "notified": 1,
+          "already_notified": 0,
+          "irreversible": true,
+          "first_confirmed_at": "<timestamp>",
+          "entries": [
+            {
+              "user_id": "01920000-0000-7000-8000-00000000a004",
+              "display_name": "Dave Whitfield",
+              "contact_request_id": "<uuid>",
+              "notified_at": "<timestamp>"
+            }
+          ]
+        }
       }
     },
     {
@@ -309,7 +465,7 @@
       }
     },
     {
-      "_step": "Flagged, not blocked. Hank can still open another round.",
+      "_step": "Flagged, not blocked. Hank can still open another round — and this one stays a DRAFT, so it never enters the ratio no matter how far past its date it drifts.",
       "as": "hank",
       "request": {
         "method": "POST",
@@ -324,7 +480,7 @@
         "body": {
           "id": "<uuid>",
           "name": "Round D",
-          "status": "open",
+          "status": "draft",
           "tentative_result_date": "2026-10-01",
           "created_at": "<timestamp>"
         }

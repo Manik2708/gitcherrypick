@@ -6,7 +6,10 @@
     {
       "_step": "Signing in works. Being unverified is not being locked out.",
       "as": "pending_pat",
-      "request": { "method": "GET", "path": "/me" },
+      "request": {
+        "method": "GET",
+        "path": "/me"
+      },
       "expect": {
         "status": 200,
         "body": {
@@ -14,14 +17,24 @@
           "kind": "hirer",
           "display_name": "Pat Ferreira",
           "verified": false,
-          "organization": { "name": "Unknown Ltd", "verified": false },
-          "capabilities": { "can_search": false, "can_shortlist": false, "can_view_scorecards": false }
+          "organization": {
+            "name": "Unknown Ltd",
+            "verified": false
+          },
+          "capabilities": {
+            "can_search": false,
+            "can_shortlist": false,
+            "can_view_scorecards": false
+          }
         }
       }
     },
     {
       "as": "pending_pat",
-      "request": { "method": "GET", "path": "/search?skill=go" },
+      "request": {
+        "method": "GET",
+        "path": "/search?skills=go"
+      },
       "expect": {
         "status": 403,
         "body": {
@@ -32,20 +45,49 @@
     },
     {
       "as": "pending_pat",
-      "request": { "method": "GET", "path": "/contributors/{{alice.id}}/scorecard" },
-      "expect": { "status": 403, "body": { "error": "verification_required" } }
+      "request": {
+        "method": "GET",
+        "path": "/contributors/{{alice.id}}/scorecard"
+      },
+      "expect": {
+        "status": 403,
+        "body": {
+          "error": "verification_required"
+        }
+      }
     },
     {
       "_step": "A verified hirer in a verified org passes the same gate.",
       "as": "hank",
-      "request": { "method": "GET", "path": "/search?skill=go" },
-      "expect": { "status": 200, "body": { "results": [], "total": 0 } }
+      "request": {
+        "method": "GET",
+        "path": "/search?skills=go"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "total": 0,
+          "inactive_hidden": 0,
+          "ranked_by": "skill:go",
+          "page": 1,
+          "per_page": 20,
+          "results": []
+        }
+      }
     },
     {
       "_step": "Verified hirer, UNVERIFIED organization — still refused. Both must be verified (ADR-0002).",
       "as": "pending_pat",
-      "request": { "method": "GET", "path": "/shortlists" },
-      "expect": { "status": 403, "body": { "error": "verification_required" } }
+      "request": {
+        "method": "GET",
+        "path": "/shortlists"
+      },
+      "expect": {
+        "status": 403,
+        "body": {
+          "error": "verification_required"
+        }
+      }
     }
   ]
 }

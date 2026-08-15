@@ -10,10 +10,16 @@
         "path": "/saved-searches",
         "body": {
           "name": "Go + Kubernetes, available",
-          "filters": { "skills": ["go", "kubernetes"], "min_skill_score": 50, "availability": ["looking_for_job", "looking_for_freelance"] }
+          "filters": {
+            "skills": ["go", "kubernetes"],
+            "min_skill_score": 50,
+            "availability": ["looking_for_job", "looking_for_freelance"]
+          }
         }
       },
-      "capture": { "saved": "$.id" },
+      "capture": {
+        "saved": "$.id"
+      },
       "expect": {
         "status": 201,
         "body": {
@@ -24,7 +30,10 @@
             "min_skill_score": 50,
             "availability": ["looking_for_job", "looking_for_freelance"]
           },
-          "organization": { "id": "01920000-0000-7000-8000-00000000b001", "name": "Acme Corp" },
+          "organization": {
+            "id": "01920000-0000-7000-8000-00000000b001",
+            "name": "Acme Corp"
+          },
           "created_by": "01920000-0000-7000-8000-00000000c001",
           "created_at": "<timestamp>"
         }
@@ -36,24 +45,61 @@
       "request": {
         "method": "POST",
         "path": "/saved-searches",
-        "body": { "name": "Typo", "filters": { "skills": ["go"], "min_generalist": 100 } }
+        "body": {
+          "name": "Typo",
+          "filters": {
+            "skills": ["go"],
+            "min_generalist": 100
+          }
+        }
       },
       "expect": {
         "status": 422,
         "body": {
           "error": "unknown_filter",
-          "items": [{ "field": "min_generalist", "reason": "unknown_filter", "did_you_mean": "min_generalist_score" }]
+          "items": [
+            {
+              "field": "min_generalist",
+              "reason": "unknown_filter",
+              "did_you_mean": "min_generalist_score"
+            }
+          ]
         },
-        "db": { "saved_searches": { "where": { "name": "Typo" }, "count": 0 } }
+        "db": {
+          "saved_searches": {
+            "where": {
+              "name": "Typo"
+            },
+            "count": 0
+          }
+        }
       }
     },
     {
       "_step": "A known key with an unusable value is refused too. A skill outside the catalogue can never match.",
       "as": "hank",
-      "request": { "method": "POST", "path": "/saved-searches", "body": { "name": "Ghost skill", "filters": { "skills": ["cobol"] } } },
+      "request": {
+        "method": "POST",
+        "path": "/saved-searches",
+        "body": {
+          "name": "Ghost skill",
+          "filters": {
+            "skills": ["cobol"]
+          }
+        }
+      },
       "expect": {
         "status": 422,
-        "body": { "error": "unknown_skill", "items": [{ "field": "skills", "value": "cobol", "reason": "not_in_catalogue" }] }
+        "body": {
+          "error": "unknown_skill",
+          "items": [
+            {
+              "field": "skills",
+              "value": "cobol",
+              "reason": "not_in_catalogue"
+            }
+          ]
+        }
       }
     },
     {
@@ -61,12 +107,27 @@
       "request": {
         "method": "POST",
         "path": "/saved-searches",
-        "body": { "name": "Impossible", "filters": { "skills": ["go"], "min_skill_score": 140 } }
+        "body": {
+          "name": "Impossible",
+          "filters": {
+            "skills": ["go"],
+            "min_skill_score": 140
+          }
+        }
       },
       "expect": {
         "status": 422,
         "_note": "Skill scores are ceiled at 100 (ADR-0007). 140 is not a narrow filter, it is an empty one.",
-        "body": { "error": "invalid_filter", "items": [{ "field": "min_skill_score", "reason": "out_of_range", "max": 100 }] }
+        "body": {
+          "error": "invalid_filter",
+          "items": [
+            {
+              "field": "min_skill_score",
+              "reason": "out_of_range",
+              "max": 100
+            }
+          ]
+        }
       }
     },
     {
@@ -75,16 +136,28 @@
       "request": {
         "method": "POST",
         "path": "/saved-searches",
-        "body": { "name": "Broad generalists", "filters": { "min_generalist_score": 120 } }
+        "body": {
+          "name": "Broad generalists",
+          "filters": {
+            "min_generalist_score": 120
+          }
+        }
       },
-      "capture": { "generalist_saved": "$.id" },
+      "capture": {
+        "generalist_saved": "$.id"
+      },
       "expect": {
         "status": 201,
         "body": {
           "id": "<uuid>",
           "name": "Broad generalists",
-          "filters": { "min_generalist_score": 120 },
-          "organization": { "id": "01920000-0000-7000-8000-00000000b001", "name": "Acme Corp" },
+          "filters": {
+            "min_generalist_score": 120
+          },
+          "organization": {
+            "id": "01920000-0000-7000-8000-00000000b001",
+            "name": "Acme Corp"
+          },
           "created_by": "01920000-0000-7000-8000-00000000c001",
           "created_at": "<timestamp>"
         }
@@ -93,30 +166,68 @@
     {
       "_step": "A gate is not a filter. There is no parameter that shows lapsed profiles, secondary skills, or yourself — RFC-0008 §1.",
       "as": "hank",
-      "request": { "method": "POST", "path": "/saved-searches", "body": { "name": "Everyone", "filters": { "standing": "secondary" } } },
-      "expect": { "status": 422, "body": { "error": "unknown_filter", "items": [{ "field": "standing", "reason": "unknown_filter" }] } }
+      "request": {
+        "method": "POST",
+        "path": "/saved-searches",
+        "body": {
+          "name": "Everyone",
+          "filters": {
+            "standing": "secondary"
+          }
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "unknown_filter",
+          "items": [
+            {
+              "field": "standing",
+              "reason": "unknown_filter"
+            }
+          ]
+        }
+      }
     },
     {
       "as": "hank",
       "request": {
         "method": "POST",
         "path": "/saved-searches",
-        "body": { "name": "Lapsed too", "filters": { "include_expired_availability": true } }
+        "body": {
+          "name": "Lapsed too",
+          "filters": {
+            "include_expired_availability": true
+          }
+        }
       },
       "expect": {
         "status": 422,
-        "body": { "error": "unknown_filter", "items": [{ "field": "include_expired_availability", "reason": "unknown_filter" }] }
+        "body": {
+          "error": "unknown_filter",
+          "items": [
+            {
+              "field": "include_expired_availability",
+              "reason": "unknown_filter"
+            }
+          ]
+        }
       }
     },
     {
       "_step": "REPLAY. The stored filters produce the same result as the equivalent query string.",
       "as": "hank",
-      "request": { "method": "GET", "path": "/saved-searches/{{saved}}/results" },
+      "request": {
+        "method": "GET",
+        "path": "/saved-searches/{{saved}}/results"
+      },
       "expect": {
         "status": 200,
         "_note": "Bob alone holds both Go and Kubernetes as primary, and both clear 50.",
         "body": {
           "total": 1,
+          "inactive_hidden": 0,
+          "ranked_by": "overall",
           "page": 1,
           "per_page": 20,
           "results": [
@@ -124,13 +235,22 @@
               "id": "<uuid>",
               "display_name": "Bob Nakamura",
               "github_login": "bobn",
-              "availability": "looking_for_freelance",
+              "active": true,
               "skills": [
-                { "slug": "go", "standing": "primary", "score": 55.0 },
-                { "slug": "kubernetes", "standing": "primary", "score": 52.0 }
+                {
+                  "slug": "go",
+                  "standing": "primary",
+                  "score": 55.0
+                },
+                {
+                  "slug": "kubernetes",
+                  "standing": "primary",
+                  "score": 52.0
+                }
               ],
               "overall_score": 60.4,
-              "generalist_score": 122.7
+              "generalist_score": 122.7,
+              "rank": 3
             }
           ]
         }
@@ -147,6 +267,8 @@
         "_note": "Byte-identical to the replay above. That equality is the reason the filter keys are the parameter names.",
         "body": {
           "total": 1,
+          "inactive_hidden": 0,
+          "ranked_by": "overall",
           "page": 1,
           "per_page": 20,
           "results": [
@@ -154,13 +276,22 @@
               "id": "<uuid>",
               "display_name": "Bob Nakamura",
               "github_login": "bobn",
-              "availability": "looking_for_freelance",
+              "active": true,
               "skills": [
-                { "slug": "go", "standing": "primary", "score": 55.0 },
-                { "slug": "kubernetes", "standing": "primary", "score": 52.0 }
+                {
+                  "slug": "go",
+                  "standing": "primary",
+                  "score": 55.0
+                },
+                {
+                  "slug": "kubernetes",
+                  "standing": "primary",
+                  "score": 52.0
+                }
               ],
               "overall_score": 60.4,
-              "generalist_score": 122.7
+              "generalist_score": 122.7,
+              "rank": 3
             }
           ]
         }
@@ -168,11 +299,16 @@
     },
     {
       "as": "hank",
-      "request": { "method": "GET", "path": "/saved-searches/{{generalist_saved}}/results" },
+      "request": {
+        "method": "GET",
+        "path": "/saved-searches/{{generalist_saved}}/results"
+      },
       "expect": {
         "status": 200,
         "body": {
           "total": 1,
+          "inactive_hidden": 0,
+          "ranked_by": "generalist",
           "page": 1,
           "per_page": 20,
           "results": [
@@ -180,14 +316,27 @@
               "id": "<uuid>",
               "display_name": "Bob Nakamura",
               "github_login": "bobn",
-              "availability": "looking_for_freelance",
+              "active": true,
               "skills": [
-                { "slug": "go", "standing": "primary", "score": 55.0 },
-                { "slug": "kubernetes", "standing": "primary", "score": 52.0 },
-                { "slug": "postgres", "standing": "primary", "score": 48.0 }
+                {
+                  "slug": "go",
+                  "standing": "primary",
+                  "score": 55.0
+                },
+                {
+                  "slug": "kubernetes",
+                  "standing": "primary",
+                  "score": 52.0
+                },
+                {
+                  "slug": "postgres",
+                  "standing": "primary",
+                  "score": 48.0
+                }
               ],
               "overall_score": 60.4,
-              "generalist_score": 122.7
+              "generalist_score": 122.7,
+              "rank": 1
             }
           ]
         }
@@ -196,7 +345,10 @@
     {
       "_step": "ORG SCOPING. A colleague sees and can replay what Hank saved.",
       "as": "dave_hiring",
-      "request": { "method": "GET", "path": "/saved-searches" },
+      "request": {
+        "method": "GET",
+        "path": "/saved-searches"
+      },
       "expect": {
         "status": 200,
         "body": {
@@ -216,7 +368,9 @@
             {
               "id": "<uuid>",
               "name": "Broad generalists",
-              "filters": { "min_generalist_score": 120 },
+              "filters": {
+                "min_generalist_score": 120
+              },
               "created_by": "01920000-0000-7000-8000-00000000c001",
               "created_at": "<timestamp>"
             }
@@ -227,12 +381,17 @@
     {
       "_step": "...but the GATES still apply per caller. dave_hiring replaying Hank's search cannot see contributor dave through it.",
       "as": "dave_hiring",
-      "request": { "method": "GET", "path": "/saved-searches/{{saved}}/results" },
+      "request": {
+        "method": "GET",
+        "path": "/saved-searches/{{saved}}/results"
+      },
       "expect": {
         "status": 200,
         "_note": "Same stored filters, evaluated as dave_hiring. AssertNotSelf is a property of the caller, never of the saved query.",
         "body": {
           "total": 1,
+          "inactive_hidden": 0,
+          "ranked_by": "overall",
           "page": 1,
           "per_page": 20,
           "results": [
@@ -240,13 +399,22 @@
               "id": "<uuid>",
               "display_name": "Bob Nakamura",
               "github_login": "bobn",
-              "availability": "looking_for_freelance",
+              "active": true,
               "skills": [
-                { "slug": "go", "standing": "primary", "score": 55.0 },
-                { "slug": "kubernetes", "standing": "primary", "score": 52.0 }
+                {
+                  "slug": "go",
+                  "standing": "primary",
+                  "score": 55.0
+                },
+                {
+                  "slug": "kubernetes",
+                  "standing": "primary",
+                  "score": 52.0
+                }
               ],
               "overall_score": 60.4,
-              "generalist_score": 122.7
+              "generalist_score": 122.7,
+              "rank": 3
             }
           ]
         }
@@ -254,36 +422,84 @@
     },
     {
       "as": "sam_studio",
-      "request": { "method": "GET", "path": "/saved-searches" },
-      "expect": { "status": 200, "body": { "total": 0, "saved_searches": [] } }
+      "request": {
+        "method": "GET",
+        "path": "/saved-searches"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "total": 0,
+          "saved_searches": []
+        }
+      }
     },
     {
       "as": "sam_studio",
-      "request": { "method": "GET", "path": "/saved-searches/{{saved}}/results" },
-      "expect": { "status": 404, "body": { "error": "saved_search_not_found" } }
+      "request": {
+        "method": "GET",
+        "path": "/saved-searches/{{saved}}/results"
+      },
+      "expect": {
+        "status": 404,
+        "body": {
+          "error": "saved_search_not_found"
+        }
+      }
     },
     {
       "_step": "An unverified hirer cannot save or replay one — the same capability gate as search itself.",
       "as": "pending_pat",
-      "request": { "method": "POST", "path": "/saved-searches", "body": { "name": "Nope", "filters": { "skills": ["go"] } } },
+      "request": {
+        "method": "POST",
+        "path": "/saved-searches",
+        "body": {
+          "name": "Nope",
+          "filters": {
+            "skills": ["go"]
+          }
+        }
+      },
       "expect": {
         "status": 403,
-        "body": { "error": "hiring_capability_required", "hirer_verified": false, "organization_verified": false }
+        "body": {
+          "error": "hiring_capability_required",
+          "hirer_verified": false,
+          "organization_verified": false
+        }
       }
     },
     {
       "as": "hank",
-      "request": { "method": "DELETE", "path": "/saved-searches/{{generalist_saved}}" },
+      "request": {
+        "method": "DELETE",
+        "path": "/saved-searches/{{generalist_saved}}"
+      },
       "expect": {
         "status": 204,
         "body": null,
-        "db": { "saved_searches": { "where": { "organization_id": "01920000-0000-7000-8000-00000000b001" }, "count": 1 } }
+        "db": {
+          "saved_searches": {
+            "where": {
+              "organization_id": "01920000-0000-7000-8000-00000000b001"
+            },
+            "count": 1
+          }
+        }
       }
     },
     {
       "as": "hank",
-      "request": { "method": "GET", "path": "/saved-searches/{{generalist_saved}}/results" },
-      "expect": { "status": 404, "body": { "error": "saved_search_not_found" } }
+      "request": {
+        "method": "GET",
+        "path": "/saved-searches/{{generalist_saved}}/results"
+      },
+      "expect": {
+        "status": 404,
+        "body": {
+          "error": "saved_search_not_found"
+        }
+      }
     }
   ]
 }

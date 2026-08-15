@@ -5,12 +5,17 @@
   "steps": [
     {
       "as": "hank",
-      "request": { "method": "GET", "path": "/search?skills=go" },
+      "request": {
+        "method": "GET",
+        "path": "/search?skills=go"
+      },
       "expect": {
         "status": 200,
         "_note": "Baseline under rubric v1 — the same two results the discovery case pins.",
         "body": {
           "total": 2,
+          "inactive_hidden": 0,
+          "ranked_by": "skill:go",
           "page": 1,
           "per_page": 20,
           "results": [
@@ -18,19 +23,35 @@
               "id": "<uuid>",
               "display_name": "Alice Okafor",
               "github_login": "aliceok",
-              "availability": "looking_for_job",
-              "skills": [{ "slug": "go", "standing": "primary", "score": 64.2, "rank": 1 }],
+              "active": true,
+              "skills": [
+                {
+                  "slug": "go",
+                  "standing": "primary",
+                  "score": 64.2,
+                  "rank": 1
+                }
+              ],
               "overall_score": 64.2,
-              "generalist_score": 64.2
+              "generalist_score": 64.2,
+              "rank": 1
             },
             {
               "id": "<uuid>",
               "display_name": "Bob Nakamura",
               "github_login": "bobn",
-              "availability": "looking_for_freelance",
-              "skills": [{ "slug": "go", "standing": "primary", "score": 55.0, "rank": 2 }],
+              "active": true,
+              "skills": [
+                {
+                  "slug": "go",
+                  "standing": "primary",
+                  "score": 55.0,
+                  "rank": 2
+                }
+              ],
               "overall_score": 60.4,
-              "generalist_score": 122.7
+              "generalist_score": 122.7,
+              "rank": 2
             }
           ]
         }
@@ -39,27 +60,55 @@
     {
       "_step": "Only an admin can sweep. It costs a model call per claim in the corpus.",
       "as": "hank",
-      "request": { "method": "POST", "path": "/admin/evaluations/sweep", "body": { "rubric_version": "v2", "reason": "Prompt revision." } },
-      "expect": { "status": 403, "body": { "error": "admin_required" } }
+      "request": {
+        "method": "POST",
+        "path": "/admin/evaluations/sweep",
+        "body": {
+          "rubric_version": "v2",
+          "reason": "Prompt revision."
+        }
+      },
+      "expect": {
+        "status": 403,
+        "body": {
+          "error": "admin_required"
+        }
+      }
     },
     {
       "as": "alice",
-      "request": { "method": "POST", "path": "/admin/evaluations/sweep", "body": { "rubric_version": "v2", "reason": "Trying it on." } },
-      "expect": { "status": 403, "body": { "error": "admin_required" } }
+      "request": {
+        "method": "POST",
+        "path": "/admin/evaluations/sweep",
+        "body": {
+          "rubric_version": "v2",
+          "reason": "Trying it on."
+        }
+      },
+      "expect": {
+        "status": 403,
+        "body": {
+          "error": "admin_required"
+        }
+      }
     },
     {
       "_step": "A sweep to the CURRENT version is refused. It would re-spend the entire corpus to produce identical numbers.",
       "as": "root",
-      "request": { "method": "POST", "path": "/admin/evaluations/sweep", "body": { "rubric_version": "v1", "reason": "No-op." } },
-      "expect": { "status": 422, "body": { "error": "rubric_version_unchanged", "active_rubric_version": "v1" } }
-    },
-    {
-      "as": "root",
-      "request": { "method": "POST", "path": "/admin/evaluations/sweep", "body": { "rubric_version": "v99", "reason": "Typo." } },
+      "request": {
+        "method": "POST",
+        "path": "/admin/evaluations/sweep",
+        "body": {
+          "rubric_version": "v1",
+          "reason": "No-op."
+        }
+      },
       "expect": {
         "status": 422,
-        "_note": "The version must already be loaded from config (ADR-0006). A sweep cannot invent one.",
-        "body": { "error": "unknown_rubric_version", "provided": "v99" }
+        "body": {
+          "error": "rubric_version_unchanged",
+          "active_rubric_version": "v1"
+        }
       }
     },
     {
@@ -67,7 +116,29 @@
       "request": {
         "method": "POST",
         "path": "/admin/evaluations/sweep",
-        "body": { "rubric_version": "v2", "reason": "Conversation-quality weight raised from 0.20 to 0.25." }
+        "body": {
+          "rubric_version": "v99",
+          "reason": "Typo."
+        }
+      },
+      "expect": {
+        "status": 422,
+        "_note": "The version must already be loaded from config (ADR-0006). A sweep cannot invent one.",
+        "body": {
+          "error": "unknown_rubric_version",
+          "provided": "v99"
+        }
+      }
+    },
+    {
+      "as": "root",
+      "request": {
+        "method": "POST",
+        "path": "/admin/evaluations/sweep",
+        "body": {
+          "rubric_version": "v2",
+          "reason": "Conversation-quality weight raised from 0.20 to 0.25."
+        }
       },
       "expect": {
         "status": 202,
@@ -82,10 +153,17 @@
           "created_at": "<timestamp>"
         },
         "db": {
-          "evaluation_jobs": { "where": { "status": "pending" }, "count": 5 },
+          "evaluation_jobs": {
+            "where": {
+              "status": "pending"
+            },
+            "count": 5
+          },
           "claims": {
             "_note": "Every previously evaluated claim goes back to queued. Withdrawn claims are not swept — there is nothing to rank.",
-            "where": { "status": "queued" },
+            "where": {
+              "status": "queued"
+            },
             "count": 5
           }
         }
@@ -94,26 +172,58 @@
     {
       "_step": "THE CONSEQUENCE. The active rubric is now v2 and no score has been produced under it, so search is empty.",
       "as": "hank",
-      "request": { "method": "GET", "path": "/search?skills=go" },
+      "request": {
+        "method": "GET",
+        "path": "/search?skills=go"
+      },
       "expect": {
         "status": 200,
         "_note": "Not an error, and not stale v1 rows. An empty result is the honest answer while the corpus is mid-migration.",
-        "body": { "total": 0, "page": 1, "per_page": 20, "results": [] }
+        "body": {
+          "total": 0,
+          "inactive_hidden": 0,
+          "ranked_by": "skill:go",
+          "page": 1,
+          "per_page": 20,
+          "results": []
+        }
       }
     },
     {
       "as": "hank",
-      "request": { "method": "GET", "path": "/leaderboard?kind=overall" },
-      "expect": { "status": 200, "body": { "kind": "overall", "rubric_version": "v2", "entries": [] } }
+      "request": {
+        "method": "GET",
+        "path": "/leaderboard?kind=overall"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "kind": "overall",
+          "rubric_version": "v2",
+          "entries": []
+        }
+      }
     },
     {
       "_step": "The contributor's own view is NOT emptied. They keep seeing their standing, marked stale, because it is their own record rather than a ranking.",
       "as": "alice",
-      "request": { "method": "GET", "path": "/me/skills" },
+      "request": {
+        "method": "GET",
+        "path": "/me/skills"
+      },
       "expect": {
         "status": 200,
         "body": {
-          "skills": [{ "slug": "go", "standing": "primary", "distinct_pr_count": 5, "score": 64.2, "rubric_version": "v1", "stale": true }],
+          "skills": [
+            {
+              "slug": "go",
+              "standing": "primary",
+              "distinct_pr_count": 5,
+              "score": 64.2,
+              "rubric_version": "v1",
+              "stale": true
+            }
+          ],
           "overall_score": 64.2,
           "generalist_score": 64.2,
           "rubric_version": "v1",
@@ -125,29 +235,68 @@
     {
       "_step": "A second sweep while one is in flight adds nothing. Idempotent by design — a double-click must not double the bill.",
       "as": "root",
-      "request": { "method": "POST", "path": "/admin/evaluations/sweep", "body": { "rubric_version": "v2", "reason": "Double click." } },
+      "request": {
+        "method": "POST",
+        "path": "/admin/evaluations/sweep",
+        "body": {
+          "rubric_version": "v2",
+          "reason": "Double click."
+        }
+      },
       "expect": {
         "status": 409,
-        "body": { "error": "sweep_in_progress", "id": "<uuid>", "claims_remaining": 5 },
-        "db": { "evaluation_jobs": { "where": { "status": "pending" }, "count": 5 } }
+        "body": {
+          "error": "sweep_in_progress",
+          "id": "<uuid>",
+          "claims_remaining": 5
+        },
+        "db": {
+          "evaluation_jobs": {
+            "where": {
+              "status": "pending"
+            },
+            "count": 5
+          }
+        }
       }
     },
     {
       "_step": "Drain. Every claim is re-judged under v2 — conversation_quality now carries more weight.",
       "as": "system",
-      "request": { "method": "RUN_EVALUATOR", "path": "/" },
+      "request": {
+        "method": "RUN_EVALUATOR",
+        "path": "/"
+      },
       "fake": {
-        "ai": { "replay_previous_judgements": true },
-        "rubric": { "version": "v2", "weights": { "conversation_quality": 0.25, "craft": 0.1 } }
+        "ai": {
+          "replay_previous_judgements": true
+        },
+        "rubric": {
+          "version": "v2",
+          "weights": {
+            "conversation_quality": 0.25,
+            "craft": 0.1
+          }
+        }
       },
       "expect": {
         "status": 200,
-        "body": { "processed": 5, "failed": 0 },
+        "body": {
+          "processed": 5,
+          "failed": 0
+        },
         "db": {
-          "claims": { "where": { "status": "evaluated" }, "count": 5 },
+          "claims": {
+            "where": {
+              "status": "evaluated"
+            },
+            "count": 5
+          },
           "score_snapshots": {
             "_note": "v1 snapshots are retained. A sweep supersedes scores; it does not erase the history of what was once true.",
-            "where": { "rubric_version": "v1" },
+            "where": {
+              "rubric_version": "v1"
+            },
             "count": 8
           }
         }
@@ -156,11 +305,16 @@
     {
       "_step": "Search repopulates under v2. Same people, new numbers, and the order can differ — which is exactly why a half-swept corpus must not be searchable.",
       "as": "hank",
-      "request": { "method": "GET", "path": "/search?skills=go" },
+      "request": {
+        "method": "GET",
+        "path": "/search?skills=go"
+      },
       "expect": {
         "status": 200,
         "body": {
           "total": 2,
+          "inactive_hidden": 0,
+          "ranked_by": "skill:go",
           "page": 1,
           "per_page": 20,
           "results": [
@@ -168,19 +322,35 @@
               "id": "<uuid>",
               "display_name": "Alice Okafor",
               "github_login": "aliceok",
-              "availability": "looking_for_job",
-              "skills": [{ "slug": "go", "standing": "primary", "score": 65.1, "rank": 1 }],
+              "active": true,
+              "skills": [
+                {
+                  "slug": "go",
+                  "standing": "primary",
+                  "score": 65.1,
+                  "rank": 1
+                }
+              ],
               "overall_score": 65.1,
-              "generalist_score": 65.1
+              "generalist_score": 65.1,
+              "rank": 1
             },
             {
               "id": "<uuid>",
               "display_name": "Bob Nakamura",
               "github_login": "bobn",
-              "availability": "looking_for_freelance",
-              "skills": [{ "slug": "go", "standing": "primary", "score": 55.8, "rank": 2 }],
+              "active": true,
+              "skills": [
+                {
+                  "slug": "go",
+                  "standing": "primary",
+                  "score": 55.8,
+                  "rank": 2
+                }
+              ],
               "overall_score": 61.2,
-              "generalist_score": 124.1
+              "generalist_score": 124.1,
+              "rank": 2
             }
           ]
         }
@@ -189,12 +359,22 @@
     {
       "_step": "Standing is unchanged by a sweep. Re-judging the same evidence cannot alter how many distinct PRs there are.",
       "as": "alice",
-      "request": { "method": "GET", "path": "/me/skills" },
+      "request": {
+        "method": "GET",
+        "path": "/me/skills"
+      },
       "expect": {
         "status": 200,
         "body": {
           "skills": [
-            { "slug": "go", "standing": "primary", "distinct_pr_count": 5, "score": 65.1, "rubric_version": "v2", "stale": false }
+            {
+              "slug": "go",
+              "standing": "primary",
+              "distinct_pr_count": 5,
+              "score": 65.1,
+              "rubric_version": "v2",
+              "stale": false
+            }
           ],
           "overall_score": 65.1,
           "generalist_score": 65.1,
@@ -207,7 +387,14 @@
     {
       "_step": "With the sweep drained, a new one is permitted again.",
       "as": "root",
-      "request": { "method": "POST", "path": "/admin/evaluations/sweep", "body": { "rubric_version": "v1", "reason": "Rolling back." } },
+      "request": {
+        "method": "POST",
+        "path": "/admin/evaluations/sweep",
+        "body": {
+          "rubric_version": "v1",
+          "reason": "Rolling back."
+        }
+      },
       "expect": {
         "status": 202,
         "_note": "Rollback is an ordinary sweep in the other direction. Nothing about the mechanism assumes versions only move forward.",

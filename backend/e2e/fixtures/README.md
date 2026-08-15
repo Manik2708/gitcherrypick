@@ -172,12 +172,12 @@ change to that decision has an obvious place to fail.
 | **evaluation/**quality_floor_and_conversation_zero | Floor catches what the grounds miss; no discussion → 0                          |
 | **evaluation/**secondary_share_and_promotion       | Linear share, uncapped; automatic promotion at five                             |
 | **evaluation/**partial_enrichment_and_idempotency  | One unreachable PR doesn't fail the claim; redelivery is free                   |
-| **discovery/**search_gates_and_exclusions          | Lapsed availability, secondary skills, and self all excluded in SQL             |
+| **discovery/**search_gates_and_exclusions          | Global ranking, filtered — gaps where inactive people sit; not_looking excluded |
 | **discovery/**leaderboard_and_scorecard_gating     | Three board kinds; three scorecard gates; hirer view ≠ public view              |
-| **discovery/**contact_request_requires_consent     | Shortlisting discloses nothing; payment label shown                             |
-| **discovery/**shortlist_lifecycle                  | Org-scoped, not recruiter-scoped; release is the irreversible boundary          |
+| **discovery/**contact_request_requires_consent     | Staging discloses nothing; confirm does; payment label shown                    |
+| **discovery/**shortlist_lifecycle                  | Stage privately, confirm irreversibly; once shortlisted, never removed          |
 | **discovery/**saved_searches                       | Filter keys are the query parameters; gates evaluate as the caller              |
-| **me/**self_reads                                  | Own rank only — no neighbours; lapsed means unranked, not unscored              |
+| **me/**self_reads                                  | Own rank only — no neighbours; rank is global and survives lapsing              |
 | **skills/**catalogue_and_requests                  | Aliases resolve but aren't claimable; dedupe before the queue                   |
 | **admin/**verification_and_overdue_flagging        | Alternative evidence path; flag at 80%, never block                             |
 | **admin/**reevaluation_cooldown_escalates          | 28→56→112→224→365; acceptance never counts against you                          |
@@ -194,6 +194,12 @@ is bound by an earlier step, and every case name is unique.
 ```bash
 make validate-fixtures     # or: make check, which also runs prettier
 ```
+
+It also enforces contract decisions that span the whole corpus and cannot live in a schema
+— that every search response names its `ranked_by` ordering and reports `inactive_hidden`,
+that every result row carries `rank` and `active`, and that nobody reintroduces the
+superseded `?skill=` filter form. Each of those was a real drift caught after RFC-0008
+changed the shape.
 
 It runs in CI on every push. A fixture that does not validate is not a fixture.
 

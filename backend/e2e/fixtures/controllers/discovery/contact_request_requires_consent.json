@@ -1,6 +1,6 @@
 {
   "name": "shortlisting raises a request; the email is released only on acceptance",
-  "description": "ADR-0005, and the deliberate inversion of how sourcing tools normally work. Adding someone to a shortlist does NOT disclose their email — it creates a contact request the contributor must accept. Releasing contact details on the strength of one side's interest is what makes those tools feel extractive, and the whole consent model would be hollow if a shortlist click bypassed it.\n\nThe request also discloses what we know about the hirer: sam_studio's organization was verified on identity but never on payment, so the contributor is told before deciding.",
+  "description": "ADR-0005, and the deliberate inversion of how sourcing tools normally work. Adding someone to a shortlist does NOT disclose their email — it creates a contact request the contributor must accept. Releasing contact details on the strength of one side's interest is what makes those tools feel extractive, and the whole consent model would be hollow if a shortlist click bypassed it.\n\nThe request also discloses what we know about the hirer: sam_studio's organization was verified on identity but never on payment, so the contributor is told before deciding.\n\nUpdated for RFC-0008 §3a: adding an entry stages it privately and discloses nothing. The contact request — and therefore the disclosure this case is about — is created by confirm. That moves WHEN consent is sought without changing the rule that it must be sought.",
   "seed": ["principals", "catalogue", "repositories", "scored_population"],
   "steps": [
     {
@@ -8,15 +8,20 @@
       "request": {
         "method": "POST",
         "path": "/shortlists",
-        "body": { "name": "Backend contractor, Q3", "tentative_result_date": "2026-09-30" }
+        "body": {
+          "name": "Backend contractor, Q3",
+          "tentative_result_date": "2026-09-30"
+        }
       },
-      "capture": { "shortlist": "$.id" },
+      "capture": {
+        "shortlist": "$.id"
+      },
       "expect": {
         "status": 201,
         "body": {
           "id": "<uuid>",
           "name": "Backend contractor, Q3",
-          "status": "open",
+          "status": "draft",
           "tentative_result_date": "2026-09-30",
           "created_at": "<timestamp>"
         }
@@ -27,7 +32,10 @@
       "request": {
         "method": "POST",
         "path": "/shortlists/{{shortlist}}/entries",
-        "body": { "user_id": "{{alice.id}}", "note": "Strong retry-semantics work." }
+        "body": {
+          "user_id": "{{alice.id}}",
+          "note": "Strong retry-semantics work."
+        }
       },
       "expect": {
         "status": 201,
@@ -35,14 +43,65 @@
         "body": {
           "user_id": "<uuid>",
           "added_at": "<timestamp>",
-          "contact_request": { "id": "<uuid>", "status": "pending", "expires_at": "<timestamp>" },
-          "email": null
+          "email": null,
+          "notified_at": null
+        },
+        "db": {
+          "contact_requests": {
+            "_note": "Zero. Staging is private — RFC-0008 §3a.",
+            "where": {
+              "user_id": "01920000-0000-7000-8000-00000000a001"
+            },
+            "count": 0
+          }
+        }
+      }
+    },
+    {
+      "_step": "Confirm is what discloses. Tiny Studio is verified on identity but NOT on payment, so the label is shown.",
+      "as": "sam_studio",
+      "request": {
+        "method": "POST",
+        "path": "/shortlists/{{shortlist}}/confirm",
+        "body": {}
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "id": "<uuid>",
+          "status": "open",
+          "notified": 1,
+          "already_notified": 0,
+          "irreversible": true,
+          "first_confirmed_at": "<timestamp>",
+          "entries": [
+            {
+              "user_id": "01920000-0000-7000-8000-00000000a001",
+              "display_name": "Alice Okafor",
+              "contact_request_id": "<uuid>",
+              "notified_at": "<timestamp>"
+            }
+          ]
+        },
+        "db": {
+          "contact_requests": {
+            "where": {
+              "user_id": "01920000-0000-7000-8000-00000000a001"
+            },
+            "count": 1,
+            "all_match": {
+              "status": "pending"
+            }
+          }
         }
       }
     },
     {
       "as": "sam_studio",
-      "request": { "method": "GET", "path": "/contributors/{{alice.id}}/scorecard" },
+      "request": {
+        "method": "GET",
+        "path": "/contributors/{{alice.id}}/scorecard"
+      },
       "expect": {
         "status": 200,
         "_note": "The full scorecard IS visible — that is what verification buys. The email is not part of it.",
@@ -52,21 +111,35 @@
           "email": null,
           "overall_score": 64.2,
           "generalist_score": 64.2,
-          "skills": [{ "slug": "go", "standing": "primary", "distinct_pr_count": 5, "score": 64.2 }]
+          "skills": [
+            {
+              "slug": "go",
+              "standing": "primary",
+              "distinct_pr_count": 5,
+              "score": 64.2
+            }
+          ]
         }
       }
     },
     {
       "_step": "The contributor sees who, when, and what we know about them.",
       "as": "alice",
-      "request": { "method": "GET", "path": "/me/contact-requests" },
+      "request": {
+        "method": "GET",
+        "path": "/me/contact-requests"
+      },
       "expect": {
         "status": 200,
         "body": {
           "requests": [
             {
               "id": "<uuid>",
-              "organization": { "name": "Tiny Studio", "verified": true, "payment_verified": false },
+              "organization": {
+                "name": "Tiny Studio",
+                "verified": true,
+                "payment_verified": false
+              },
               "tentative_result_date": "2026-09-30",
               "status": "pending",
               "expires_at": "<timestamp>",
@@ -79,22 +152,38 @@
     },
     {
       "as": "alice",
-      "request": { "method": "POST", "path": "/me/contact-requests/{{contact_request_id}}/decline", "body": {} },
+      "request": {
+        "method": "POST",
+        "path": "/me/contact-requests/{{contact_request_id}}/decline",
+        "body": {}
+      },
       "expect": {
         "status": 200,
-        "body": { "id": "<uuid>", "status": "declined", "responded_at": "<timestamp>" },
+        "body": {
+          "id": "<uuid>",
+          "status": "declined",
+          "responded_at": "<timestamp>"
+        },
         "db": {
           "contact_requests": {
-            "where": { "user_id": "{{alice.id}}" },
+            "where": {
+              "user_id": "{{alice.id}}"
+            },
             "count": 1,
-            "all_match": { "status": "declined", "email_released_at": null }
+            "all_match": {
+              "status": "declined",
+              "email_released_at": null
+            }
           }
         }
       }
     },
     {
       "as": "sam_studio",
-      "request": { "method": "GET", "path": "/shortlists/{{shortlist}}" },
+      "request": {
+        "method": "GET",
+        "path": "/shortlists/{{shortlist}}"
+      },
       "expect": {
         "status": 200,
         "body": {
@@ -102,21 +191,37 @@
           "name": "Backend contractor, Q3",
           "status": "open",
           "tentative_result_date": "2026-09-30",
-          "entries": [{ "user_id": "<uuid>", "display_name": "Alice Okafor", "contact_status": "declined", "email": null }]
+          "entries": [
+            {
+              "user_id": "<uuid>",
+              "display_name": "Alice Okafor",
+              "contact_status": "declined",
+              "email": null
+            }
+          ]
         }
       }
     },
     {
       "_step": "A verified-on-payment organization gets no disclosure label, and acceptance releases the email.",
       "as": "hank",
-      "request": { "method": "POST", "path": "/shortlists", "body": { "name": "Platform team", "tentative_result_date": "2026-10-15" } },
-      "capture": { "acme_shortlist": "$.id" },
+      "request": {
+        "method": "POST",
+        "path": "/shortlists",
+        "body": {
+          "name": "Platform team",
+          "tentative_result_date": "2026-10-15"
+        }
+      },
+      "capture": {
+        "acme_shortlist": "$.id"
+      },
       "expect": {
         "status": 201,
         "body": {
           "id": "<uuid>",
           "name": "Platform team",
-          "status": "open",
+          "status": "draft",
           "tentative_result_date": "2026-10-15",
           "created_at": "<timestamp>"
         }
@@ -124,27 +229,88 @@
     },
     {
       "as": "hank",
-      "request": { "method": "POST", "path": "/shortlists/{{acme_shortlist}}/entries", "body": { "user_id": "{{alice.id}}" } },
+      "request": {
+        "method": "POST",
+        "path": "/shortlists/{{acme_shortlist}}/entries",
+        "body": {
+          "user_id": "{{alice.id}}"
+        }
+      },
       "expect": {
         "status": 201,
         "body": {
           "user_id": "<uuid>",
           "added_at": "<timestamp>",
-          "contact_request": { "id": "<uuid>", "status": "pending", "expires_at": "<timestamp>" },
-          "email": null
+          "email": null,
+          "notified_at": null
+        },
+        "db": {
+          "contact_requests": {
+            "_note": "Zero. Staging is private — RFC-0008 §3a.",
+            "where": {
+              "user_id": "01920000-0000-7000-8000-00000000a001"
+            },
+            "count": 0
+          }
+        }
+      }
+    },
+    {
+      "_step": "Confirm is what discloses. Acme is payment_verified, so Alice sees no disclosure label.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/shortlists/{{acme_shortlist}}/confirm",
+        "body": {}
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "id": "<uuid>",
+          "status": "open",
+          "notified": 1,
+          "already_notified": 0,
+          "irreversible": true,
+          "first_confirmed_at": "<timestamp>",
+          "entries": [
+            {
+              "user_id": "01920000-0000-7000-8000-00000000a001",
+              "display_name": "Alice Okafor",
+              "contact_request_id": "<uuid>",
+              "notified_at": "<timestamp>"
+            }
+          ]
+        },
+        "db": {
+          "contact_requests": {
+            "where": {
+              "user_id": "01920000-0000-7000-8000-00000000a001"
+            },
+            "count": 1,
+            "all_match": {
+              "status": "pending"
+            }
+          }
         }
       }
     },
     {
       "as": "alice",
-      "request": { "method": "GET", "path": "/me/contact-requests?status=pending" },
+      "request": {
+        "method": "GET",
+        "path": "/me/contact-requests?status=pending"
+      },
       "expect": {
         "status": 200,
         "body": {
           "requests": [
             {
               "id": "<uuid>",
-              "organization": { "name": "Acme Corp", "verified": true, "payment_verified": true },
+              "organization": {
+                "name": "Acme Corp",
+                "verified": true,
+                "payment_verified": true
+              },
               "tentative_result_date": "2026-10-15",
               "status": "pending",
               "expires_at": "<timestamp>",
@@ -156,18 +322,37 @@
     },
     {
       "as": "alice",
-      "request": { "method": "POST", "path": "/me/contact-requests/{{contact_request_id}}/accept", "body": {} },
+      "request": {
+        "method": "POST",
+        "path": "/me/contact-requests/{{contact_request_id}}/accept",
+        "body": {}
+      },
       "expect": {
         "status": 200,
-        "body": { "id": "<uuid>", "status": "accepted", "responded_at": "<timestamp>" },
+        "body": {
+          "id": "<uuid>",
+          "status": "accepted",
+          "responded_at": "<timestamp>"
+        },
         "db": {
-          "contact_requests": { "where": { "organization_id": "{{acme.id}}" }, "count": 1, "none_match": { "email_released_at": null } }
+          "contact_requests": {
+            "where": {
+              "organization_id": "{{acme.id}}"
+            },
+            "count": 1,
+            "none_match": {
+              "email_released_at": null
+            }
+          }
         }
       }
     },
     {
       "as": "hank",
-      "request": { "method": "GET", "path": "/shortlists/{{acme_shortlist}}" },
+      "request": {
+        "method": "GET",
+        "path": "/shortlists/{{acme_shortlist}}"
+      },
       "expect": {
         "status": 200,
         "_note": "Only now does the email appear, and only for the organization the contributor accepted.",
@@ -176,14 +361,24 @@
           "name": "Platform team",
           "status": "open",
           "tentative_result_date": "2026-10-15",
-          "entries": [{ "user_id": "<uuid>", "display_name": "Alice Okafor", "contact_status": "accepted", "email": "alice@example.com" }]
+          "entries": [
+            {
+              "user_id": "<uuid>",
+              "display_name": "Alice Okafor",
+              "contact_status": "accepted",
+              "email": "alice@example.com"
+            }
+          ]
         }
       }
     },
     {
       "_step": "Tiny Studio still sees nothing. Consent is per organization, not global.",
       "as": "sam_studio",
-      "request": { "method": "GET", "path": "/shortlists/{{shortlist}}" },
+      "request": {
+        "method": "GET",
+        "path": "/shortlists/{{shortlist}}"
+      },
       "expect": {
         "status": 200,
         "body": {
@@ -191,7 +386,14 @@
           "name": "Backend contractor, Q3",
           "status": "open",
           "tentative_result_date": "2026-09-30",
-          "entries": [{ "user_id": "<uuid>", "display_name": "Alice Okafor", "contact_status": "declined", "email": null }]
+          "entries": [
+            {
+              "user_id": "<uuid>",
+              "display_name": "Alice Okafor",
+              "contact_status": "declined",
+              "email": null
+            }
+          ]
         }
       }
     }

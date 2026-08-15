@@ -154,6 +154,39 @@ def bindings_from_step(step: dict) -> set[str]:
     return bound
 
 
+def check_response_shapes(path: Path, index: int, step: dict) -> None:
+    """Contract checks that outlive any single fixture.
+
+    These encode RFC-0008 decisions that are easy to reintroduce by hand and impossible to
+    express in JSON Schema, because they depend on the request path and status together.
+    """
+    at = f"steps[{index}]"
+    request, expect = step["request"], step["expect"]
+    route, status = request["path"], expect["status"]
+    body = expect.get("body")
+
+    # RFC-0008 §1: one representation of the skill filter, so a saved search round-trips.
+    if route.startswith("/search") and re.search(r"[?&]skill=", route):
+        fail(path, f"{at} uses the superseded ?skill= form; RFC-0008 §1 specifies ?skills=<csv>")
+
+    if not (route.startswith("/search") or route.endswith("/results")) or status != 200:
+        return
+    if not isinstance(body, dict):
+        return
+
+    # RFC-0008 §1a: the ranking is global and the view filters it, so every search response
+    # has to say how much it filtered and where in the ranking each row sits.
+    for key in ("total", "inactive_hidden", "ranked_by", "page", "per_page", "results"):
+        if key not in body:
+            fail(path, f"{at} search response is missing '{key}' — RFC-0008 §1a")
+    for position, row in enumerate(body.get("results", [])):
+        if not isinstance(row, dict):
+            continue
+        for key in ("rank", "active"):
+            if key not in row:
+                fail(path, f"{at}.results[{position}] is missing '{key}' — RFC-0008 §1a")
+
+
 def check_case(path: Path, doc: dict, principals: set[str], seed_docs: dict[str, dict]) -> None:
     bound: set[str] = set()
     seeded = principals | seeded_row_keys(doc["seed"], seed_docs)
@@ -174,6 +207,7 @@ def check_case(path: Path, doc: dict, principals: set[str], seed_docs: dict[str,
                 continue
             fail(path, f"{at} uses {{{{{ref}}}}}, which no earlier step binds and no seed provides")
 
+        check_response_shapes(path, index, step)
         bound |= bindings_from_step(step)
 
 

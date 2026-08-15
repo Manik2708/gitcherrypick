@@ -1,6 +1,6 @@
 {
-  "name": "shortlists belong to the organization, not to the recruiter who made them",
-  "description": "RFC-0008 §3. The consent flow is covered by contact_request_requires_consent; this case covers everything around it — listing, editing, closing, removing an entry, and the ownership model.\n\nScoping is to organization_id, so every member of an org sees and edits the same shortlists and a departing recruiter does not take the hiring round with them. created_by and added_by record who acted, which is an audit trail rather than an ownership claim.\n\nThe irreversible boundary is email release. Before a contributor answers, an entry can be removed and the disclosure withdrawn. Once email_released_at is set the disclosure already happened, and deleting the entry would destroy the record of it — so it 409s.",
+  "name": "shortlists are staged privately, then confirmed irreversibly",
+  "description": "RFC-0008 §3 and §3a. The consent flow is covered by contact_request_requires_consent; this case covers the two-phase model and the ownership rules around it.\n\nA shortlisted contributor can never be un-shortlisted — once someone has been told an organization is interested, that is a fact, and an endpoint that erased the record of it would be pretending otherwise. A rule that strict is only tolerable if there is a moment before it binds, so building a shortlist discloses NOTHING and only confirm sends anything.\n\nConfirm notifies exactly the entries where notified_at IS NULL. That makes the shortlist a living round: a fourth candidate on day 3 gets an email, and the original three are not re-notified. One rule for every entry whenever it was added — removable until confirmed, permanent after.\n\nScoping is to organization_id, so a departing recruiter does not take the hiring round with them. created_by and added_by are an audit trail, not an ownership claim.",
   "seed": ["principals", "catalogue", "repositories", "scored_population"],
   "steps": [
     {
@@ -8,20 +8,32 @@
       "request": {
         "method": "POST",
         "path": "/shortlists",
-        "body": { "name": "Platform team, Q3", "description": "Two Go/Kubernetes hires.", "tentative_result_date": "2026-09-15" }
+        "body": {
+          "name": "Platform team, Q3",
+          "description": "Two Go/Kubernetes hires.",
+          "tentative_result_date": "2026-09-15"
+        }
       },
-      "capture": { "shortlist": "$.id" },
+      "capture": {
+        "shortlist": "$.id"
+      },
       "expect": {
         "status": 201,
+        "_note": "status is draft, not open. A shortlist that notified people the moment it was created is what the confirm step exists to prevent.",
         "body": {
           "id": "<uuid>",
           "name": "Platform team, Q3",
           "description": "Two Go/Kubernetes hires.",
-          "status": "open",
+          "status": "draft",
           "tentative_result_date": "2026-09-15",
-          "organization": { "id": "01920000-0000-7000-8000-00000000b001", "name": "Acme Corp" },
+          "organization": {
+            "id": "01920000-0000-7000-8000-00000000b001",
+            "name": "Acme Corp"
+          },
           "created_by": "01920000-0000-7000-8000-00000000c001",
           "entry_count": 0,
+          "unnotified_count": 0,
+          "first_confirmed_at": null,
           "created_at": "<timestamp>"
         }
       }
@@ -29,34 +41,77 @@
     {
       "_step": "tentative_result_date is required at creation. It is what the contributor is told, and the overdue ratio is computed against it — ADR-0005.",
       "as": "hank",
-      "request": { "method": "POST", "path": "/shortlists", "body": { "name": "Vague plans" } },
+      "request": {
+        "method": "POST",
+        "path": "/shortlists",
+        "body": {
+          "name": "Vague plans"
+        }
+      },
       "expect": {
         "status": 422,
-        "body": { "error": "invalid_shortlist", "items": [{ "field": "tentative_result_date", "reason": "required" }] }
+        "body": {
+          "error": "invalid_shortlist",
+          "items": [
+            {
+              "field": "tentative_result_date",
+              "reason": "required"
+            }
+          ]
+        }
       }
     },
     {
       "as": "hank",
-      "request": { "method": "POST", "path": "/shortlists", "body": { "name": "Backdated", "tentative_result_date": "2026-01-01" } },
+      "request": {
+        "method": "POST",
+        "path": "/shortlists",
+        "body": {
+          "name": "Backdated",
+          "tentative_result_date": "2026-01-01"
+        }
+      },
       "expect": {
         "status": 422,
         "_note": "A date already past would be born overdue and would immediately drag the org's flagging ratio.",
-        "body": { "error": "invalid_shortlist", "items": [{ "field": "tentative_result_date", "reason": "must_be_future" }] }
+        "body": {
+          "error": "invalid_shortlist",
+          "items": [
+            {
+              "field": "tentative_result_date",
+              "reason": "must_be_future"
+            }
+          ]
+        }
       }
     },
     {
-      "_step": "An unverified hirer cannot create one. Shortlisting discloses interest to a contributor.",
+      "_step": "An unverified hirer cannot create one, even a draft that discloses nothing.",
       "as": "pending_pat",
-      "request": { "method": "POST", "path": "/shortlists", "body": { "name": "Fishing", "tentative_result_date": "2026-09-15" } },
+      "request": {
+        "method": "POST",
+        "path": "/shortlists",
+        "body": {
+          "name": "Fishing",
+          "tentative_result_date": "2026-09-15"
+        }
+      },
       "expect": {
         "status": 403,
-        "body": { "error": "hiring_capability_required", "hirer_verified": false, "organization_verified": false }
+        "body": {
+          "error": "hiring_capability_required",
+          "hirer_verified": false,
+          "organization_verified": false
+        }
       }
     },
     {
-      "_step": "ORG SCOPING. dave_hiring is a different person at the same org and sees Hank's shortlist as their own.",
+      "_step": "ORG SCOPING. dave_hiring is a different person at the same org and sees Hank's draft as their own.",
       "as": "dave_hiring",
-      "request": { "method": "GET", "path": "/shortlists" },
+      "request": {
+        "method": "GET",
+        "path": "/shortlists"
+      },
       "expect": {
         "status": 200,
         "body": {
@@ -65,9 +120,10 @@
             {
               "id": "<uuid>",
               "name": "Platform team, Q3",
-              "status": "open",
+              "status": "draft",
               "tentative_result_date": "2026-09-15",
               "entry_count": 0,
+              "unnotified_count": 0,
               "created_by": "01920000-0000-7000-8000-00000000c001",
               "created_at": "<timestamp>"
             }
@@ -76,18 +132,18 @@
       }
     },
     {
-      "_step": "A hirer at ANOTHER org sees nothing of Acme's.",
+      "_step": "A hirer at ANOTHER org sees nothing of Acme's, and cannot confirm an id they guessed.",
       "as": "sam_studio",
-      "request": { "method": "GET", "path": "/shortlists" },
-      "expect": { "status": 200, "body": { "total": 0, "shortlists": [] } }
-    },
-    {
-      "as": "sam_studio",
-      "request": { "method": "GET", "path": "/shortlists/{{shortlist}}" },
+      "request": {
+        "method": "GET",
+        "path": "/shortlists/{{shortlist}}"
+      },
       "expect": {
         "status": 404,
         "_note": "404 rather than 403 — a competitor must not be able to confirm that a given shortlist id belongs to Acme.",
-        "body": { "error": "shortlist_not_found" }
+        "body": {
+          "error": "shortlist_not_found"
+        }
       }
     },
     {
@@ -96,7 +152,10 @@
       "request": {
         "method": "PATCH",
         "path": "/shortlists/{{shortlist}}",
-        "body": { "name": "Platform team, Q3 (revised)", "tentative_result_date": "2026-09-30" }
+        "body": {
+          "name": "Platform team, Q3 (revised)",
+          "tentative_result_date": "2026-09-30"
+        }
       },
       "expect": {
         "status": 200,
@@ -104,82 +163,289 @@
           "id": "<uuid>",
           "name": "Platform team, Q3 (revised)",
           "description": "Two Go/Kubernetes hires.",
-          "status": "open",
+          "status": "draft",
           "tentative_result_date": "2026-09-30",
-          "organization": { "id": "01920000-0000-7000-8000-00000000b001", "name": "Acme Corp" },
+          "organization": {
+            "id": "01920000-0000-7000-8000-00000000b001",
+            "name": "Acme Corp"
+          },
           "created_by": "01920000-0000-7000-8000-00000000c001",
           "entry_count": 0,
+          "unnotified_count": 0,
+          "first_confirmed_at": null,
           "updated_at": "<timestamp>"
         }
       }
     },
     {
-      "_step": "AssertNotSelf on add — the third place ADR-0002 requires it. dave_hiring shares a GitHub identity with contributor dave.",
+      "_step": "AssertNotSelf fires at STAGE time, not at confirm — RFC-0008 §3a. Discovering an ineligible candidate at send time would be too late.",
       "as": "dave_hiring",
       "request": {
         "method": "POST",
         "path": "/shortlists/{{shortlist}}/entries",
-        "body": { "user_id": "01920000-0000-7000-8000-00000000a004" }
+        "body": {
+          "user_id": "01920000-0000-7000-8000-00000000a004"
+        }
       },
       "expect": {
         "status": 403,
-        "body": { "error": "cannot_shortlist_self" },
-        "db": { "contact_requests": { "where": { "user_id": "01920000-0000-7000-8000-00000000a004" }, "count": 0 } }
-      }
-    },
-    {
-      "_step": "Adding Alice creates the contact request in the SAME transaction — ADR-0005.",
-      "as": "hank",
-      "request": {
-        "method": "POST",
-        "path": "/shortlists/{{shortlist}}/entries",
-        "body": { "user_id": "01920000-0000-7000-8000-00000000a001", "note": "Strongest Go evidence in the pool." }
-      },
-      "expect": {
-        "status": 201,
         "body": {
-          "shortlist_id": "<uuid>",
-          "user": { "id": "01920000-0000-7000-8000-00000000a001", "display_name": "Alice Okafor", "github_login": "aliceok" },
-          "note": "Strongest Go evidence in the pool.",
-          "added_by": "01920000-0000-7000-8000-00000000c001",
-          "contact_request": { "id": "<uuid>", "status": "pending", "tentative_result_date": "2026-09-30", "expires_at": "<timestamp>" },
-          "added_at": "<timestamp>"
+          "error": "cannot_shortlist_self"
         },
         "db": {
-          "shortlist_entries": { "where": { "shortlist_id": "{{shortlist}}" }, "count": 1 },
-          "contact_requests": { "where": { "shortlist_id": "{{shortlist}}" }, "count": 1 }
-        }
-      }
-    },
-    {
-      "_step": "The copied date is the EDITED one. It is copied at entry time so a later edit cannot rewrite what a contributor was told.",
-      "as": "hank",
-      "request": { "method": "PATCH", "path": "/shortlists/{{shortlist}}", "body": { "tentative_result_date": "2026-12-31" } },
-      "expect": {
-        "status": 200,
-        "body": {
-          "id": "<uuid>",
-          "name": "Platform team, Q3 (revised)",
-          "description": "Two Go/Kubernetes hires.",
-          "status": "open",
-          "tentative_result_date": "2026-12-31",
-          "organization": { "id": "01920000-0000-7000-8000-00000000b001", "name": "Acme Corp" },
-          "created_by": "01920000-0000-7000-8000-00000000c001",
-          "entry_count": 1,
-          "updated_at": "<timestamp>"
-        },
-        "db": {
-          "contact_requests": {
-            "_note": "Still 2026-09-30. The record of the promise survives the edit — ADR-0005 states this explicitly.",
-            "where": { "shortlist_id": "{{shortlist}}" },
-            "all_match": { "tentative_result_date": "2026-09-30" }
+          "shortlist_entries": {
+            "where": {
+              "shortlist_id": "{{shortlist}}"
+            },
+            "count": 0
           }
         }
       }
     },
     {
+      "_step": "Stage three candidates. NOTHING is disclosed by any of these.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/shortlists/{{shortlist}}/entries",
+        "body": {
+          "user_id": "01920000-0000-7000-8000-00000000a001",
+          "note": "Strongest Go evidence in the pool."
+        }
+      },
+      "expect": {
+        "status": 201,
+        "_note": "No contact_request field. There is no contact request — that is the entire point of the draft phase.",
+        "body": {
+          "shortlist_id": "<uuid>",
+          "user": {
+            "id": "01920000-0000-7000-8000-00000000a001",
+            "display_name": "Alice Okafor",
+            "github_login": "aliceok"
+          },
+          "note": "Strongest Go evidence in the pool.",
+          "added_by": "01920000-0000-7000-8000-00000000c001",
+          "notified_at": null,
+          "added_at": "<timestamp>"
+        },
+        "db": {
+          "shortlist_entries": {
+            "where": {
+              "shortlist_id": "{{shortlist}}"
+            },
+            "count": 1,
+            "all_match": {
+              "notified_at": null
+            }
+          },
+          "contact_requests": {
+            "_note": "Zero. Staging is private.",
+            "where": {
+              "shortlist_id": "{{shortlist}}"
+            },
+            "count": 0
+          }
+        }
+      }
+    },
+    {
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/shortlists/{{shortlist}}/entries",
+        "body": {
+          "user_id": "01920000-0000-7000-8000-00000000a002"
+        }
+      },
+      "expect": {
+        "status": 201,
+        "body": {
+          "shortlist_id": "<uuid>",
+          "user": {
+            "id": "01920000-0000-7000-8000-00000000a002",
+            "display_name": "Bob Nakamura",
+            "github_login": "bobn"
+          },
+          "note": null,
+          "added_by": "01920000-0000-7000-8000-00000000c001",
+          "notified_at": null,
+          "added_at": "<timestamp>"
+        }
+      }
+    },
+    {
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/shortlists/{{shortlist}}/entries",
+        "body": {
+          "user_id": "01920000-0000-7000-8000-00000000a003"
+        }
+      },
+      "expect": {
+        "status": 201,
+        "_note": "Carol is INACTIVE — lapsed availability. She can still be staged and contacted; being quiet is not refusal (RFC-0008 §1a).",
+        "body": {
+          "shortlist_id": "<uuid>",
+          "user": {
+            "id": "01920000-0000-7000-8000-00000000a003",
+            "display_name": "Carol Diaz",
+            "github_login": "cdiaz"
+          },
+          "note": null,
+          "added_by": "01920000-0000-7000-8000-00000000c001",
+          "notified_at": null,
+          "added_at": "<timestamp>"
+        }
+      }
+    },
+    {
+      "_step": "THE MIS-CLICK REMEDY. Carol was staged by mistake and is removed. She was never told, so nothing is erased.",
+      "as": "hank",
+      "request": {
+        "method": "DELETE",
+        "path": "/shortlists/{{shortlist}}/entries/01920000-0000-7000-8000-00000000a003"
+      },
+      "expect": {
+        "status": 204,
+        "body": null,
+        "db": {
+          "shortlist_entries": {
+            "where": {
+              "shortlist_id": "{{shortlist}}"
+            },
+            "count": 2
+          }
+        }
+      }
+    },
+    {
+      "as": "carol",
+      "request": {
+        "method": "GET",
+        "path": "/me/contact-requests"
+      },
+      "expect": {
+        "status": 200,
+        "_note": "Carol never learns she was briefly considered.",
+        "body": {
+          "total": 0,
+          "requests": []
+        }
+      }
+    },
+    {
+      "_step": "A duplicate stage is a conflict. uq_contact_request is enforced at confirm, but a double entry is caught here.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/shortlists/{{shortlist}}/entries",
+        "body": {
+          "user_id": "01920000-0000-7000-8000-00000000a001"
+        }
+      },
+      "expect": {
+        "status": 409,
+        "body": {
+          "error": "already_shortlisted"
+        }
+      }
+    },
+    {
+      "_step": "CONFIRM. Two emails, one transaction, and those two entries become permanent.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/shortlists/{{shortlist}}/confirm",
+        "body": {}
+      },
+      "expect": {
+        "status": 200,
+        "_note": "The response states the irreversibility in the payload, not only in the UI that led here.",
+        "body": {
+          "id": "<uuid>",
+          "status": "open",
+          "notified": 2,
+          "already_notified": 0,
+          "irreversible": true,
+          "first_confirmed_at": "<timestamp>",
+          "entries": [
+            {
+              "user_id": "01920000-0000-7000-8000-00000000a001",
+              "display_name": "Alice Okafor",
+              "contact_request_id": "<uuid>",
+              "notified_at": "<timestamp>"
+            },
+            {
+              "user_id": "01920000-0000-7000-8000-00000000a002",
+              "display_name": "Bob Nakamura",
+              "contact_request_id": "<uuid>",
+              "notified_at": "<timestamp>"
+            }
+          ]
+        },
+        "db": {
+          "_note": "Every contact request for the round written atomically — the ADR-0005 same-transaction property, moved from add to confirm.",
+          "contact_requests": {
+            "where": {
+              "shortlist_id": "{{shortlist}}"
+            },
+            "count": 2,
+            "all_match": {
+              "status": "pending",
+              "tentative_result_date": "2026-09-30"
+            }
+          },
+          "shortlist_entries": {
+            "where": {
+              "shortlist_id": "{{shortlist}}"
+            },
+            "count": 2,
+            "none_match": {
+              "notified_at": null
+            }
+          },
+          "shortlists": {
+            "where": {
+              "id": "{{shortlist}}"
+            },
+            "all_match": {
+              "status": "open"
+            }
+          }
+        }
+      }
+    },
+    {
+      "_step": "ONCE SHORTLISTED, NEVER REMOVED. Alice was told; deleting the entry would erase the record of a disclosure that happened.",
+      "as": "hank",
+      "request": {
+        "method": "DELETE",
+        "path": "/shortlists/{{shortlist}}/entries/01920000-0000-7000-8000-00000000a001"
+      },
+      "expect": {
+        "status": 409,
+        "body": {
+          "error": "entry_already_notified",
+          "notified_at": "<timestamp>"
+        },
+        "db": {
+          "shortlist_entries": {
+            "where": {
+              "shortlist_id": "{{shortlist}}"
+            },
+            "count": 2
+          }
+        }
+      }
+    },
+    {
+      "_step": "...and that holds before she answers, not only after. The disclosure, not the reply, is what binds.",
       "as": "alice",
-      "request": { "method": "GET", "path": "/me/contact-requests" },
+      "request": {
+        "method": "GET",
+        "path": "/me/contact-requests"
+      },
       "expect": {
         "status": 200,
         "_note": "Acme is payment_verified, so no disclosure label. The sam_studio case pins the labelled variant.",
@@ -188,7 +454,10 @@
           "requests": [
             {
               "id": "<uuid>",
-              "organization": { "name": "Acme Corp", "payment_verified": true },
+              "organization": {
+                "name": "Acme Corp",
+                "payment_verified": true
+              },
               "status": "pending",
               "tentative_result_date": "2026-09-30",
               "disclosure": null,
@@ -200,89 +469,203 @@
       }
     },
     {
-      "_step": "A duplicate add is a conflict. uq_contact_request is (shortlist_id, user_id) — re-adding must not re-notify.",
+      "_step": "A second confirm with nothing new sends nothing. Idempotent — a double click must not re-email anyone.",
       "as": "hank",
       "request": {
         "method": "POST",
-        "path": "/shortlists/{{shortlist}}/entries",
-        "body": { "user_id": "01920000-0000-7000-8000-00000000a001" }
+        "path": "/shortlists/{{shortlist}}/confirm",
+        "body": {}
       },
       "expect": {
-        "status": 409,
-        "body": { "error": "already_shortlisted" },
-        "db": { "contact_requests": { "where": { "shortlist_id": "{{shortlist}}" }, "count": 1 } }
+        "status": 200,
+        "body": {
+          "id": "<uuid>",
+          "status": "open",
+          "notified": 0,
+          "already_notified": 2,
+          "irreversible": true,
+          "first_confirmed_at": "<timestamp>",
+          "entries": []
+        },
+        "db": {
+          "contact_requests": {
+            "where": {
+              "shortlist_id": "{{shortlist}}"
+            },
+            "count": 2
+          }
+        }
       }
     },
     {
-      "_step": "Add Bob too, then remove him before he answers. The disclosure is withdrawn with the entry.",
+      "_step": "DAY 3. A fourth candidate joins the same round rather than fragmenting it into a second shortlist.",
       "as": "hank",
       "request": {
         "method": "POST",
         "path": "/shortlists/{{shortlist}}/entries",
-        "body": { "user_id": "01920000-0000-7000-8000-00000000a002" }
+        "body": {
+          "user_id": "01920000-0000-7000-8000-00000000a003"
+        }
       },
       "expect": {
         "status": 201,
+        "_note": "Staged, unnotified, and therefore removable again — even though the shortlist itself is already open.",
         "body": {
           "shortlist_id": "<uuid>",
-          "user": { "id": "01920000-0000-7000-8000-00000000a002", "display_name": "Bob Nakamura", "github_login": "bobn" },
+          "user": {
+            "id": "01920000-0000-7000-8000-00000000a003",
+            "display_name": "Carol Diaz",
+            "github_login": "cdiaz"
+          },
           "note": null,
           "added_by": "01920000-0000-7000-8000-00000000c001",
-          "contact_request": { "id": "<uuid>", "status": "pending", "tentative_result_date": "2026-12-31", "expires_at": "<timestamp>" },
+          "notified_at": null,
           "added_at": "<timestamp>"
-        }
-      }
-    },
-    {
-      "as": "hank",
-      "request": { "method": "DELETE", "path": "/shortlists/{{shortlist}}/entries/01920000-0000-7000-8000-00000000a002" },
-      "expect": {
-        "status": 204,
-        "body": null,
+        },
         "db": {
-          "shortlist_entries": { "where": { "shortlist_id": "{{shortlist}}" }, "count": 1 },
-          "contact_requests": { "where": { "shortlist_id": "{{shortlist}}", "status": "pending" }, "count": 1 }
+          "contact_requests": {
+            "where": {
+              "shortlist_id": "{{shortlist}}"
+            },
+            "count": 2
+          }
         }
       }
     },
     {
-      "as": "bob",
-      "request": { "method": "GET", "path": "/me/contact-requests" },
-      "expect": { "status": 200, "_note": "Gone. Bob is never told he was briefly considered.", "body": { "total": 0, "requests": [] } }
-    },
-    {
-      "_step": "Alice accepts. Email is released and the entry becomes permanent.",
-      "as": "alice",
-      "request": { "method": "POST", "path": "/me/contact-requests/{{contact_request_id}}/accept", "body": {} },
+      "as": "hank",
+      "request": {
+        "method": "GET",
+        "path": "/shortlists/{{shortlist}}"
+      },
       "expect": {
         "status": 200,
-        "body": { "id": "<uuid>", "status": "accepted", "responded_at": "<timestamp>", "email_released_at": "<timestamp>" }
-      }
-    },
-    {
-      "_step": "THE IRREVERSIBLE BOUNDARY. Removing an entry after release would destroy the record of a disclosure that already happened.",
-      "as": "hank",
-      "request": { "method": "DELETE", "path": "/shortlists/{{shortlist}}/entries/01920000-0000-7000-8000-00000000a001" },
-      "expect": {
-        "status": 409,
-        "body": { "error": "contact_already_released", "email_released_at": "<timestamp>" },
-        "db": { "shortlist_entries": { "where": { "shortlist_id": "{{shortlist}}" }, "count": 1 } }
-      }
-    },
-    {
-      "as": "hank",
-      "request": { "method": "GET", "path": "/shortlists/{{shortlist}}/contact-requests" },
-      "expect": {
-        "status": 200,
-        "_note": "The hirer sees the email only because Alice accepted. A pending row would carry email: null.",
         "body": {
-          "total": 1,
+          "id": "<uuid>",
+          "name": "Platform team, Q3 (revised)",
+          "description": "Two Go/Kubernetes hires.",
+          "status": "open",
+          "tentative_result_date": "2026-09-30",
+          "organization": {
+            "id": "01920000-0000-7000-8000-00000000b001",
+            "name": "Acme Corp"
+          },
+          "created_by": "01920000-0000-7000-8000-00000000c001",
+          "entry_count": 3,
+          "unnotified_count": 1,
+          "first_confirmed_at": "<timestamp>",
+          "created_at": "<timestamp>"
+        }
+      }
+    },
+    {
+      "_step": "Confirm again. ONE email. Alice and Bob are not re-notified.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/shortlists/{{shortlist}}/confirm",
+        "body": {}
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "id": "<uuid>",
+          "status": "open",
+          "notified": 1,
+          "already_notified": 2,
+          "irreversible": true,
+          "first_confirmed_at": "<timestamp>",
+          "entries": [
+            {
+              "user_id": "01920000-0000-7000-8000-00000000a003",
+              "display_name": "Carol Diaz",
+              "contact_request_id": "<uuid>",
+              "notified_at": "<timestamp>"
+            }
+          ]
+        },
+        "db": {
+          "contact_requests": {
+            "where": {
+              "shortlist_id": "{{shortlist}}"
+            },
+            "count": 3
+          }
+        }
+      }
+    },
+    {
+      "_step": "Carol was inactive when contacted. Accepting refreshes her availability window — answering yes says more than the button she forgot to click.",
+      "as": "carol",
+      "request": {
+        "method": "POST",
+        "path": "/me/contact-requests/{{contact_request_id}}/accept",
+        "body": {}
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "id": "<uuid>",
+          "status": "accepted",
+          "responded_at": "<timestamp>",
+          "email_released_at": "<timestamp>",
+          "availability_refreshed": true
+        },
+        "db": {
+          "user_availability": {
+            "where": {
+              "user_id": "01920000-0000-7000-8000-00000000a003"
+            },
+            "none_match": {
+              "expires_at": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "as": "hank",
+      "request": {
+        "method": "GET",
+        "path": "/shortlists/{{shortlist}}/contact-requests"
+      },
+      "expect": {
+        "status": 200,
+        "_note": "Carol's email appears because she accepted. Alice and Bob are still pending, so theirs are null.",
+        "body": {
+          "total": 3,
           "requests": [
             {
               "id": "<uuid>",
-              "user": { "id": "01920000-0000-7000-8000-00000000a001", "display_name": "Alice Okafor", "github_login": "aliceok" },
+              "user": {
+                "id": "01920000-0000-7000-8000-00000000a001",
+                "display_name": "Alice Okafor",
+                "github_login": "aliceok"
+              },
+              "status": "pending",
+              "email": null,
+              "responded_at": null
+            },
+            {
+              "id": "<uuid>",
+              "user": {
+                "id": "01920000-0000-7000-8000-00000000a002",
+                "display_name": "Bob Nakamura",
+                "github_login": "bobn"
+              },
+              "status": "pending",
+              "email": null,
+              "responded_at": null
+            },
+            {
+              "id": "<uuid>",
+              "user": {
+                "id": "01920000-0000-7000-8000-00000000a003",
+                "display_name": "Carol Diaz",
+                "github_login": "cdiaz"
+              },
               "status": "accepted",
-              "email": "alice@example.com",
+              "email": "carol@example.com",
               "responded_at": "<timestamp>"
             }
           ]
@@ -291,37 +674,143 @@
     },
     {
       "as": "hank",
-      "request": { "method": "POST", "path": "/shortlists/{{shortlist}}/close", "body": {} },
+      "request": {
+        "method": "POST",
+        "path": "/shortlists/{{shortlist}}/close",
+        "body": {}
+      },
       "expect": {
         "status": 200,
-        "body": { "id": "<uuid>", "name": "Platform team, Q3 (revised)", "status": "closed", "entry_count": 1, "closed_at": "<timestamp>" },
-        "db": { "shortlists": { "where": { "id": "{{shortlist}}" }, "all_match": { "status": "closed" } } }
+        "body": {
+          "id": "<uuid>",
+          "name": "Platform team, Q3 (revised)",
+          "status": "closed",
+          "entry_count": 3,
+          "closed_at": "<timestamp>"
+        },
+        "db": {
+          "shortlists": {
+            "where": {
+              "id": "{{shortlist}}"
+            },
+            "all_match": {
+              "status": "closed"
+            }
+          }
+        }
       }
     },
     {
-      "_step": "A closed round takes no new entries. Adding someone to a finished search would disclose interest that no longer exists.",
+      "_step": "A closed round takes no new entries. Staging someone for a finished search would only ever mislead them.",
       "as": "hank",
       "request": {
         "method": "POST",
         "path": "/shortlists/{{shortlist}}/entries",
-        "body": { "user_id": "01920000-0000-7000-8000-00000000a003" }
+        "body": {
+          "user_id": "01920000-0000-7000-8000-00000000a004"
+        }
       },
       "expect": {
         "status": 409,
-        "body": { "error": "shortlist_closed" },
-        "db": { "contact_requests": { "where": { "user_id": "01920000-0000-7000-8000-00000000a003" }, "count": 0 } }
+        "body": {
+          "error": "shortlist_closed"
+        }
       }
     },
     {
       "as": "hank",
-      "request": { "method": "POST", "path": "/shortlists/{{shortlist}}/close", "body": {} },
-      "expect": { "status": 409, "body": { "error": "shortlist_closed" } }
+      "request": {
+        "method": "POST",
+        "path": "/shortlists/{{shortlist}}/confirm",
+        "body": {}
+      },
+      "expect": {
+        "status": 409,
+        "body": {
+          "error": "shortlist_closed"
+        }
+      }
     },
     {
-      "_step": "A closed round drops out of the overdue ratio entirely — it is no longer open, so it cannot be late.",
       "as": "hank",
-      "request": { "method": "GET", "path": "/shortlists?status=open" },
-      "expect": { "status": 200, "body": { "total": 0, "shortlists": [] } }
+      "request": {
+        "method": "POST",
+        "path": "/shortlists/{{shortlist}}/close",
+        "body": {}
+      },
+      "expect": {
+        "status": 409,
+        "body": {
+          "error": "shortlist_closed"
+        }
+      }
+    },
+    {
+      "_step": "A DRAFT that is never confirmed drops out of the overdue ratio — nothing was promised to anyone.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/shortlists",
+        "body": {
+          "name": "Abandoned idea",
+          "tentative_result_date": "2026-08-20"
+        }
+      },
+      "capture": {
+        "abandoned": "$.id"
+      },
+      "expect": {
+        "status": 201,
+        "body": {
+          "id": "<uuid>",
+          "name": "Abandoned idea",
+          "description": null,
+          "status": "draft",
+          "tentative_result_date": "2026-08-20",
+          "organization": {
+            "id": "01920000-0000-7000-8000-00000000b001",
+            "name": "Acme Corp"
+          },
+          "created_by": "01920000-0000-7000-8000-00000000c001",
+          "entry_count": 0,
+          "unnotified_count": 0,
+          "first_confirmed_at": null,
+          "created_at": "<timestamp>"
+        }
+      }
+    },
+    {
+      "as": "system",
+      "request": {
+        "method": "ADVANCE_CLOCK",
+        "path": "/"
+      },
+      "fake": {
+        "clock": {
+          "advance": "30d"
+        }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "now": "<timestamp>"
+        }
+      }
+    },
+    {
+      "as": "system",
+      "request": {
+        "method": "RUN_OVERDUE_SWEEP",
+        "path": "/"
+      },
+      "expect": {
+        "status": 200,
+        "_note": "The abandoned draft is past its date and is NOT counted. Overdue measures broken promises, and a draft never made one.",
+        "body": {
+          "organizations_checked": 3,
+          "flagged": 0
+        }
+      }
     }
   ]
 }

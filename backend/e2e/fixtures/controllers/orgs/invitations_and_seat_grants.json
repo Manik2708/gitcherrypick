@@ -294,9 +294,11 @@
         "status": 200,
         "body": {
           "total": 0,
-          "results": [],
+          "inactive_hidden": 0,
+          "ranked_by": "skill:go",
           "page": 1,
-          "per_page": 20
+          "per_page": 20,
+          "results": []
         }
       }
     },

@@ -115,13 +115,12 @@
       "as": "alice",
       "request": {
         "method": "GET",
-        "path": "/leaderboard?skill=go"
+        "path": "/leaderboard?kind=skill&skill=go"
       },
       "expect": {
         "status": 403,
         "body": {
-          "error": "forbidden",
-          "message": "Rankings are visible to verified hiring accounts only."
+          "error": "hirer_required"
         }
       }
     }
