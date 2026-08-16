@@ -8,39 +8,38 @@ import (
 	"go.uber.org/goleak"
 )
 
-// TestMain closes the shared pool and then fails the package if any goroutine
-// outlived the suite.
+// Leak detection, and nothing else.
 //
-// Order matters, and it is the whole reason this is not a plain
-// goleak.VerifyTestMain(m): that helper runs m.Run() and checks immediately,
-// which would catch the pool's own background goroutines still running —
-// because nothing had closed the pool. The tempting fix is to add
-// goleak.IgnoreTopFunction for each of them, and that is the wrong fix twice
-// over. It leaves the pool leaked, and it blinds the check to a genuinely
-// leaked pool somewhere else, which is exactly the bug worth catching.
+// This file does not open, close, or know about a database. Every test owns
+// its own pool and closes it through t.Cleanup (see harness_test.go), so by
+// the time TestMain looks, anything still running is a leak — including a pool
+// a test forgot to close, which is the failure mode worth catching here.
 //
-// So: run, release what the suite owns, then look for what is left. There are
-// no ignore options, and there should never need to be.
+// That is also why there are no goleak ignore options. Ignoring pgxpool's
+// background goroutines would excuse exactly the bug this exists to find.
+
+// keepDBEnv is set by db-test.sh --keep-db.
 //
-// A leak here is not cosmetic. An unclosed pgx.Rows keeps its connection
-// checked out forever; the symptom is pool exhaustion hours later under load,
-// with no stack pointing at the cause. goleak turns that into a failure while
-// the change that caused it is still on screen.
+// That flag means the developer is debugging and wants the database left
+// alive. Reporting a leak in that mode would be reporting the thing they asked
+// for, so the check is skipped.
+const keepDBEnv = "DB_TEST_KEEP_DB"
+
 func TestMain(m *testing.M) {
 	code := m.Run()
 
-	// Whatever the suite opened, the suite closes. closePool is a no-op when
-	// no test ever asked for a database — the skip path when Docker is absent.
-	closePool()
+	if os.Getenv(keepDBEnv) == "1" {
+		fmt.Fprintf(os.Stderr, "goleak: skipped (%s=1 — the database is being kept alive on purpose)\n", keepDBEnv)
+		os.Exit(code)
+	}
 
-	// Only on success. A failing suite may have abandoned goroutines precisely
-	// because it failed, and reporting those on top of the real failure buries
-	// it.
-	if code == 0 {
-		if err := goleak.Find(); err != nil {
-			fmt.Fprintf(os.Stderr, "goleak: %v\n", err)
-			code = 1
-		}
+	// Unconditional, unlike goleak.VerifyTestMain, which only looks when the
+	// suite passed. A failing suite can leak too, and learning about it only
+	// after the failure is fixed means fixing in sequence two things that were
+	// introduced together.
+	if err := goleak.Find(); err != nil {
+		fmt.Fprintf(os.Stderr, "goleak: %v\n", err)
+		code = 1
 	}
 
 	os.Exit(code)

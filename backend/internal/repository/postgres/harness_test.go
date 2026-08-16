@@ -34,15 +34,14 @@ import (
 
 const databaseURLEnv = "DB_TEST_DATABASE_URL"
 
+// The truncate statement is derived once from the live catalogue rather than
+// hard-coded: a table added by a later migration would otherwise silently stop
+// being cleaned, and the first symptom would be a test that passes alone and
+// fails in a suite.
+//
+// Only the STRING is cached. Nothing here holds a connection between tests —
+// that is what lets each test own and close its own pool.
 var (
-	poolOnce sync.Once
-	pool     *pgxpool.Pool
-	poolErr  error
-
-	// The truncate list is derived once from the live catalogue rather than
-	// hard-coded: a table added by a later migration would otherwise silently
-	// stop being cleaned, and the first symptom would be a test that passes
-	// alone and fails in a suite.
 	truncateOnce sync.Once
 	truncateStmt string
 	truncateErr  error
@@ -50,9 +49,20 @@ var (
 
 // newDB returns a *postgres.DB against an empty database.
 //
-// It skips the whole suite when no database is configured, so `go test ./...`
-// on a machine without Docker reports skipped rather than failed — a red suite
-// that means "you didn't start Postgres" trains people to ignore red.
+// Each test gets its OWN pool, closed through t.Cleanup. A pool shared across
+// the package would have to be closed by TestMain, which would put database
+// lifecycle into the leak test and — worse — mean goleak could not tell a
+// forgotten pool from the shared one. Per-test pools are a few connections
+// against a local Postgres and they make the isolation real rather than
+// conventional.
+//
+// The database is truncated BEFORE the test, never after: a failed test leaves
+// its rows behind for inspection, which is what --keep-db is for, and a test
+// that crashes cannot poison the next one.
+//
+// The suite skips when no database is configured, so `go test ./...` on a
+// machine without Docker reports skipped rather than failed — a red suite that
+// means "you didn't start Postgres" trains people to ignore red.
 func newDB(t *testing.T) *postgres.DB {
 	t.Helper()
 
@@ -61,10 +71,11 @@ func newDB(t *testing.T) *postgres.DB {
 		t.Skipf("%s is not set — run these through backend/scripts/db-test.sh", databaseURLEnv)
 	}
 
-	poolOnce.Do(func() { pool, poolErr = openPool(url) })
-	if poolErr != nil {
-		t.Fatalf("connecting to postgres: %v", poolErr)
+	pool, err := openPool(url)
+	if err != nil {
+		t.Fatalf("connecting to postgres: %v", err)
 	}
+	t.Cleanup(pool.Close)
 
 	truncateOnce.Do(func() { truncateStmt, truncateErr = buildTruncate(context.Background(), pool) })
 	if truncateErr != nil {
@@ -80,21 +91,15 @@ func newDB(t *testing.T) *postgres.DB {
 	return postgres.New(pool)
 }
 
-// closePool releases the shared pool. Called once by TestMain after every
-// test has run, so goleak sees a process that cleaned up after itself rather
-// than one whose leaks have to be enumerated and ignored.
-func closePool() {
-	if pool != nil {
-		pool.Close()
-		pool = nil
-	}
-}
-
 func openPool(url string) (*pgxpool.Pool, error) {
 	config, err := pgxpool.ParseConfig(url)
 	if err != nil {
 		return nil, fmt.Errorf("parse %s: %w", databaseURLEnv, err)
 	}
+	// Small, because there is one pool per test and they overlap when the
+	// package runs in parallel.
+	config.MaxConns = 4
+	config.MinConns = 0
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
@@ -112,9 +117,9 @@ func openPool(url string) (*pgxpool.Pool, error) {
 
 // buildTruncate asks the catalogue which tables exist.
 //
-// One TRUNCATE naming every table, with CASCADE and RESTART IDENTITY: doing it
-// in a single statement means foreign keys never have to be considered in
-// order, and it is one round trip rather than one per table.
+// One TRUNCATE naming every table, with CASCADE and RESTART IDENTITY: a single
+// statement means foreign keys never have to be ordered, and it is one round
+// trip rather than one per table.
 func buildTruncate(ctx context.Context, p *pgxpool.Pool) (string, error) {
 	rows, err := p.Query(ctx, `
 		SELECT quote_ident(tablename)
