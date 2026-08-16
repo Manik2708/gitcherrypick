@@ -24,6 +24,20 @@ report it to the Planner rather than choosing.
 Rationale lives in the RFC and is **not** repeated here. An ADR that re-argues its own case
 is an RFC with the wrong filename.
 
+## An ADR must not carry open questions
+
+**Every open question in an RFC is resolved with the owner before promotion.** An ADR is
+binding: implementers build against it and may not assume anything that exists only in an
+RFC. A binding document that admits it has not decided something forces every reader to
+guess which parts are real, and the undecided parts get built anyway by whoever reaches
+them first.
+
+If a question cannot be answered yet, the RFC stays **Proposed** until it can — or the
+undecided part is cut from its scope and deferred to a later RFC. Carrying it forward with a
+"value in force" is the same mistake wearing a hat.
+
+Enforced by `scripts/validate_docs.py`, which runs in `make check` and in CI.
+
 ## Changing an approved decision
 
 **Write a new RFC, and promote it to a new ADR. Never edit an approved one in place.**
@@ -58,6 +72,7 @@ changed, when, and what argument moved it.
 | [0005](ADR-0005-scoring-and-discovery.md)                | Scoring, ranking & discovery                             | Accepted | [rfc](../rfc/RFC-0005-ranking-and-discovery.schema)                |
 | [0006](ADR-0006-technology-selection.md)                 | Technology selection & dependencies                      | Accepted | —                                                                  |
 | [0007](ADR-0007-rubric-contract-and-generalist-score.md) | Rubric contract, disqualification & the generalist score | Accepted | [rfc](../rfc/RFC-0007-rubric-contract-and-generalist-score.schema) |
+| [0008](ADR-0008-discovery-http-surface.md)               | The discovery HTTP surface                               | Accepted | [rfc](../rfc/RFC-0008-discovery-http-surface.schema)               |
 
 Schema DDL lives beside the RFCs; migrations are generated from it during implementation
 (ADR-0001).
@@ -66,7 +81,8 @@ Schema DDL lives beside the RFCs; migrations are generated from it during implem
 
 ADR-0001 and ADR-0006 come first — they establish the module layout and the dependency set
 everything else compiles against. After that, 0002 → 0003 → 0004 → 0005, because each
-depends on the tables and services the previous one introduces.
+depends on the tables and services the previous one introduces. ADR-0007 and ADR-0008 amend
+those four rather than adding a layer, so their steps fold into the stage they touch.
 
 Integration tests (stage 3) are written against these ADRs **before** any of it is
 implemented, and must be failing when handed over.

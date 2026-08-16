@@ -50,6 +50,11 @@ jobs:
       - name: go.mod is tidy
         run: make go-tidy-check
 
+      # An ADR must not carry open questions. ADR-0008 shipped with three;
+      # this is why that cannot happen twice.
+      - name: RFC/ADR corpus
+        run: python scripts/validate_docs.py
+
       - name: fixtures
         run: python scripts/validate_fixtures.py
 

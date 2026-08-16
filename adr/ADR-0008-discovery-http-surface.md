@@ -28,6 +28,10 @@
     disclosure.
 11. **`evidence_within_months` has no default.** An unset filter filters nothing.
 12. **`per_page` is capped at 50, default 20.**
+13. **`inactive_for_days` is an exact count**, never bucketed.
+14. **A `q=` name search surfaces inactive contributors** regardless of
+    `include_inactive`. It is the only exception to decision 5, and it relaxes a default
+    filter, never a gate — `not_looking` stays excluded.
 
 ## Implementation
 
@@ -77,7 +81,7 @@ POST   /admin/skill-requests/{id}/decide
 | `min_overall_score`      | number  | 0–100                                     |
 | `min_generalist_score`   | number  | **No upper bound**                        |
 | `availability`           | csv     |                                           |
-| `include_inactive`       | boolean | Default false                             |
+| `include_inactive`       | boolean | Default false; implied by `q=`            |
 | `evidence_within_months` | integer | No default                                |
 | `q`                      | string  |                                           |
 | `page`, `per_page`       | integer | max 50, default 20                        |
@@ -93,10 +97,13 @@ NOT self                                    -- AssertNotSelf, join condition
 AND standing = 'primary'
 AND rubric_version = $active
 AND availability.status <> 'not_looking'
-AND (availability.expires_at > now() OR $include_inactive)
+AND (availability.expires_at > now() OR $include_inactive OR $q <> '')
 ```
 
-The first four are unconditional. Only the last is a parameter.
+The first four are unconditional. Only the last is a parameter, and `q <> ''` satisfies it
+on the same terms: browsing the market hides inactive contributors, looking one up by name
+does not. `inactive_hidden` counts what the filter actually removed, so a name search that
+surfaces an inactive contributor reports 0.
 
 ### Ranking
 
@@ -117,8 +124,11 @@ requires the row to survive a lapse so a returning contributor finds their setti
 
 ```
 last_confirmed_at = user_availability.updated_at
-inactive_for_days = floor(now() - expires_at)
+inactive_for_days = floor(now() - expires_at)     -- exact, never bucketed
 ```
+
+Exact because 31 days and 300 days are very different bets, and a bucket hides that
+difference at its boundaries.
 
 ### Confirm
 
@@ -163,19 +173,10 @@ independently of `notified_at`.
 - **`not_looking` contributors are unrankable.** Their `/me/rank` returns nulls with
   `unranked_reason: "opted_out"`. If that proves discouraging in practice it needs a new RFC,
   not a patch here.
-- **The ranking CTE is full-population on every search.** Step 3 is the place performance
-  will hurt first, and open question 1 is about exactly that.
-
-## Open questions
-
-Carried from RFC-0008, **unresolved at acceptance**. The values below are in force until a
-later ADR changes them; none blocks stage 4.
-
-| #   | Question                                                               | In force                  |
-| --- | ---------------------------------------------------------------------- | ------------------------- |
-| 1   | `per_page` max 50 — chosen to bound the scorecard join, never measured | 50, revisit after stage 4 |
-| 2   | Should `inactive_for_days` be bucketed rather than exact?              | Exact                     |
-| 3   | Should `q=` name search surface inactive people without the toggle?    | Yes — see RFC-0008 §OQ3   |
+- **The ranking CTE is full-population on every search.** Step 3 is where performance will
+  hurt first. `per_page` is capped at 50 to bound the per-row scorecard join; if that proves
+  too generous under a realistic corpus, lowering it is a new ADR rather than a quiet
+  change, because clients will have been built against it.
 
 ## Amendments
 

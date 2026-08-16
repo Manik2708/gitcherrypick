@@ -56,7 +56,7 @@ replayable as a query string without a translation layer:
 | `availability`           | csv     | Status filter, on top of the always-on gates               |
 | `include_inactive`       | boolean | **Default false.** See §1a                                 |
 | `evidence_within_months` | integer | Recency of the newest scored PR. **No default**            |
-| `q`                      | string  | Display name / login                                       |
+| `q`                      | string  | Display name / login. See §1b                              |
 | `page`, `per_page`       | integer | `per_page` max **50**, default **20**                      |
 
 `skills=go,kubernetes` replaces the repeated `?skill=` form the fixtures used. One
@@ -103,11 +103,11 @@ _filters_ that ranking rather than recomputing it. So a hidden contributor leave
 in the rank sequence:
 
 ```
-?per_page=60                       -> 60 rows, ranks 1-61, no 50   (50 is inactive)
-?per_page=60&include_inactive=true -> 60 rows, ranks 1-60          (50 returns, 61 drops)
+?per_page=50                       -> 50 rows, ranks 1-51, no 12   (12 is inactive)
+?per_page=50&include_inactive=true -> 50 rows, ranks 1-50          (12 returns, 51 drops)
 ```
 
-The count is what the hirer asked for; which sixty people fill it is what the toggle
+The count is what the hirer asked for; which fifty people fill it is what the toggle
 changes. `inactive_hidden` is returned alongside `total` so the gap reads as a filter
 rather than a bug, and so the toggle is discoverable at the moment it is relevant.
 
@@ -144,10 +144,38 @@ Both numbers appear because they answer different questions — `last_confirmed_
 stale the signal is, `inactive_for_days` is how long they have been gone. They differ by
 the 15-day window, so showing only one invites the wrong arithmetic.
 
+**`inactive_for_days` is an exact count, not a bucket.** A hirer deciding whether to bet on
+someone quiet needs the real number: 31 days and 300 days are very different bets, and a
+bucket hides exactly that difference at its boundaries. The privacy argument for bucketing
+is thin here — the profile is already visible with a name and full evidence — so precision
+wins.
+
 **`not_looking` is not affected by any of this.** It is an explicit opt-out rather than a
 stale yes, so it is excluded everywhere a hirer looks and **no toggle reveals it**. It is
 also excluded from the ranked population entirely: leaving it in would put permanent
 unexplainable gaps in every board, since no parameter could ever fill them.
+
+### 1b · Looking someone up is not browsing
+
+**A `q=` name search surfaces inactive contributors even when `include_inactive`
+is false.** It is the one exception to §1a, and it exists because the two
+activities are different: browsing the market is a question about who is
+available, while typing a name is a question about a person you already know
+exists.
+
+```
+?q=Carol            -> 1 result, flagged inactive
+?skills=postgres    -> 0 results   (Carol is hidden)
+```
+
+Hiding her from a name search makes the platform look broken to someone who is
+certain she is there, and teaches a recruiter to distrust empty results. The
+row still carries `active: false` and its staleness, so nothing is concealed —
+only the default _filter_ is relaxed, never a gate. `not_looking` stays
+excluded from a name search as from everything else.
+
+`inactive_hidden` counts what the filter removed, so a name search that
+surfaces an inactive contributor reports 0.
 
 ### Leaderboard
 
@@ -344,14 +372,3 @@ in the schema file rather than assumed.
 parameter, entry removal after email release, and a lapsed Carol who is unranked. All three
 are rewritten against this document on approval. Better a fixture edited once now than an
 API shaped permanently by whatever a test author typed.
-
-## Open questions
-
-1. **`per_page` max 50** is chosen to bound the per-row scorecard join, not measured. Worth
-   revisiting once the ranked query is benchmarked against a realistic corpus in stage 4.
-2. **Should `inactive_for_days` be bucketed** (`"31 days"` vs `"1-2 months"`)? Precise day
-   counts on a hidden profile are a small amount of behavioural information about someone
-   who is not actively participating.
-3. **Does an inactive contributor appear in `q=` name search** when `include_inactive` is
-   false? Proposed: yes, because searching someone by name means you already know they
-   exist, and a hirer looking for a specific person is not browsing the market.

@@ -1,6 +1,6 @@
 {
   "name": "search filters a global ranking, leaving gaps where inactive people sit",
-  "description": "ADR-0005 gates plus RFC-0008 §1a. Rank is computed over the whole scored population and the default view FILTERS that ranking rather than recomputing it, so a hidden contributor leaves a hole in the sequence. Carol scores 71.5 — the highest Postgres score on the platform — and has lapsed availability, so a default Postgres search starts at rank 2.\n\nThat is the point: the count is what the hirer asked for, and which people fill it is what include_inactive changes. inactive_hidden is returned so the hole reads as a filter rather than a bug.\n\nThe three permanent gates are unaffected and remain SQL, not post-filters: only primary standing matches a skill filter (dave's Go scores 81 as a secondary and is unsearchable at any threshold), AssertNotSelf removes dave from dave_hiring's results without affecting anyone else's, and not_looking is excluded with no toggle that reveals it.",
+  "description": "ADR-0005 gates plus RFC-0008 §1a. Rank is computed over the whole scored population and the default view FILTERS that ranking rather than recomputing it, so a hidden contributor leaves a hole in the sequence. Carol scores 71.5 — the highest Postgres score on the platform — and has lapsed availability, so a default Postgres search starts at rank 2.\n\nThat is the point: the count is what the hirer asked for, and which people fill it is what include_inactive changes. inactive_hidden is returned so the hole reads as a filter rather than a bug.\n\nA q= name search is the one exception to the default hiding (ADR-0008 §1b): looking someone up by name is not browsing the market, so Carol appears without the toggle. It relaxes a default filter, never a gate.\n\nThe three permanent gates are unaffected and remain SQL, not post-filters: only primary standing matches a skill filter (dave's Go scores 81 as a secondary and is unsearchable at any threshold), AssertNotSelf removes dave from dave_hiring's results without affecting anyone else's, and not_looking is excluded with no toggle that reveals it.",
   "seed": ["principals", "catalogue", "repositories", "scored_population"],
   "steps": [
     {
@@ -612,6 +612,152 @@
       }
     },
     {
+      "_step": "NAME SEARCH FINDS HER — ADR-0008 §1b. include_inactive is false and Carol is lapsed, and she appears anyway.",
+      "as": "hank",
+      "request": {
+        "method": "GET",
+        "path": "/search?q=Carol"
+      },
+      "expect": {
+        "status": 200,
+        "_note": "inactive_hidden is 0: the filter removed nobody. Hiding her here would make the platform look broken to someone who is certain she exists.",
+        "body": {
+          "total": 1,
+          "inactive_hidden": 0,
+          "ranked_by": "overall",
+          "page": 1,
+          "per_page": 20,
+          "results": [
+            {
+              "rank": 1,
+              "id": "<uuid>",
+              "display_name": "Carol Diaz",
+              "github_login": "cdiaz",
+              "active": false,
+              "availability": {
+                "status": "looking_for_job",
+                "last_confirmed_at": "<timestamp>",
+                "inactive_for_days": 1
+              },
+              "skills": [
+                {
+                  "slug": "postgres",
+                  "standing": "primary",
+                  "score": 71.5,
+                  "rank": 1
+                }
+              ],
+              "overall_score": 71.5,
+              "generalist_score": 71.5
+            }
+          ]
+        }
+      }
+    },
+    {
+      "_step": "...while browsing for the same person's SKILL still hides her. The two queries ask different questions.",
+      "as": "hank",
+      "request": {
+        "method": "GET",
+        "path": "/search?skills=postgres"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "total": 1,
+          "inactive_hidden": 1,
+          "ranked_by": "skill:postgres",
+          "page": 1,
+          "per_page": 20,
+          "results": [
+            {
+              "rank": 2,
+              "id": "<uuid>",
+              "display_name": "Bob Nakamura",
+              "github_login": "bobn",
+              "active": true,
+              "availability": {
+                "status": "looking_for_freelance",
+                "expires_at": "<timestamp>"
+              },
+              "skills": [
+                {
+                  "slug": "postgres",
+                  "standing": "primary",
+                  "score": 48.0,
+                  "rank": 2
+                }
+              ],
+              "overall_score": 60.4,
+              "generalist_score": 122.7
+            }
+          ]
+        }
+      }
+    },
+    {
+      "_step": "per_page is capped at 50 — ADR-0008 decision 12.",
+      "as": "hank",
+      "request": {
+        "method": "GET",
+        "path": "/search?q=Carol&per_page=51"
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "invalid_query",
+          "items": [
+            {
+              "field": "per_page",
+              "reason": "above_max",
+              "max": 50
+            }
+          ]
+        }
+      }
+    },
+    {
+      "as": "hank",
+      "request": {
+        "method": "GET",
+        "path": "/search?q=Carol&per_page=50"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "total": 1,
+          "inactive_hidden": 0,
+          "ranked_by": "overall",
+          "page": 1,
+          "per_page": 50,
+          "results": [
+            {
+              "rank": 1,
+              "id": "<uuid>",
+              "display_name": "Carol Diaz",
+              "github_login": "cdiaz",
+              "active": false,
+              "availability": {
+                "status": "looking_for_job",
+                "last_confirmed_at": "<timestamp>",
+                "inactive_for_days": 1
+              },
+              "skills": [
+                {
+                  "slug": "postgres",
+                  "standing": "primary",
+                  "score": 71.5,
+                  "rank": 1
+                }
+              ],
+              "overall_score": 71.5,
+              "generalist_score": 71.5
+            }
+          ]
+        }
+      }
+    },
+    {
       "_step": "Carol refreshes. She rejoins the default search at the rank she already held — nothing about her ranking changes, only her visibility.",
       "as": "carol",
       "request": {
@@ -708,6 +854,26 @@
           "expires_at": "<timestamp>"
         }
       }
+    },
+    {
+      "as": "hank",
+      "request": {
+        "method": "GET",
+        "path": "/search?q=Nakamura"
+      },
+      "expect": {
+        "status": 200,
+        "_note": "Zero. A name search relaxes the inactive filter, never a gate.",
+        "body": {
+          "total": 0,
+          "inactive_hidden": 0,
+          "ranked_by": "overall",
+          "page": 1,
+          "per_page": 20,
+          "results": []
+        }
+      },
+      "_step": "The name-search exception does NOT extend to opting out. A q= search relaxes the inactive filter, never a gate."
     },
     {
       "as": "hank",

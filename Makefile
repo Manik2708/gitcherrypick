@@ -24,7 +24,7 @@ export PATH  := $(TOOLS):$(PATH)
 
 .PHONY: setup check fmt fmt-check lint \
         go-fmt go-fmt-check go-lint go-vet go-test go-tidy-check mocks \
-        validate-fixtures e2e clean
+        validate-fixtures validate-docs e2e clean
 
 # --- setup -------------------------------------------------------------------
 
@@ -119,9 +119,15 @@ e2e:
 validate-fixtures: $(VENV)/.installed
 	$(PYTHON) scripts/validate_fixtures.py
 
+# The pipeline rule that is easiest to break by accident: an ADR is binding, so
+# it must not carry open questions. Also checks that every ADR names a real RFC
+# and every promoted RFC is marked Approved.
+validate-docs: $(VENV)/.installed
+	$(PYTHON) scripts/validate_docs.py
+
 # --- everything ---------------------------------------------------------------
 
-check: fmt-check lint validate-fixtures go-test
+check: fmt-check lint validate-docs validate-fixtures go-test
 
 clean:
 	rm -rf $(VENV) node_modules $(TOOLS)
