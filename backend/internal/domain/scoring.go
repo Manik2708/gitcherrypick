@@ -13,8 +13,8 @@ import "time"
 // Per-dimension remarks rather than one rationale: a single paragraph cannot be
 // checked against a single number (ADR-0007 §4).
 type Dimension struct {
-	Score  int
-	Remark string
+	Score  int    `json:"score"`
+	Remark string `json:"remark"`
 }
 
 // Judgement is what the model returns for one (PR, skill) pair.
@@ -73,6 +73,12 @@ type PRSkillScore struct {
 	QualityQ    float64 // the weighted dimension score
 	ReachR      float64 // project reach, a property of the repository
 	EngagementE float64 // conversation volume, normalised
+
+	// What the model said, per dimension, with the remark that justifies each
+	// number. Stored alongside the score because a score with no reasoning
+	// behind it cannot be disputed, and the dispute flow is what produces the
+	// labelled set (ADR-0007 §4, §6).
+	Dimensions map[string]Dimension
 
 	Disqualified    bool
 	RejectionReason *RejectionReason

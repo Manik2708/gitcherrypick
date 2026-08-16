@@ -111,6 +111,19 @@ func (db *DB) q(t port.Tx) querier {
 	return inner.Tx
 }
 
+// A NOTE ON PARAMETER CASTS
+//
+// A $n used in two contexts that imply different types fails at execution with
+// "inconsistent types deduced for parameter $n" (SQLSTATE 42P08). The usual
+// shapes are an enum in a SET and text in a comparison, or a uuid in a column
+// and text inside a function:
+//
+//	SET status = $2, ... WHERE $2 = 'queued'        -- fails
+//	SET status = $2::claim_status, ... $2::claim_status = 'queued'   -- fine
+//
+// It has caught this package three times. Cast the parameter explicitly
+// EVERYWHERE it appears, not just where the type is ambiguous.
+
 // --- error translation -------------------------------------------------------
 
 // Callers distinguish cases with errors.Is against the sentinels in port. A
