@@ -5,24 +5,27 @@ import "time"
 // Discovery: search, ranking, shortlists and contact requests (ADR-0005,
 // ADR-0008).
 
-// SearchQuery is the parsed filter set. Its field names mirror the query
-// parameters, which mirror saved_searches.filters — one representation, so a
-// saved search replays without a translation layer (ADR-0008 §1).
+// SearchQuery is the parsed filter set.
+//
+// The json tags are the QUERY PARAMETER names, and saved_searches.filters
+// stores exactly them (ADR-0008 §1, §5). One representation end to end: a
+// saved search replays as a query string with no translation layer, and a
+// renamed parameter cannot silently diverge from what was stored.
 type SearchQuery struct {
-	Skills               []string
-	MinSkillScore        *float64
-	MinOverallScore      *float64
-	MinGeneralistScore   *float64
-	Availability         []AvailabilityStatus
-	EvidenceWithinMonths *int
-	Query                string
+	Skills               []string             `json:"skills,omitempty"`
+	MinSkillScore        *float64             `json:"min_skill_score,omitempty"`
+	MinOverallScore      *float64             `json:"min_overall_score,omitempty"`
+	MinGeneralistScore   *float64             `json:"min_generalist_score,omitempty"`
+	Availability         []AvailabilityStatus `json:"availability,omitempty"`
+	EvidenceWithinMonths *int                 `json:"evidence_within_months,omitempty"`
+	Query                string               `json:"q,omitempty"`
 
 	// Default false. Reveals contributors whose availability window lapsed.
 	// It does NOT reveal not_looking, which no toggle reveals (ADR-0008 §1a).
-	IncludeInactive bool
+	IncludeInactive bool `json:"include_inactive,omitempty"`
 
-	Page    int
-	PerPage int
+	Page    int `json:"page,omitempty"`
+	PerPage int `json:"per_page,omitempty"`
 }
 
 // RankedBy names the ordering a result set was produced under.
