@@ -140,11 +140,6 @@ log "schema applied — ${tables} tables"
 log "running the repository suite"
 cd "${BACKEND_DIR}"
 
-# Tells the suite the database is being kept alive on purpose, so leak
-# detection skips rather than reporting the thing that was asked for.
-if [[ "${KEEP_DB}" -eq 1 ]]; then
-  export DB_TEST_KEEP_DB=1
-fi
 
 # -count=1 defeats the test cache. A cached pass from before a query changed is
 # worse than no result, because it looks like a real one.
