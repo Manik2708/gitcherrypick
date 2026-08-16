@@ -73,6 +73,7 @@ changed, when, and what argument moved it.
 | [0006](ADR-0006-technology-selection.md)                 | Technology selection & dependencies                      | Accepted | —                                                                  |
 | [0007](ADR-0007-rubric-contract-and-generalist-score.md) | Rubric contract, disqualification & the generalist score | Accepted | [rfc](../rfc/RFC-0007-rubric-contract-and-generalist-score.schema) |
 | [0008](ADR-0008-discovery-http-surface.md)               | The discovery HTTP surface                               | Accepted | [rfc](../rfc/RFC-0008-discovery-http-surface.schema)               |
+| [0009](ADR-0009-github-identity-uniqueness.md)           | One contributor per GitHub identity                      | Accepted | [rfc](../rfc/RFC-0009-github-identity-uniqueness.schema)           |
 
 Schema DDL lives beside the RFCs; migrations are generated from it during implementation
 (ADR-0001).

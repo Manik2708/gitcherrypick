@@ -1,6 +1,7 @@
 # RFC-0009 — One contributor per GitHub identity
 
-**Status:** Proposed 2026-08-16 · **Schema:** [RFC-0009-github-identity-uniqueness.schema](RFC-0009-github-identity-uniqueness.schema)
+**Status:** Approved 2026-08-16 · **Binding form:** [ADR-0009](../adr/ADR-0009-github-identity-uniqueness.md)
+· **Schema:** [RFC-0009-github-identity-uniqueness.schema](RFC-0009-github-identity-uniqueness.schema)
 · **Amends:** RFC-0002 (and ADR-0002)
 
 ## Summary
