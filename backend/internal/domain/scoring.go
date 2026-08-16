@@ -163,3 +163,47 @@ type Cooldown struct {
 func (c *Cooldown) CanRequest(now time.Time) bool {
 	return c == nil || c.CooldownUntil == nil || !c.CooldownUntil.After(now)
 }
+
+// RejectionsBeforeCooldown is how many rejected disputes trigger the next
+// cooldown tier (ADR-0007 §6).
+const RejectionsBeforeCooldown = 3
+
+// MaxCooldownDays caps the escalation. Past about a year a cooldown is a ban,
+// and a ban should be an admin decision with a reason rather than a counter
+// reaching a large number.
+const MaxCooldownDays = 365
+
+// RecordRejection advances the cooldown after a rejected dispute.
+//
+// Three rejections trigger a tier; the counter then resets and the TIER does
+// not. So the fourth rejection starts a fresh count toward a longer cooldown,
+// which is what makes the escalation 28 → 56 → 112 → 224 → 365 rather than a
+// single threshold anyone can sit just under.
+//
+// Acceptance never calls this. A contributor who is repeatedly right is never
+// throttled, and they are the population whose disputes are worth most.
+func (c *Cooldown) RecordRejection(now time.Time) {
+	c.RejectionCount++
+	if c.RejectionCount < RejectionsBeforeCooldown {
+		return
+	}
+	c.Tier++
+	c.CooldownUntil = ptr(now.Add(CooldownFor(c.Tier)))
+	c.RejectionCount = 0
+}
+
+// CooldownFor returns the wait at a given tier: 28, 56, 112, 224, then 365
+// forever. Doubling costs an honest contributor who misjudged once almost
+// nothing, while making systematic disputing progressively pointless.
+func CooldownFor(tier int) time.Duration {
+	if tier <= 0 {
+		return 0
+	}
+	days := 28 * (1 << (tier - 1))
+	if days > MaxCooldownDays {
+		days = MaxCooldownDays
+	}
+	return time.Duration(days) * 24 * time.Hour
+}
+
+func ptr[T any](v T) *T { return &v }

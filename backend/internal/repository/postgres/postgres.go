@@ -151,3 +151,15 @@ func translate(err error, context string) error {
 // is unreachable the connection is already lost, and blocking here would turn
 // one failure into a hang.
 const rollbackTimeout = 5 * time.Second
+
+// isNotFound reports a no-rows result, before translation.
+func isNotFound(err error) bool { return errors.Is(err, pgx.ErrNoRows) }
+
+// nowFrom is the clock a repository uses.
+//
+// Repositories otherwise use the DATABASE's now(), which is what keeps
+// timestamps consistent across statements. This exists for the one place a
+// value has to be computed in Go before being written — the cooldown
+// escalation, whose arithmetic lives in domain — and takes a context so a
+// future port.Clock can be threaded through without changing call sites.
+func nowFrom(_ context.Context) time.Time { return time.Now().UTC() }
