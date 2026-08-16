@@ -80,6 +80,16 @@ func newDB(t *testing.T) *postgres.DB {
 	return postgres.New(pool)
 }
 
+// closePool releases the shared pool. Called once by TestMain after every
+// test has run, so goleak sees a process that cleaned up after itself rather
+// than one whose leaks have to be enumerated and ignored.
+func closePool() {
+	if pool != nil {
+		pool.Close()
+		pool = nil
+	}
+}
+
 func openPool(url string) (*pgxpool.Pool, error) {
 	config, err := pgxpool.ParseConfig(url)
 	if err != nil {
