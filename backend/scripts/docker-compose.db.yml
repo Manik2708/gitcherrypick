@@ -1,0 +1,56 @@
+# Postgres, and nothing else.
+#
+# The repository suite tests the database layer, so the database is the only
+# thing that runs. No API, no evaluator, no migrations container — starting the
+# application to test the layer beneath it would mean a repository bug and a
+# wiring bug produce the same red, and you would not know which you had.
+#
+# Started and torn down by db-test.sh. Not meant to be run directly.
+
+name: gitcherrypick-db
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: gitcherrypick
+      POSTGRES_PASSWORD: db
+      POSTGRES_DB: gitcherrypick_db_test
+      POSTGRES_INITDB_ARGS: "--no-sync"
+    command:
+      - postgres
+      # The suite truncates every table between tests, and the volume is
+      # ephemeral, so durability buys nothing and costs wall-clock.
+      - -c
+      - fsync=off
+      - -c
+      - full_page_writes=off
+      - -c
+      - synchronous_commit=off
+      - -c
+      - max_connections=200
+      # Every statement, so --display-logs-on-failure can show what the failing
+      # test actually sent. Off by default in the sense that nobody reads it
+      # unless a test fails.
+      - -c
+      - log_statement=all
+      - -c
+      - log_min_duration_statement=0
+      - -c
+      - log_line_prefix=%m [%p] %q%u@%d
+    ports:
+      # A different port from the e2e suite's 55432, so the two can run at once
+      # and neither can silently attach to the other's database.
+      - "55433:5432"
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U gitcherrypick -d gitcherrypick_db_test -q && psql -U gitcherrypick -d gitcherrypick_db_test -c 'select 1' -q",
+        ]
+      interval: 1s
+      timeout: 3s
+      retries: 30
+      start_period: 2s

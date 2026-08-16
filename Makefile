@@ -24,7 +24,7 @@ export PATH  := $(TOOLS):$(PATH)
 
 .PHONY: setup check fmt fmt-check lint \
         go-fmt go-fmt-check go-lint go-vet go-test go-tidy-check mocks \
-        validate-fixtures validate-docs e2e clean
+        validate-fixtures validate-docs db-test e2e clean
 
 # --- setup -------------------------------------------------------------------
 
@@ -106,6 +106,15 @@ go-test:
 # repositories.
 mocks: $(TOOLS)/mockery
 	cd $(BACKEND) && mockery
+
+# Repository integration tests against a real Postgres — database only, no
+# application. Every test truncates first, so each runs in isolation.
+#
+#   make db-test
+#   make db-test ARGS='--keep-db'
+#   make db-test ARGS='--display-logs-on-failure -run TestUserRepository'
+db-test:
+	$(BACKEND)/scripts/db-test.sh $(ARGS)
 
 # Starts Postgres, applies the schema, runs every fixture, tears down.
 e2e:

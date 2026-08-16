@@ -1,0 +1,43 @@
+-- ---------------------------------------------------------------------------
+-- RFC-0009 — One contributor per GitHub identity
+--
+-- Delta only. Everything not mentioned here stays as RFC-0002 defined it.
+-- ---------------------------------------------------------------------------
+
+-- ---------------------------------------------------------------------------
+-- The gap.
+--
+-- RFC-0002 gives user_github_identities:
+--
+--     CONSTRAINT uq_github_identity_user  UNIQUE (user_id)
+--     CONSTRAINT uq_github_identity_hirer UNIQUE (hirer_account_id)
+--     CREATE INDEX idx_github_identities_github_user ON ... (github_user_id)
+--
+-- Those two constraints say "one identity per account". Nothing says "one
+-- account per identity", and the index on github_user_id is not unique — so
+-- two contributors may hold the same github_user_id, and
+-- UserRepository.ByGitHubUserID, which ADR-0002 makes the whole basis of
+-- contributor sign-in, becomes ambiguous.
+--
+-- The consequence is account takeover: a second row for an existing
+-- github_user_id would resolve an OAuth callback to whichever row the planner
+-- happened to return.
+--
+-- It CANNOT be a plain UNIQUE (github_user_id). A contributor and a hirer may
+-- legitimately share one GitHub identity — that is exactly the dave /
+-- dave_hiring case AssertNotSelf exists for (ADR-0002). So the uniqueness is
+-- per namespace, expressed as two partial indexes.
+-- ---------------------------------------------------------------------------
+
+CREATE UNIQUE INDEX uq_github_identity_contributor
+    ON user_github_identities (github_user_id)
+    WHERE user_id IS NOT NULL;
+
+CREATE UNIQUE INDEX uq_github_identity_hirer_github
+    ON user_github_identities (github_user_id)
+    WHERE hirer_account_id IS NOT NULL;
+
+-- The non-unique index it replaces on the contributor side. Kept, because
+-- AssertNotSelf looks up across BOTH namespaces and the partial indexes cannot
+-- serve a query that spans them.
+-- (idx_github_identities_github_user stays as RFC-0002 declared it.)

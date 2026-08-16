@@ -35,35 +35,35 @@ func (_m *Tx) EXPECT() *Tx_Expecter {
 	return &Tx_Expecter{mock: &_m.Mock}
 }
 
-// private provides a mock function for the type Tx
-func (_mock *Tx) private() {
+// TxHandle provides a mock function for the type Tx
+func (_mock *Tx) TxHandle() {
 	_mock.Called()
 	return
 }
 
-// Tx_private_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'private'
-type Tx_private_Call struct {
+// Tx_TxHandle_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'TxHandle'
+type Tx_TxHandle_Call struct {
 	*mock.Call
 }
 
-// private is a helper method to define mock.On call
-func (_e *Tx_Expecter) private() *Tx_private_Call {
-	return &Tx_private_Call{Call: _e.mock.On("private")}
+// TxHandle is a helper method to define mock.On call
+func (_e *Tx_Expecter) TxHandle() *Tx_TxHandle_Call {
+	return &Tx_TxHandle_Call{Call: _e.mock.On("TxHandle")}
 }
 
-func (_c *Tx_private_Call) Run(run func()) *Tx_private_Call {
+func (_c *Tx_TxHandle_Call) Run(run func()) *Tx_TxHandle_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		run()
 	})
 	return _c
 }
 
-func (_c *Tx_private_Call) Return() *Tx_private_Call {
+func (_c *Tx_TxHandle_Call) Return() *Tx_TxHandle_Call {
 	_c.Call.Return()
 	return _c
 }
 
-func (_c *Tx_private_Call) RunAndReturn(run func()) *Tx_private_Call {
+func (_c *Tx_TxHandle_Call) RunAndReturn(run func()) *Tx_TxHandle_Call {
 	_c.Run(run)
 	return _c
 }

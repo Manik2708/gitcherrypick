@@ -22,9 +22,17 @@ import (
 // It is deliberately opaque. A service composes a transaction; only a
 // repository implementation knows what the handle really is.
 type Tx interface {
-	// Commit and Rollback are called by the TxManager, not by a service.
-	// A service that could commit could also forget to.
-	private()
+	// TxHandle is a marker with no behaviour.
+	//
+	// It exists so that Tx cannot be satisfied by accident — an empty
+	// interface would accept anything, including a nil that silently ran
+	// outside the caller's transaction.
+	//
+	// Commit and Rollback are deliberately absent. They belong to TxManager,
+	// which owns the lifetime; a service that could commit could also forget
+	// to, and a half-committed claim submission is exactly what the outbox
+	// property exists to prevent.
+	TxHandle()
 }
 
 // TxManager runs a function inside one transaction.
