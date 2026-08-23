@@ -69,6 +69,15 @@ type SessionRepository interface {
 	RevokeFamily(ctx context.Context, tx Tx, familyID string) error
 
 	ActiveCount(ctx context.Context, principalID string) (int, error)
+
+	// ActiveFamily returns the family a principal's live session belongs to,
+	// so logout can revoke it.
+	//
+	// Keyed on the principal rather than on a token, because logout arrives
+	// with an access token and the refresh token it should kill is held by the
+	// client — which is exactly what makes revoking the family rather than the
+	// presented session the right move.
+	ActiveFamily(ctx context.Context, principalID string) (string, error)
 }
 
 // HirerRepository owns recruiter seats and their organizations.
@@ -115,6 +124,29 @@ type Invitation struct {
 	InvitedBy      domain.HirerID
 	AcceptedAt     *time.Time
 	ExpiresAt      time.Time
+}
+
+// ShareLinkRepository owns a contributor's publishable scorecard link.
+//
+// The one thing a contributor may publish about themselves (ADR-0002). Only
+// the HASH is stored: the plaintext is shown once at minting, so a database
+// read cannot yield a working link and neither can a backup.
+//
+// uq_share_link_active permits one active link per contributor, so minting a
+// new one revokes any existing — a contributor who shared a link and then
+// minted another must not find the old one still live.
+type ShareLinkRepository interface {
+	// Mint revokes any active link and issues a new one, in one statement.
+	Mint(ctx context.Context, tx Tx, id domain.UserID, tokenHash []byte) (domain.ShareLinkID, error)
+
+	// Revoke withdraws a link. Revocation is immediate: a published link the
+	// contributor withdrew must stop resolving.
+	Revoke(ctx context.Context, id domain.UserID, linkID domain.ShareLinkID) error
+
+	// ResolveToken returns the contributor a live token belongs to, and counts
+	// the view. A revoked link resolves to ErrNotFound, indistinguishable from
+	// a token that never existed.
+	ResolveToken(ctx context.Context, tokenHash []byte) (domain.UserID, error)
 }
 
 // ClaimRepository owns claims and their evidence.

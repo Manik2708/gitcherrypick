@@ -98,6 +98,11 @@ type JudgeResponse struct {
 
 // GitHubClient fetches the facts evidence is validated and enriched against.
 type GitHubClient interface {
+	// AuthorizeURL builds the redirect a contributor is sent to. The adapter
+	// owns the client id and the scopes; a service that assembled this would
+	// be holding configuration that belongs here.
+	AuthorizeURL(state string) string
+
 	// ExchangeCode completes the OAuth flow and returns the identity. This is
 	// the only path to a contributor account.
 	ExchangeCode(ctx context.Context, code string) (*GitHubIdentity, error)

@@ -492,3 +492,5 @@ func reviewedBy(reviews []port.Review, githubUserID int64) bool {
 func failure(pr domain.PREvidence, reason domain.EvidenceInvalidReason, message string) port.ValidationFailure {
 	return port.ValidationFailure{Position: pr.Position, Reason: reason, Message: message}
 }
+
+var _ port.ClaimService = (*ClaimService)(nil)
