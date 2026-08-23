@@ -80,6 +80,34 @@ linters:
             - pkg: github.com/google/go-github
               desc: port must not name the GitHub client library
 
+        # Services and controllers depend on port interfaces, never on a
+        # concrete implementation. A service that imported internal/adapter
+        # would know which vendor sits behind the port, and one that imported
+        # internal/repository would know which database — both are exactly what
+        # the interface exists to hide (CLAUDE.md, ADR-0001).
+        service:
+          files:
+            - "**/internal/service/**"
+          deny:
+            - pkg: github.com/Manik2708/gitcherrypick/backend/internal/adapter
+              desc: talk to the port interface — a service must not know which vendor implements it
+            - pkg: github.com/Manik2708/gitcherrypick/backend/internal/repository
+              desc: talk to the repository interface — a service must not know which database is behind it
+            - pkg: net/http
+              desc: a service owns business logic, not transport — HTTP belongs to the controller
+
+        # Controllers DO speak HTTP; that is their whole job. What they must
+        # not do is reach past the service layer, or decide access themselves
+        # (ADR-0002).
+        controller:
+          files:
+            - "**/internal/controller/**"
+          deny:
+            - pkg: github.com/Manik2708/gitcherrypick/backend/internal/adapter
+              desc: a controller calls a service, never an adapter
+            - pkg: github.com/Manik2708/gitcherrypick/backend/internal/repository
+              desc: a controller calls a service, never a repository directly
+
     revive:
       rules:
         - name: exported
