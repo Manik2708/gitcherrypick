@@ -139,6 +139,59 @@ type ProjectEvidence struct {
 	RepoName            string
 	ContributionSummary string
 	Facts               *RepoFacts
+
+	// Maintainer is the contributor's declaration of maintainer status, nil
+	// when they made none.
+	Maintainer *MaintainerDeclaration
+}
+
+// MaintainerSource is how a contributor evidences maintainer status.
+type MaintainerSource string
+
+// The declarable sources. GitHub exposes no maintainer list, so the
+// contributor names where the truth lives and the model checks it (ADR-0003).
+const (
+	SourceCodeowners         MaintainerSource = "codeowners"
+	SourceMergesOthersPRs    MaintainerSource = "merges_others_prs"
+	SourceReadmeOrGovernance MaintainerSource = "readme_or_governance"
+	SourceOrgOwner           MaintainerSource = "org_owner"
+	SourceOtherEvidence      MaintainerSource = "other"
+)
+
+// ValidMaintainerSource reports whether a declared source is one of the five.
+//
+// Checked at the edge rather than left to the database: an unknown value is a
+// contributor's typo, and a 422 naming it is more use than an enum violation.
+func ValidMaintainerSource(s MaintainerSource) bool {
+	switch s {
+	case SourceCodeowners, SourceMergesOthersPRs, SourceReadmeOrGovernance,
+		SourceOrgOwner, SourceOtherEvidence:
+		return true
+	}
+	return false
+}
+
+// MaintainerDeclaration is a contributor's claim to maintainer status on a
+// supporting project.
+//
+// It is a CLAIM, not a fact. Validated is nil until the model rules on it, and
+// false means the declaration was not supported — in which case the maintainer
+// bonus (Reach × 1.25, ADR-0005) is not applied. Treating the declaration
+// itself as the bonus would make project reach self-asserted, which is exactly
+// what this platform exists not to do.
+type MaintainerDeclaration struct {
+	Sources       []MaintainerSource
+	OtherEvidence string
+
+	Validated       *bool
+	ValidatedAt     *time.Time
+	ValidationNotes string
+}
+
+// IsValidated reports a declaration the model upheld — the only state in which
+// the maintainer bonus applies.
+func (m *MaintainerDeclaration) IsValidated() bool {
+	return m != nil && m.Validated != nil && *m.Validated
 }
 
 // ClaimSkillOrigin records how a skill came to be on a claim.

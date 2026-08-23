@@ -86,6 +86,31 @@ type Principal struct {
 	Admin       *Admin
 }
 
+// Subject is the account id as a string, for the access token's `sub` claim
+// (ADR-0011). The three kinds carry different id types and share no table, so
+// `sub` only means something alongside `kind`.
+//
+// Empty when the matching entity is nil — a caller that built a Principal from
+// Kind alone has no subject to assert, and a token claiming to identify nobody
+// must be refused rather than minted.
+func (p Principal) Subject() string {
+	switch p.Kind {
+	case KindContributor:
+		if p.Contributor != nil {
+			return string(p.Contributor.ID)
+		}
+	case KindHirer:
+		if p.Hirer != nil {
+			return string(p.Hirer.ID)
+		}
+	case KindAdmin:
+		if p.Admin != nil {
+			return string(p.Admin.ID)
+		}
+	}
+	return ""
+}
+
 // Contributor is an open-source contributor. They exist only through GitHub —
 // there is no email path to a contributor account (ADR-0002).
 type Contributor struct {
@@ -161,6 +186,14 @@ type Hirer struct {
 	// GitHub identity, when the seat signed up through it. This is what
 	// AssertNotSelf keys on.
 	GitHubUserID *int64
+
+	// Organization the seat acts for, populated by the repository.
+	//
+	// Navigable because capability IS a property of the organization: nearly
+	// every read of a hirer immediately needs to know whether their org is
+	// verified, and an id alone forces a second query at each of those call
+	// sites. Nil when a caller built the hirer without one.
+	Organization *Organization
 }
 
 // AuthProvider is how a hirer signs in. A password exists only for email.

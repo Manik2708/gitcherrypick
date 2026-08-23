@@ -107,6 +107,74 @@ func (_c *AdminRepository_ByEmail_Call) RunAndReturn(run func(ctx context.Contex
 	return _c
 }
 
+// ByID provides a mock function for the type AdminRepository
+func (_mock *AdminRepository) ByID(ctx context.Context, id domain.AdminID) (*domain.Admin, error) {
+	ret := _mock.Called(ctx, id)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ByID")
+	}
+
+	var r0 *domain.Admin
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.AdminID) (*domain.Admin, error)); ok {
+		return returnFunc(ctx, id)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.AdminID) *domain.Admin); ok {
+		r0 = returnFunc(ctx, id)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*domain.Admin)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, domain.AdminID) error); ok {
+		r1 = returnFunc(ctx, id)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// AdminRepository_ByID_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ByID'
+type AdminRepository_ByID_Call struct {
+	*mock.Call
+}
+
+// ByID is a helper method to define mock.On call
+//   - ctx context.Context
+//   - id domain.AdminID
+func (_e *AdminRepository_Expecter) ByID(ctx interface{}, id interface{}) *AdminRepository_ByID_Call {
+	return &AdminRepository_ByID_Call{Call: _e.mock.On("ByID", ctx, id)}
+}
+
+func (_c *AdminRepository_ByID_Call) Run(run func(ctx context.Context, id domain.AdminID)) *AdminRepository_ByID_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 domain.AdminID
+		if args[1] != nil {
+			arg1 = args[1].(domain.AdminID)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *AdminRepository_ByID_Call) Return(admin *domain.Admin, err error) *AdminRepository_ByID_Call {
+	_c.Call.Return(admin, err)
+	return _c
+}
+
+func (_c *AdminRepository_ByID_Call) RunAndReturn(run func(ctx context.Context, id domain.AdminID) (*domain.Admin, error)) *AdminRepository_ByID_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // DecideVerification provides a mock function for the type AdminRepository
 func (_mock *AdminRepository) DecideVerification(ctx context.Context, tx port.Tx, id domain.RequestID, by domain.AdminID, approve bool, reason string) error {
 	ret := _mock.Called(ctx, tx, id, by, approve, reason)

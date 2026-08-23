@@ -272,14 +272,22 @@ func (s *AuthService) LoginAdmin(ctx context.Context, email, password string) (*
 // holder already used. The only safe reading is that the family is
 // compromised, so the whole family dies — including the successor currently in
 // honest use. That cost is the point (ADR-0002).
+//
+// Unlike sign-in, this DISTINGUISHES its failures. Sign-in returns one error
+// for every cause because telling them apart would build an enumeration oracle
+// over which addresses hold accounts. Here the caller already holds the token
+// being judged, so naming the reason tells them only about their own session —
+// and the difference matters to a client deciding whether to prompt for
+// credentials or to warn that a session was revoked underneath them.
 func (s *AuthService) Refresh(ctx context.Context, refreshToken string) (*domain.TokenPair, error) {
-	hash := s.tokens.HashRefreshToken(refreshToken)
+	hash := s.minter.Hash(refreshToken)
 
 	var pair *domain.TokenPair
 	err := s.tx.InTx(ctx, func(ctx context.Context, tx port.Tx) error {
 		session, err := s.sessions.ByRefreshTokenHash(ctx, tx, hash)
 		if err != nil {
-			return ErrInvalidCredentials
+			return Coded(ErrInvalidCredentials, CodeInvalidRefreshToken,
+				"no session holds that refresh token")
 		}
 
 		// REUSE. Revoke the family and refuse — in the same transaction, so a
@@ -289,13 +297,25 @@ func (s *AuthService) Refresh(ctx context.Context, refreshToken string) (*domain
 			if err := s.sessions.RevokeFamily(ctx, tx, session.FamilyID); err != nil {
 				return fmt.Errorf("revoking the compromised family: %w", err)
 			}
-			return ErrInvalidCredentials
-		}
-		if session.RevokedAt != nil || !session.ExpiresAt.After(s.clock.Now()) {
-			return ErrInvalidCredentials
+			return Coded(ErrInvalidCredentials, CodeTokenReuseDetected,
+				"refresh token %s was already spent; family %s revoked",
+				session.ID, session.FamilyID)
 		}
 
-		plaintext, successorHash, err := s.tokens.NewRefreshToken()
+		// Revoked is reported separately from expired-or-unknown because it is
+		// the COLLATERAL case: the honest holder of the successor token is
+		// logged out by somebody else's replay, and a client that says so is
+		// telling the truth about what happened.
+		if session.RevokedAt != nil {
+			return Coded(ErrInvalidCredentials, CodeSessionRevoked,
+				"session %s was revoked at %s", session.ID, session.RevokedAt)
+		}
+		if !session.ExpiresAt.After(s.clock.Now()) {
+			return Coded(ErrInvalidCredentials, CodeInvalidRefreshToken,
+				"session %s expired at %s", session.ID, session.ExpiresAt)
+		}
+
+		plaintext, successorHash, err := s.minter.Mint()
 		if err != nil {
 			return fmt.Errorf("minting the successor: %w", err)
 		}
@@ -309,7 +329,12 @@ func (s *AuthService) Refresh(ctx context.Context, refreshToken string) (*domain
 			return err
 		}
 
-		access, err := s.tokens.Issue(ctx, domain.Principal{Kind: session.Kind}, AccessTokenTTL)
+		// The subject is the rotated session's principal. Refresh does not
+		// re-read the account: the session row is the authority on who this
+		// family belongs to, and it cannot change during rotation.
+		access, err := s.tokens.Issue(ctx, port.AccessClaims{
+			Subject: session.PrincipalID, Kind: session.Kind,
+		}, AccessTokenTTL)
 		if err != nil {
 			return fmt.Errorf("issuing the access token: %w", err)
 		}
@@ -328,6 +353,63 @@ func (s *AuthService) Refresh(ctx context.Context, refreshToken string) (*domain
 		return nil, err
 	}
 	return pair, nil
+}
+
+// ResolvePrincipal turns a verified token's claims into the account acting.
+//
+// Called on EVERY authenticated request. That is the cost ADR-0011 accepted
+// deliberately: the token carries identity and nothing else, so authorization
+// state is read fresh and a revoked capability stops working immediately rather
+// than fifteen minutes later.
+//
+// A missing account is ErrInvalidCredentials rather than ErrNotFound. The
+// caller is presenting a token for something that no longer exists, which is an
+// authentication failure — reporting it as a 404 would tell them their own
+// account is gone through a channel that has not authenticated them.
+func (s *AuthService) ResolvePrincipal(ctx context.Context, claims port.AccessClaims) (*domain.Principal, error) {
+	if claims.Subject == "" {
+		return nil, fmt.Errorf("token carries no subject: %w", ErrInvalidCredentials)
+	}
+
+	switch claims.Kind {
+	case domain.KindContributor:
+		contributor, err := s.users.ByID(ctx, domain.UserID(claims.Subject))
+		if err != nil {
+			return nil, resolveFailure("contributor", err)
+		}
+		return &domain.Principal{Kind: domain.KindContributor, Contributor: contributor}, nil
+
+	case domain.KindHirer:
+		hirer, err := s.hirers.ByID(ctx, domain.HirerID(claims.Subject))
+		if err != nil {
+			return nil, resolveFailure("hirer", err)
+		}
+		return &domain.Principal{Kind: domain.KindHirer, Hirer: hirer}, nil
+
+	case domain.KindAdmin:
+		admin, err := s.admins.ByID(ctx, domain.AdminID(claims.Subject))
+		if err != nil {
+			return nil, resolveFailure("admin", err)
+		}
+		// A disabled admin keeps a valid token for up to fifteen minutes.
+		// Checking here is what stops them using it — and an admin decides
+		// hirer verification, so the delay is not one to accept.
+		if admin.DisabledAt != nil {
+			return nil, fmt.Errorf("admin %s is disabled: %w", admin.ID, ErrInvalidCredentials)
+		}
+		return &domain.Principal{Kind: domain.KindAdmin, Admin: admin}, nil
+	}
+
+	return nil, fmt.Errorf("token claims an unknown kind %q: %w", claims.Kind, ErrInvalidCredentials)
+}
+
+// resolveFailure keeps a genuine database error distinguishable from an absent
+// account, so an outage is not reported to every client as a bad token.
+func resolveFailure(kind string, err error) error {
+	if errors.Is(err, port.ErrNotFound) {
+		return fmt.Errorf("no %s account for that token: %w", kind, ErrInvalidCredentials)
+	}
+	return fmt.Errorf("resolving the %s account: %w", kind, err)
 }
 
 // Logout revokes the whole family, not the presented session.
@@ -356,7 +438,7 @@ func (s *AuthService) Logout(ctx context.Context, p domain.Principal) error {
 // The access token carries the principal but not the family, so it is resolved
 // from the principal. A caller with no live session has nothing to revoke.
 func (s *AuthService) familyOf(ctx context.Context, p domain.Principal) (string, error) {
-	return s.sessions.ActiveFamily(ctx, principalID(p))
+	return s.sessions.ActiveFamily(ctx, p.Subject())
 }
 
 // Me reads the caller's own account.
@@ -476,13 +558,13 @@ func (s *AuthService) issue(ctx context.Context, p domain.Principal) (*domain.To
 // Only the HASH is stored. A database read cannot yield a usable token, and
 // neither can a backup.
 func (s *AuthService) startSession(ctx context.Context, tx port.Tx, p domain.Principal) (*domain.TokenPair, error) {
-	plaintext, hash, err := s.tokens.NewRefreshToken()
+	plaintext, hash, err := s.minter.Mint()
 	if err != nil {
 		return nil, fmt.Errorf("minting the refresh token: %w", err)
 	}
 
 	session := &domain.Session{
-		PrincipalID: principalID(p),
+		PrincipalID: p.Subject(),
 		Kind:        p.Kind,
 		ExpiresAt:   s.clock.Now().Add(RefreshTokenTTL),
 	}
@@ -490,7 +572,9 @@ func (s *AuthService) startSession(ctx context.Context, tx port.Tx, p domain.Pri
 		return nil, fmt.Errorf("creating the session: %w", err)
 	}
 
-	access, err := s.tokens.Issue(ctx, p, AccessTokenTTL)
+	access, err := s.tokens.Issue(ctx, port.AccessClaims{
+		Subject: p.Subject(), Kind: p.Kind,
+	}, AccessTokenTTL)
 	if err != nil {
 		return nil, fmt.Errorf("issuing the access token: %w", err)
 	}
@@ -506,18 +590,6 @@ func principalOf(c *domain.Contributor) domain.Principal {
 
 func hirerPrincipalOf(h *domain.Hirer) domain.Principal {
 	return domain.Principal{Kind: domain.KindHirer, Hirer: h}
-}
-
-func principalID(p domain.Principal) string {
-	switch p.Kind {
-	case domain.KindContributor:
-		return string(p.Contributor.ID)
-	case domain.KindHirer:
-		return string(p.Hirer.ID)
-	case domain.KindAdmin:
-		return string(p.Admin.ID)
-	}
-	return ""
 }
 
 // slugify makes a URL-safe organization slug.

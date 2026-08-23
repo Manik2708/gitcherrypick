@@ -133,7 +133,68 @@ func (s *ClaimService) SetProjectEvidence(ctx context.Context, id domain.UserID,
 
 // SetSkills replaces the declared skills.
 func (s *ClaimService) SetSkills(ctx context.Context, id domain.UserID, claimID domain.ClaimID, skills []domain.ClaimSkill) (*domain.Claim, error) {
-	return s.patch(ctx, id, claimID, func(c *domain.Claim) { c.Skills = skills })
+	resolved, err := s.resolveSkills(ctx, skills)
+	if err != nil {
+		return nil, err
+	}
+	return s.patch(ctx, id, claimID, func(c *domain.Claim) { c.Skills = resolved })
+}
+
+// resolveSkills turns declared slugs into catalogue entries.
+//
+// Only CANONICAL slugs are claimable. An alias matches for lookup and never for
+// claiming, because the claiming population must not fragment across spellings
+// — "go" and "golang" scored separately would make five PRs of Go evidence look
+// like two skills with fewer each (ADR-0003).
+//
+// A rejected alias names its canonical form, so the contributor can act on the
+// answer rather than guess at it.
+func (s *ClaimService) resolveSkills(ctx context.Context, skills []domain.ClaimSkill) ([]domain.ClaimSkill, error) {
+	out := make([]domain.ClaimSkill, 0, len(skills))
+
+	for _, declared := range skills {
+		if declared.Slug == "" {
+			return nil, Coded(ErrInvalid, CodeUnknownSkill, "a claimed skill needs a slug")
+		}
+
+		skill, err := s.skills.BySlug(ctx, declared.Slug)
+		if err == nil {
+			declared.SkillID = skill.ID
+			out = append(out, declared)
+			continue
+		}
+		if !errors.Is(err, port.ErrNotFound) {
+			return nil, fmt.Errorf("resolving skill %q: %w", declared.Slug, err)
+		}
+
+		return nil, s.unknownSkill(ctx, declared.Slug)
+	}
+	return out, nil
+}
+
+// unknownSkill explains a slug the catalogue does not hold.
+//
+// If it is an alias, the canonical slug travels with the refusal. That lookup
+// costs a query on a path that is already failing, and it is the difference
+// between an error a contributor can act on and one they cannot.
+func (s *ClaimService) unknownSkill(ctx context.Context, slug string) error {
+	matches, err := s.skills.Search(ctx, slug)
+	if err != nil || len(matches) == 0 {
+		return Coded(ErrInvalid, CodeUnknownSkill, "no skill %q is in the catalogue", slug)
+	}
+
+	match := matches[0]
+	if match.MatchedVia != "alias" {
+		return Coded(ErrInvalid, CodeUnknownSkill, "no skill %q is in the catalogue", slug)
+	}
+
+	return Coded(ErrInvalid, CodeUnknownSkill,
+		"%q is an alias for %q", slug, match.Skill.Slug).
+		WithDetail(map[string]any{
+			"suggestion": match.Skill.Slug,
+			"message": fmt.Sprintf("'%s' is an alias for '%s'. Claim '%s' instead.",
+				slug, match.Skill.Slug, match.Skill.Slug),
+		})
 }
 
 // patch reads, applies one change, and replaces at the current version.
@@ -151,7 +212,9 @@ func (s *ClaimService) patch(ctx context.Context, id domain.UserID, claimID doma
 	var out *domain.Claim
 	err = s.tx.InTx(ctx, func(ctx context.Context, tx port.Tx) error {
 		var err error
-		out, err = s.claims.Replace(ctx, tx, claimID, current.Version, current)
+		// Deliberately NOT Replace: a sub-resource write must not consume the
+		// version a client is holding for its next whole-claim edit.
+		out, err = s.claims.ReplaceEvidence(ctx, tx, claimID, current)
 		return err
 	})
 	if err != nil {

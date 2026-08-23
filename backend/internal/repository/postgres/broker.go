@@ -24,6 +24,16 @@ import (
 // never references a queue vendor (CLAUDE.md).
 type Broker struct{ db *DB }
 
+// jobPayload is the part of a job's JSON body the broker itself reads.
+//
+// The payload is otherwise opaque to the queue — the handler owns the rest.
+// These two fields are lifted onto port.Message so a consumer can route and
+// version-check without unmarshalling the body a second time.
+type jobPayload struct {
+	ClaimID string `json:"claim_id"`
+	Version int    `json:"version"`
+}
+
 // Queue returns the broker.
 func (db *DB) Queue() *Broker { return &Broker{db: db} }
 
@@ -139,10 +149,7 @@ func (b *Broker) Consume(ctx context.Context, lease time.Duration, limit int) ([
 		}
 		msg.Payload = payload
 
-		var decoded struct {
-			ClaimID string `json:"claim_id"`
-			Version int    `json:"version"`
-		}
+		var decoded jobPayload
 		if err := json.Unmarshal(payload, &decoded); err == nil {
 			msg.ClaimID = domain.ClaimID(decoded.ClaimID)
 			msg.Version = decoded.Version

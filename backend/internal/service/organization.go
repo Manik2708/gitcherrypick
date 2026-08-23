@@ -128,7 +128,7 @@ func (s *OrganizationService) AcceptInvitation(ctx context.Context, token, displ
 			return err
 		}
 
-		plaintext, refreshHash, err := s.tokens.NewRefreshToken()
+		plaintext, refreshHash, err := s.minter.Mint()
 		if err != nil {
 			return err
 		}
@@ -139,7 +139,9 @@ func (s *OrganizationService) AcceptInvitation(ctx context.Context, token, displ
 		if err := s.sessions.Create(ctx, tx, session, refreshHash); err != nil {
 			return err
 		}
-		access, err := s.tokens.Issue(ctx, hirerPrincipalOf(created), AccessTokenTTL)
+		access, err := s.tokens.Issue(ctx, port.AccessClaims{
+			Subject: string(created.ID), Kind: domain.KindHirer,
+		}, AccessTokenTTL)
 		if err != nil {
 			return err
 		}
@@ -163,4 +165,49 @@ func (s *OrganizationService) AcceptInvitation(ctx context.Context, token, displ
 		return nil, nil, fmt.Errorf("accepting the invitation: %w", err)
 	}
 	return created, pair, nil
+}
+
+// Verification tells a hirer where their own review stands.
+//
+// Read fresh rather than inferred from the principal's VerifiedAt: a seat
+// polling this while waiting is asking whether an admin has acted, and
+// answering from a fifteen-minute-old token would tell them "still pending"
+// after the decision landed.
+func (s *OrganizationService) Verification(ctx context.Context, p domain.Principal) (*port.VerificationStatus, error) {
+	hirer, err := requireHirer(p)
+	if err != nil {
+		return nil, err
+	}
+
+	org, err := s.hirers.Organization(ctx, hirer.OrganizationID)
+	if err != nil {
+		return nil, fmt.Errorf("reading the organization: %w", err)
+	}
+
+	out := &port.VerificationStatus{
+		HirerVerified: hirer.VerifiedAt != nil,
+		Organization:  org,
+	}
+
+	request, err := s.orgs.VerificationFor(ctx, hirer.ID, hirer.OrganizationID)
+	switch {
+	case errors.Is(err, port.ErrNotFound):
+		// No request was ever raised. A verified org reached that state some
+		// other way — a seat inheriting it through an invitation (ADR-0008
+		// §3a) — so the status follows the org rather than claiming a review
+		// that never happened.
+		out.Status = "not_requested"
+		if org.IsVerified() {
+			out.Status = "approved"
+		}
+		return out, nil
+	case err != nil:
+		return nil, fmt.Errorf("reading the verification request: %w", err)
+	}
+
+	out.Status = request.Status
+	out.SubmittedAt = request.CreatedAt
+	out.ReviewedAt = request.ReviewedAt
+	out.Reason = request.DecisionReason
+	return out, nil
 }

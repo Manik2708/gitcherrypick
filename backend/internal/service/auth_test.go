@@ -168,7 +168,7 @@ func TestAuthRefreshReuseDetection(t *testing.T) {
 		// out too, and that cost is the point (ADR-0002).
 		f := newAuthFixture(t)
 		used := f.now.Add(-time.Minute)
-		f.tokens.EXPECT().HashRefreshToken("replayed").Return([]byte("hash"))
+		f.minter.EXPECT().Hash("replayed").Return([]byte("hash"))
 		f.sessions.EXPECT().ByRefreshTokenHash(mock.Anything, mock.Anything, []byte("hash")).
 			Return(&domain.Session{
 				ID: "session-1", FamilyID: "family-1", Kind: domain.KindContributor,
@@ -196,7 +196,7 @@ func TestAuthRefreshReuseDetection(t *testing.T) {
 		// it, losing that.
 		f := newAuthFixture(t)
 		revokedAt := f.now.Add(-time.Hour)
-		f.tokens.EXPECT().HashRefreshToken("dead").Return([]byte("hash"))
+		f.minter.EXPECT().Hash("dead").Return([]byte("hash"))
 		f.sessions.EXPECT().ByRefreshTokenHash(mock.Anything, mock.Anything, []byte("hash")).
 			Return(&domain.Session{
 				ID: "session-1", FamilyID: "family-1", Kind: domain.KindContributor,
@@ -211,7 +211,7 @@ func TestAuthRefreshReuseDetection(t *testing.T) {
 
 	t.Run("an expired session is refused", func(t *testing.T) {
 		f := newAuthFixture(t)
-		f.tokens.EXPECT().HashRefreshToken("stale").Return([]byte("hash"))
+		f.minter.EXPECT().Hash("stale").Return([]byte("hash"))
 		f.sessions.EXPECT().ByRefreshTokenHash(mock.Anything, mock.Anything, []byte("hash")).
 			Return(&domain.Session{
 				ID: "session-1", FamilyID: "family-1", Kind: domain.KindContributor,
@@ -226,13 +226,13 @@ func TestAuthRefreshReuseDetection(t *testing.T) {
 
 	t.Run("a good token rotates and keeps the family", func(t *testing.T) {
 		f := newAuthFixture(t)
-		f.tokens.EXPECT().HashRefreshToken("live").Return([]byte("hash"))
+		f.minter.EXPECT().Hash("live").Return([]byte("hash"))
 		f.sessions.EXPECT().ByRefreshTokenHash(mock.Anything, mock.Anything, []byte("hash")).
 			Return(&domain.Session{
 				ID: "session-1", FamilyID: "family-1", PrincipalID: string(userID),
 				Kind: domain.KindContributor, ExpiresAt: f.now.Add(time.Hour),
 			}, nil)
-		f.tokens.EXPECT().NewRefreshToken().Return("successor", []byte("successor-hash"), nil)
+		f.minter.EXPECT().Mint().Return("successor", []byte("successor-hash"), nil)
 		f.tokens.EXPECT().Issue(mock.Anything, mock.Anything, mock.Anything).Return("access", nil)
 
 		var successor *domain.Session
@@ -258,13 +258,13 @@ func TestAuthRefreshReuseDetection(t *testing.T) {
 	t.Run("losing the rotation race reads as reuse", func(t *testing.T) {
 		// Another refresh spent the token first, which is itself a replay.
 		f := newAuthFixture(t)
-		f.tokens.EXPECT().HashRefreshToken("live").Return([]byte("hash"))
+		f.minter.EXPECT().Hash("live").Return([]byte("hash"))
 		f.sessions.EXPECT().ByRefreshTokenHash(mock.Anything, mock.Anything, []byte("hash")).
 			Return(&domain.Session{
 				ID: "session-1", FamilyID: "family-1", Kind: domain.KindContributor,
 				ExpiresAt: f.now.Add(time.Hour),
 			}, nil)
-		f.tokens.EXPECT().NewRefreshToken().Return("successor", []byte("successor-hash"), nil)
+		f.minter.EXPECT().Mint().Return("successor", []byte("successor-hash"), nil)
 		f.sessions.EXPECT().Rotate(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return(port.ErrConflict)
 
@@ -410,7 +410,7 @@ func newAuthFixture(t *testing.T) *authFixture {
 
 // expectSession makes a successful sign-in mint and record a session.
 func (f *authFixture) expectSession() {
-	f.tokens.EXPECT().NewRefreshToken().Return("refresh", []byte("refresh-hash"), nil)
+	f.minter.EXPECT().Mint().Return("refresh", []byte("refresh-hash"), nil)
 	f.tokens.EXPECT().Issue(mock.Anything, mock.Anything, mock.Anything).Return("access", nil)
 	f.sessions.EXPECT().Create(mock.Anything, mock.Anything, mock.Anything, []byte("refresh-hash")).
 		Return(nil)

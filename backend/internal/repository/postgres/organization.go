@@ -134,6 +134,31 @@ func (r *OrganizationRepository) AcceptInvitation(ctx context.Context, t port.Tx
 	return &created, nil
 }
 
+// VerificationFor reads a seat's own verification request.
+//
+// Ordered most recent first: registration raises one against the organization,
+// and a rejected org may raise another later. A hirer asking where they stand
+// means the current attempt, not the one that was refused last year.
+func (r *OrganizationRepository) VerificationFor(ctx context.Context, hirer domain.HirerID, org domain.OrganizationID) (*port.VerificationRequest, error) {
+	var v port.VerificationRequest
+	var reason *string
+
+	err := r.db.pool.QueryRow(ctx, `
+		SELECT id, hirer_account_id, organization_id, status, created_at, reviewed_at, decision_reason
+		FROM verification_requests
+		WHERE hirer_account_id = $1::uuid OR organization_id = $2::uuid
+		ORDER BY created_at DESC
+		LIMIT 1`, string(hirer), string(org),
+	).Scan(&v.ID, &v.HirerID, &v.OrganizationID, &v.Status, &v.CreatedAt, &v.ReviewedAt, &reason)
+	if err != nil {
+		return nil, translate(err, fmt.Sprintf("verification for hirer %s", hirer))
+	}
+	if reason != nil {
+		v.DecisionReason = *reason
+	}
+	return &v, nil
+}
+
 // VerifyOrganization approves an organization, lifting every seat at once.
 //
 // One UPDATE against organizations, and none against hirer_accounts. Stamping

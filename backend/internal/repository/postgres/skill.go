@@ -2,11 +2,10 @@ package postgres
 
 import (
 	"context"
-	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 
 	"github.com/Manik2708/gitcherrypick/backend/internal/domain"
 	"github.com/Manik2708/gitcherrypick/backend/internal/port"
@@ -259,28 +258,77 @@ func (r *SkillRepository) RecomputeStanding(ctx context.Context, t port.Tx, id d
 	return &us, nil
 }
 
-// CreateRequest proposes a new catalogue entry.
+// MatchSkill finds the catalogue entry a proposed name duplicates.
 //
-// Deduped against names AND aliases before it reaches the queue: most noise is
-// spelling variants and no admin should spend attention on them (ADR-0003).
-// Returns port.ErrConflict when an existing skill already covers it.
-func (r *SkillRepository) CreateRequest(ctx context.Context, userID domain.UserID, proposedName, rationale string) (domain.RequestID, error) {
-	var existing string
-	err := r.db.pool.QueryRow(ctx, `
-		SELECT s.slug
-		FROM skills s
-		LEFT JOIN skill_aliases a ON a.skill_id = s.id
-		WHERE s.name ILIKE $1 OR s.slug = $1 OR a.alias = $1
-		   OR similarity(s.name, $1) > 0.6
-		   OR similarity(a.alias::text, $1) > 0.6
-		LIMIT 1`, proposedName).Scan(&existing)
-	switch {
-	case err == nil:
-		return "", fmt.Errorf("%q is already covered by skill %q: %w", proposedName, existing, port.ErrConflict)
-	case !errors.Is(err, pgx.ErrNoRows):
-		return "", translate(err, "checking for an existing skill")
-	}
+// Matched against names AND aliases, because most noise is spelling variants
+// and no admin should spend attention on them (ADR-0003). Whether a match
+// BLOCKS a request is the service's decision; this only reports it.
+func (r *SkillRepository) MatchSkill(ctx context.Context, proposedName string) (*domain.Skill, error) {
+	var s domain.Skill
 
+	// Compared on a NORMALISED form — lowercased, with everything that is not
+	// a letter or digit removed — as well as raw.
+	//
+	// Trigram similarity alone misses the commonest duplicate there is: a name
+	// written with a space. similarity('Go', 'Go Lang') is about 0.28, well
+	// under any usable threshold, while normalising both to "golang" makes it
+	// an exact hit against the existing alias.
+	//
+	// Exact matches are ordered ahead of fuzzy ones, so "PostgreSQL" resolves
+	// to postgres rather than to whatever else happens to be 0.6 similar.
+	err := r.db.pool.QueryRow(ctx, `
+		WITH proposed AS (
+			SELECT $1::text AS raw,
+			       regexp_replace(lower($1::text), '[^a-z0-9]', '', 'g') AS norm
+		)
+		SELECT s.id, s.slug, s.name, s.category
+		FROM skills s
+		CROSS JOIN proposed p
+		LEFT JOIN skill_aliases a ON a.skill_id = s.id
+		WHERE s.name ILIKE p.raw
+		   OR s.slug = p.norm
+		   OR a.alias::text = p.norm
+		   OR regexp_replace(lower(s.name), '[^a-z0-9]', '', 'g') = p.norm
+		   OR regexp_replace(lower(a.alias::text), '[^a-z0-9]', '', 'g') = p.norm
+		   OR similarity(s.name, p.raw) > 0.6
+		   OR similarity(a.alias::text, p.raw) > 0.6
+		ORDER BY (s.name ILIKE p.raw OR s.slug = p.norm OR a.alias::text = p.norm) DESC,
+		         similarity(s.name, p.raw) DESC
+		LIMIT 1`, proposedName,
+	).Scan(&s.ID, &s.Slug, &s.Name, &s.Category)
+	if err != nil {
+		return nil, translate(err, fmt.Sprintf("matching skill %q", proposedName))
+	}
+	return &s, nil
+}
+
+// RequestsSince reads a contributor's recent proposals, oldest first.
+func (r *SkillRepository) RequestsSince(ctx context.Context, userID domain.UserID, since time.Time) ([]port.SkillRequest, error) {
+	rows, err := r.db.pool.Query(ctx, `
+		SELECT id, user_id, proposed_name, rationale, status,
+		       coalesce(decision_reason, ''), created_at, reviewed_at
+		FROM skill_requests
+		WHERE user_id = $1::uuid AND created_at >= $2
+		ORDER BY created_at`, string(userID), since)
+	if err != nil {
+		return nil, translate(err, "listing recent skill requests")
+	}
+	defer rows.Close()
+
+	var out []port.SkillRequest
+	for rows.Next() {
+		var s port.SkillRequest
+		if err := rows.Scan(&s.ID, &s.UserID, &s.ProposedName, &s.Rationale,
+			&s.Status, &s.Reason, &s.CreatedAt, &s.ReviewedAt); err != nil {
+			return nil, translate(err, "scanning a skill request")
+		}
+		out = append(out, s)
+	}
+	return out, translate(rows.Err(), "listing recent skill requests")
+}
+
+// CreateRequest inserts one proposal. Policy lives in the service.
+func (r *SkillRepository) CreateRequest(ctx context.Context, userID domain.UserID, proposedName, rationale string) (domain.RequestID, error) {
 	id, err := uuid.NewV7()
 	if err != nil {
 		return "", fmt.Errorf("generating request id: %w", err)

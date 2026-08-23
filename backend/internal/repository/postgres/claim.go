@@ -122,6 +122,27 @@ func (r *ClaimRepository) Create(ctx context.Context, userID domain.UserID) (*do
 //   - a stale version -> port.ErrVersionStale. Two tabs editing one draft must
 //     not silently clobber each other.
 func (r *ClaimRepository) Replace(ctx context.Context, t port.Tx, id domain.ClaimID, expectedVersion int, c *domain.Claim) (*domain.Claim, error) {
+	return r.write(ctx, t, id, &expectedVersion, c)
+}
+
+// ReplaceEvidence writes a sub-resource without consuming the version.
+//
+// The version is the concurrency token for the WHOLE-CLAIM edit: it exists so
+// two tabs doing PUT /claims/{id} cannot clobber each other. Setting evidence
+// or skills is a different operation, and bumping there would make a
+// contributor's next PUT fail with a stale version they never caused.
+//
+// It shares Replace's body rather than repeating it, so the lock check cannot
+// be enforced in one path and forgotten in the other.
+func (r *ClaimRepository) ReplaceEvidence(ctx context.Context, t port.Tx, id domain.ClaimID, c *domain.Claim) (*domain.Claim, error) {
+	return r.write(ctx, t, id, nil, c)
+}
+
+// write is the one path that replaces a claim's contents.
+//
+// expectedVersion nil means "not a versioned edit": the version is neither
+// checked nor bumped.
+func (r *ClaimRepository) write(ctx context.Context, t port.Tx, id domain.ClaimID, expectedVersion *int, c *domain.Claim) (*domain.Claim, error) {
 	q := r.db.q(t)
 
 	// The lock is checked first and separately, so a locked claim reports
@@ -137,18 +158,22 @@ func (r *ClaimRepository) Replace(ctx context.Context, t port.Tx, id domain.Clai
 		return nil, fmt.Errorf("claim %s is locked until %s: %w",
 			id, lockedUntil.Format(time.RFC3339), port.ErrConflict)
 	}
-	if current != expectedVersion {
+	if expectedVersion != nil && current != *expectedVersion {
 		return nil, fmt.Errorf("claim %s is at version %d, not %d: %w",
-			id, current, expectedVersion, port.ErrVersionStale)
+			id, current, *expectedVersion, port.ErrVersionStale)
 	}
 
-	// Editing an evaluated claim returns it to draft. The old scores stand
-	// until a new submission replaces them (ADR-0003).
+	// Editing an evaluated claim returns it to draft either way. The old scores
+	// stand until a new submission replaces them (ADR-0003).
+	bump := "version"
+	if expectedVersion != nil {
+		bump = "version + 1"
+	}
 	if _, err := q.Exec(ctx, `
 		UPDATE claims
-		SET version = version + 1, status = 'draft', updated_at = now()
+		SET version = `+bump+`, status = 'draft', updated_at = now()
 		WHERE id = $1`, string(id)); err != nil {
-		return nil, translate(err, "bumping claim version")
+		return nil, translate(err, "updating the claim")
 	}
 
 	for _, table := range []string{"claim_pr_evidence", "claim_project_evidence", "claim_skills"} {
@@ -181,12 +206,39 @@ func (r *ClaimRepository) insertEvidence(ctx context.Context, q querier, id doma
 
 	for _, p := range c.ProjectEvidence {
 		url := fmt.Sprintf("https://github.com/%s/%s", p.RepoOwner, p.RepoName)
-		if _, err := q.Exec(ctx, `
+
+		// The evidence id is returned so a maintainer declaration can hang off
+		// it in the same transaction. Declaring one against a project row that
+		// did not commit would be a dangling claim to authority.
+		var evidenceID string
+		if err := q.QueryRow(ctx, `
 			INSERT INTO claim_project_evidence
 			    (id, claim_id, repo_url, repo_owner, repo_name, contribution_summary)
-			VALUES (gen_random_uuid(), $1, $2, $3, $4, NULLIF($5, ''))`,
-			string(id), url, p.RepoOwner, p.RepoName, p.ContributionSummary); err != nil {
+			VALUES (gen_random_uuid(), $1, $2, $3, $4, NULLIF($5, ''))
+			RETURNING id`,
+			string(id), url, p.RepoOwner, p.RepoName, p.ContributionSummary,
+		).Scan(&evidenceID); err != nil {
 			return translate(err, fmt.Sprintf("adding project %s/%s", p.RepoOwner, p.RepoName))
+		}
+
+		if p.Maintainer == nil {
+			continue
+		}
+
+		// Written WITHOUT a verdict. validated stays NULL until the model
+		// rules, so a contributor cannot assert their way to the reach bonus
+		// (ADR-0005).
+		sources := make([]string, 0, len(p.Maintainer.Sources))
+		for _, s := range p.Maintainer.Sources {
+			sources = append(sources, string(s))
+		}
+		if _, err := q.Exec(ctx, `
+			INSERT INTO project_maintainer_declarations
+			    (id, project_evidence_id, sources, other_evidence)
+			VALUES (gen_random_uuid(), $1::uuid, $2::maintainer_source[], NULLIF($3, ''))`,
+			evidenceID, sources, p.Maintainer.OtherEvidence); err != nil {
+			return translate(err,
+				fmt.Sprintf("declaring maintainer status on %s/%s", p.RepoOwner, p.RepoName))
 		}
 	}
 
@@ -381,9 +433,16 @@ func (r *ClaimRepository) prEvidence(ctx context.Context, q querier, id domain.C
 }
 
 func (r *ClaimRepository) projectEvidence(ctx context.Context, q querier, id domain.ClaimID) ([]domain.ProjectEvidence, error) {
+	// LEFT JOIN: most projects carry no declaration, and an inner join would
+	// silently drop the ones that do not.
 	rows, err := q.Query(ctx, `
-		SELECT repo_owner, repo_name, coalesce(contribution_summary, '')
-		FROM claim_project_evidence WHERE claim_id = $1 ORDER BY repo_owner, repo_name`, string(id))
+		SELECT e.repo_owner, e.repo_name, coalesce(e.contribution_summary, ''),
+		       d.sources, coalesce(d.other_evidence, ''),
+		       d.validated, d.validated_at, coalesce(d.validation_notes, '')
+		FROM claim_project_evidence e
+		LEFT JOIN project_maintainer_declarations d ON d.project_evidence_id = e.id
+		WHERE e.claim_id = $1
+		ORDER BY e.repo_owner, e.repo_name`, string(id))
 	if err != nil {
 		return nil, translate(err, "reading project evidence")
 	}
@@ -391,9 +450,31 @@ func (r *ClaimRepository) projectEvidence(ctx context.Context, q querier, id dom
 
 	var out []domain.ProjectEvidence
 	for rows.Next() {
-		var p domain.ProjectEvidence
-		if err := rows.Scan(&p.RepoOwner, &p.RepoName, &p.ContributionSummary); err != nil {
+		var (
+			p           domain.ProjectEvidence
+			sources     []string
+			other       string
+			validated   *bool
+			validatedAt *time.Time
+			notes       string
+		)
+		if err := rows.Scan(&p.RepoOwner, &p.RepoName, &p.ContributionSummary,
+			&sources, &other, &validated, &validatedAt, &notes); err != nil {
 			return nil, translate(err, "scanning project evidence")
+		}
+
+		// sources is NULL when no declaration exists, which is how the two
+		// cases are told apart — a declaration with an empty source list is
+		// still a declaration.
+		if sources != nil {
+			declared := make([]domain.MaintainerSource, 0, len(sources))
+			for _, s := range sources {
+				declared = append(declared, domain.MaintainerSource(s))
+			}
+			p.Maintainer = &domain.MaintainerDeclaration{
+				Sources: declared, OtherEvidence: other,
+				Validated: validated, ValidatedAt: validatedAt, ValidationNotes: notes,
+			}
 		}
 		out = append(out, p)
 	}

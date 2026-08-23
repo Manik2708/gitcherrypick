@@ -218,3 +218,71 @@ func (_c *OrganizationService_Invite_Call) RunAndReturn(run func(ctx context.Con
 	_c.Call.Return(run)
 	return _c
 }
+
+// Verification provides a mock function for the type OrganizationService
+func (_mock *OrganizationService) Verification(ctx context.Context, p domain.Principal) (*port.VerificationStatus, error) {
+	ret := _mock.Called(ctx, p)
+
+	if len(ret) == 0 {
+		panic("no return value specified for Verification")
+	}
+
+	var r0 *port.VerificationStatus
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.Principal) (*port.VerificationStatus, error)); ok {
+		return returnFunc(ctx, p)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.Principal) *port.VerificationStatus); ok {
+		r0 = returnFunc(ctx, p)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*port.VerificationStatus)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, domain.Principal) error); ok {
+		r1 = returnFunc(ctx, p)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// OrganizationService_Verification_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Verification'
+type OrganizationService_Verification_Call struct {
+	*mock.Call
+}
+
+// Verification is a helper method to define mock.On call
+//   - ctx context.Context
+//   - p domain.Principal
+func (_e *OrganizationService_Expecter) Verification(ctx interface{}, p interface{}) *OrganizationService_Verification_Call {
+	return &OrganizationService_Verification_Call{Call: _e.mock.On("Verification", ctx, p)}
+}
+
+func (_c *OrganizationService_Verification_Call) Run(run func(ctx context.Context, p domain.Principal)) *OrganizationService_Verification_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 domain.Principal
+		if args[1] != nil {
+			arg1 = args[1].(domain.Principal)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *OrganizationService_Verification_Call) Return(verificationStatus *port.VerificationStatus, err error) *OrganizationService_Verification_Call {
+	_c.Call.Return(verificationStatus, err)
+	return _c
+}
+
+func (_c *OrganizationService_Verification_Call) RunAndReturn(run func(ctx context.Context, p domain.Principal) (*port.VerificationStatus, error)) *OrganizationService_Verification_Call {
+	_c.Call.Return(run)
+	return _c
+}

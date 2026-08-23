@@ -25,13 +25,15 @@ var _ port.HirerRepository = (*HirerRepository)(nil)
 
 const hirerColumns = `
 	h.id, h.organization_id, h.display_name, h.email, h.auth_provider,
-	h.verified_at, coalesce(m.role, 'member'), i.github_user_id`
+	h.verified_at, coalesce(m.role, 'member'), i.github_user_id,
+	o.id, o.name, o.slug, o.website, o.linkedin_url, o.verified_at, o.payment_verified_at`
 
 const hirerFrom = `
 	FROM hirer_accounts h
 	LEFT JOIN organization_members m
 	       ON m.hirer_account_id = h.id AND m.organization_id = h.organization_id
-	LEFT JOIN user_github_identities i ON i.hirer_account_id = h.id`
+	LEFT JOIN user_github_identities i ON i.hirer_account_id = h.id
+	LEFT JOIN organizations o ON o.id = h.organization_id`
 
 // ByID reads one seat.
 func (r *HirerRepository) ByID(ctx context.Context, id domain.HirerID) (*domain.Hirer, error) {
@@ -212,13 +214,40 @@ func scanHirer(row rowScanner) (*domain.Hirer, error) {
 	var (
 		h     domain.Hirer
 		orgID *string
+		org   domain.Organization
+
+		// The organization join is LEFT, so every column of it may be null.
+		// Scanning into pointers keeps a seat whose organization row is
+		// missing readable rather than failing the whole query.
+		orgRowID    *string
+		orgName     *string
+		orgSlug     *string
+		orgWebsite  *string
+		orgLinkedIn *string
 	)
 	if err := row.Scan(&h.ID, &orgID, &h.DisplayName, &h.Email, &h.AuthProvider,
-		&h.VerifiedAt, &h.OrgRole, &h.GitHubUserID); err != nil {
+		&h.VerifiedAt, &h.OrgRole, &h.GitHubUserID,
+		&orgRowID, &orgName, &orgSlug, &orgWebsite, &orgLinkedIn,
+		&org.VerifiedAt, &org.PaymentVerifiedAt); err != nil {
 		return nil, err
 	}
 	if orgID != nil {
 		h.OrganizationID = domain.OrganizationID(*orgID)
 	}
+	if orgRowID != nil {
+		org.ID = domain.OrganizationID(*orgRowID)
+		org.Name = deref(orgName)
+		org.Slug = deref(orgSlug)
+		org.Website = deref(orgWebsite)
+		org.LinkedInURL = deref(orgLinkedIn)
+		h.Organization = &org
+	}
 	return &h, nil
+}
+
+func deref(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }
