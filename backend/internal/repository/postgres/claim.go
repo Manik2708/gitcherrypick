@@ -26,13 +26,6 @@ func (db *DB) Claims() *ClaimRepository { return &ClaimRepository{db: db} }
 
 var _ port.ClaimRepository = (*ClaimRepository)(nil)
 
-// LockWindow is how long a scored claim is closed to edits (ADR-0003).
-//
-// The lock stops score-rerolling — resubmitting slightly different evidence
-// until the number improves — which is both a gaming vector and a direct cost,
-// since every submission is a model call.
-const LockWindow = 7 * 24 * time.Hour
-
 // ByID reads a claim with its evidence and skills.
 func (r *ClaimRepository) ByID(ctx context.Context, id domain.ClaimID) (*domain.Claim, error) {
 	return r.byID(ctx, r.db.pool, id)

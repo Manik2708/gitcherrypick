@@ -45,6 +45,16 @@ type Claim struct {
 	UpdatedAt time.Time
 }
 
+// LockWindow is how long a scored claim is closed to edits (ADR-0003).
+//
+// The lock stops score-rerolling — resubmitting slightly different evidence
+// until the number improves — which is both a gaming vector and a direct cost,
+// since every submission is a model call.
+//
+// In domain because the evaluator sets it and the claim repository enforces
+// it, and two constants that must agree are two that will eventually disagree.
+const LockWindow = 7 * 24 * time.Hour
+
 // IsLocked reports whether the seven-day lock is in force.
 func (c *Claim) IsLocked(now time.Time) bool {
 	return c != nil && c.LockedUntil != nil && c.LockedUntil.After(now)
