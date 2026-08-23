@@ -25,11 +25,6 @@ func (db *DB) Skills() *SkillRepository { return &SkillRepository{db: db} }
 
 var _ port.SkillRepository = (*SkillRepository)(nil)
 
-// PrimaryThreshold is the number of DISTINCT SCORED PRs at which a skill
-// promotes. Five or more is primary and ranked; one to four is secondary,
-// visible and score-contributing but never ranked (ADR-0003).
-const PrimaryThreshold = 5
-
 // The projection every read shares. skillColumnsBare is the same list without
 // the table alias, for RETURNING — deriving one from the other by slicing off a
 // prefix strips only the first occurrence, which is a bug that compiles.
@@ -255,7 +250,7 @@ func (r *SkillRepository) RecomputeStanding(ctx context.Context, t port.Tx, id d
 		      updated_at        = now()
 		RETURNING user_id, skill_id, standing, distinct_pr_count,
 		          coalesce(score, 0), coalesce(pr_component, 0), coalesce(project_component, 0), promoted_at`,
-		string(id), string(skillID), PrimaryThreshold,
+		string(id), string(skillID), domain.PrimaryThreshold,
 	).Scan(&us.UserID, &us.SkillID, &us.Standing, &us.DistinctPRCount,
 		&us.Score, &us.PRComponent, &us.ProjectComponent, &us.PromotedAt)
 	if err != nil {

@@ -200,6 +200,14 @@ const (
 // score-contributing but never ranked. Promotion at the fifth is automatic.
 type Standing string
 
+// PrimaryThreshold is the number of DISTINCT SCORED PRs at which a skill
+// promotes (ADR-0003).
+//
+// It lives in domain because the repository's recompute and the service's
+// withdrawal preview both need it, and two constants that must agree are two
+// constants that will eventually disagree.
+const PrimaryThreshold = 5
+
 // The two standings. Five or more distinct scored PRs is primary and ranked;
 // one to four is secondary and never ranked.
 const (
