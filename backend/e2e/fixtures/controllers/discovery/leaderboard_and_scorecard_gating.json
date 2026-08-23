@@ -1,7 +1,12 @@
 {
   "name": "leaderboards come in three kinds, and a scorecard is gated three ways",
   "description": "RFC-0008 §1 and §2. search_gates_and_exclusions pins the rank gaps and the inactive toggle; this case adds kind=skill and the scorecard access rules.\n\nA scorecard is the full evidence dossier, so it is the most valuable thing a hirer can read and the thing most worth scraping. Two gates remain: hiring capability, and AssertNotSelf (the second of the three places ADR-0002 requires it).\n\nThe availability gate is NOT one of them any more — RFC-0008 §1a. A lapsed contributor's scorecard is readable and carries the same active:false block a search result does, because hiding it would mean a hirer could find someone via include_inactive and then be refused the evidence they were looking for. Only not_looking is a 404, and that is an explicit opt-out rather than a stale yes.\n\nThe leaderboard always shows everyone, inactive included, and takes no include_inactive parameter. It is the definitive global ranking; search is the actionable subset of it.",
-  "seed": ["principals", "catalogue", "repositories", "scored_population"],
+  "seed": [
+    "principals",
+    "catalogue",
+    "repositories",
+    "scored_population"
+  ],
   "steps": [
     {
       "as": "hank",
@@ -73,7 +78,11 @@
             {
               "field": "kind",
               "reason": "unknown",
-              "allowed": ["overall", "generalist", "skill"]
+              "allowed": [
+                "overall",
+                "generalist",
+                "skill"
+              ]
             }
           ]
         }
@@ -544,7 +553,8 @@
                 }
               ]
             }
-          ]
+          ],
+          "generalist_score": 64.2
         }
       }
     },

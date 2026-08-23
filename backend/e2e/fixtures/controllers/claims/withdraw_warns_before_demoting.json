@@ -1,17 +1,42 @@
 {
   "name": "withdrawal warns before it demotes a primary skill",
   "description": "ADR-0003: withdrawing can drop a skill below five scored PRs. The contributor is told BEFORE confirming, then the demotion is immediate. Standing never disagrees with the evidence behind it, and nobody loses a ranking without being asked. Withdrawal also releases the (PR, skill) pairs for reuse.",
-  "seed": ["principals", "catalogue", "repositories", "alice_go_primary"],
+  "seed": [
+    "principals",
+    "catalogue",
+    "repositories",
+    "alice_go_primary"
+  ],
   "steps": [
     {
       "_step": "Alice starts with Go primary at five scored PRs.",
       "as": "alice",
-      "request": { "method": "GET", "path": "/me/skills" },
-      "expect": { "status": 200, "body": { "skills": [{ "slug": "go", "standing": "primary", "distinct_pr_count": 5, "score": 64.2 }] } }
+      "request": {
+        "method": "GET",
+        "path": "/me/skills"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "skills": [
+            {
+              "slug": "go",
+              "standing": "primary",
+              "distinct_pr_count": 5,
+              "score": 64.2
+            }
+          ],
+          "overall_score": 64.2,
+          "generalist_score": 64.2
+        }
+      }
     },
     {
       "as": "alice",
-      "request": { "method": "GET", "path": "/claims/{{alice_go_claim.id}}/withdraw-preview" },
+      "request": {
+        "method": "GET",
+        "path": "/claims/{{alice_go_claim.id}}/withdraw-preview"
+      },
       "expect": {
         "status": 200,
         "body": {
@@ -30,49 +55,114 @@
     {
       "_step": "Unconfirmed withdrawal is refused, and says why.",
       "as": "alice",
-      "request": { "method": "POST", "path": "/claims/{{alice_go_claim.id}}/withdraw", "body": {} },
+      "request": {
+        "method": "POST",
+        "path": "/claims/{{alice_go_claim.id}}/withdraw",
+        "body": {}
+      },
       "expect": {
         "status": 409,
-        "body": { "error": "confirmation_required", "demotions": [{ "skill": "go", "from": "primary", "to": "secondary" }] }
+        "body": {
+          "error": "confirmation_required",
+          "demotions": [
+            {
+              "skill": "go",
+              "from": "primary",
+              "to": "secondary"
+            }
+          ]
+        }
       }
     },
     {
       "as": "alice",
-      "request": { "method": "POST", "path": "/claims/{{alice_go_claim.id}}/withdraw", "body": { "confirm_demotion": true } },
+      "request": {
+        "method": "POST",
+        "path": "/claims/{{alice_go_claim.id}}/withdraw",
+        "body": {
+          "confirm_demotion": true
+        }
+      },
       "expect": {
         "status": 200,
-        "body": { "id": "<uuid>", "status": "withdrawn", "withdrawn_at": "<timestamp>" },
+        "body": {
+          "id": "<uuid>",
+          "status": "withdrawn",
+          "withdrawn_at": "<timestamp>"
+        },
         "db": {
           "user_skill_pr_links": {
             "_note": "Released, not retained. A withdrawn claim's PRs count for nothing, so holding their pairs would block evidence that no longer counts.",
-            "where": { "claim_id": "{{alice_go_claim.id}}" },
+            "where": {
+              "claim_id": "{{alice_go_claim.id}}"
+            },
             "count": 0
           },
           "user_skills": {
             "_note": "Row deleted rather than zeroed — zero is never stored.",
-            "where": { "user_id": "{{alice.id}}", "skill_slug": "go" },
+            "where": {
+              "user_id": "{{alice.id}}",
+              "skill_slug": "go"
+            },
             "count": 0
           },
-          "users": { "where": { "id": "{{alice.id}}" }, "all_match": { "overall_score": null, "generalist_score": null } }
+          "users": {
+            "where": {
+              "id": "{{alice.id}}"
+            },
+            "all_match": {
+              "overall_score": null,
+              "generalist_score": null
+            }
+          }
         }
       }
     },
     {
       "_step": "The released pair can now back a fresh claim.",
       "as": "alice",
-      "request": { "method": "POST", "path": "/claims", "body": {} },
-      "expect": { "status": 201, "body": { "id": "<uuid>", "status": "draft", "version": 1, "created_at": "<timestamp>" } }
+      "request": {
+        "method": "POST",
+        "path": "/claims",
+        "body": {}
+      },
+      "expect": {
+        "status": 201,
+        "body": {
+          "id": "<uuid>",
+          "status": "draft",
+          "version": 1,
+          "created_at": "<timestamp>"
+        }
+      }
     },
     {
       "as": "alice",
       "request": {
         "method": "POST",
         "path": "/claims/{{claim_id}}/evidence/prs",
-        "body": { "prs": [{ "position": 1, "url": "https://github.com/acme/bigrepo/pull/101" }] }
+        "body": {
+          "prs": [
+            {
+              "position": 1,
+              "url": "https://github.com/acme/bigrepo/pull/101"
+            }
+          ]
+        }
       },
       "expect": {
         "status": 200,
-        "body": { "prs": [{ "position": 1, "repo_owner": "acme", "repo_name": "bigrepo", "pr_number": 101, "role": "author" }] }
+        "body": {
+          "prs": [
+            {
+              "position": 1,
+              "repo_owner": "acme",
+              "repo_name": "bigrepo",
+              "pr_number": 101,
+              "role": "author"
+            }
+          ]
+        }
       }
     }
   ]

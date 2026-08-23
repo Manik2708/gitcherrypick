@@ -1,7 +1,10 @@
 {
   "name": "share links are the only thing an anonymous visitor can see",
   "description": "ADR-0002: scorecards are fully gated. A logged-out visitor sees nothing, a contributor sees only their OWN rank, and the single publishable surface is a link the contributor generates and can revoke. The link exposes that contributor alone — no ranking against anyone else, no navigation outward.",
-  "seed": ["principals", "catalogue"],
+  "seed": [
+    "principals",
+    "catalogue"
+  ],
   "steps": [
     {
       "as": "anonymous",
@@ -62,12 +65,15 @@
       "expect": {
         "status": 200,
         "body": {
-          "display_name": "Alice Okafor",
-          "github_login": "aliceok",
+          "_note": "No id and no rank. A published link carries the contributor's presentation, not a handle to query them by, and rank is a fact about the pool (ADR-0002).",
+          "user": {
+            "display_name": "Alice Okafor",
+            "github_login": "aliceok"
+          },
           "skills": [],
           "overall_score": null,
           "generalist_score": null,
-          "_note_rank_absent": "No rank field. A share link says how good you are, never where you sit against others."
+          "rubric_version": "v1"
         }
       }
     },
@@ -105,8 +111,21 @@
       "expect": {
         "status": 200,
         "body": {
-          "overall_rank": null,
-          "generalist_rank": null,
+          "_note": "Rank is a fact about the pool, so a contributor sees their own position and nothing identifying anyone else. With no scored evidence there is no position — null, not zero, because zero would claim a measurement (ADR-0007).",
+          "rubric_version": "v1",
+          "ranked": false,
+          "unranked_reason": "no_primary_skill",
+          "active": true,
+          "overall": {
+            "score": null,
+            "rank": null,
+            "out_of": 4
+          },
+          "generalist": {
+            "score": null,
+            "rank": null,
+            "out_of": 4
+          },
           "skills": []
         }
       }

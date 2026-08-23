@@ -1,11 +1,19 @@
 {
   "name": "a contributor reads only their own claims, and a stranger gets 404",
   "description": "RFC-0008 §6. ADR-0003 specifies every claim write and the withdraw-preview, but no plain read — so listing and reading a claim had no URL. Both are contributor-scoped.\n\n404 rather than 403 for someone else's claim. A 403 confirms the id exists, and a claim id is otherwise unguessable; the pair (403 on real, 404 on fake) turns the endpoint into an existence oracle over other people's evidence. The list is ordered newest first and never spans users, so there is no pagination parameter that could widen it.",
-  "seed": ["principals", "catalogue", "repositories", "alice_go_primary"],
+  "seed": [
+    "principals",
+    "catalogue",
+    "repositories",
+    "alice_go_primary"
+  ],
   "steps": [
     {
       "as": "alice",
-      "request": { "method": "GET", "path": "/claims" },
+      "request": {
+        "method": "GET",
+        "path": "/claims"
+      },
       "expect": {
         "status": 200,
         "_note": "One seeded evaluated claim. Summary shape — evidence is not expanded in a list.",
@@ -29,7 +37,10 @@
     },
     {
       "as": "alice",
-      "request": { "method": "GET", "path": "/claims/01920000-0000-7000-8000-0000000f0001" },
+      "request": {
+        "method": "GET",
+        "path": "/claims/01920000-0000-7000-8000-0000000f0001"
+      },
       "expect": {
         "status": 200,
         "_note": "The full read expands evidence with the per-skill scores, which is the only place a contributor sees the PR-level breakdown.",
@@ -45,7 +56,12 @@
               "repo_name": "bigrepo",
               "pr_number": 101,
               "role": "author",
-              "scores": [{ "skill": "go", "score": 79.3 }]
+              "scores": [
+                {
+                  "skill": "go",
+                  "score": 79.3
+                }
+              ]
             },
             {
               "position": 2,
@@ -53,7 +69,12 @@
               "repo_name": "bigrepo",
               "pr_number": 102,
               "role": "author",
-              "scores": [{ "skill": "go", "score": 62.1 }]
+              "scores": [
+                {
+                  "skill": "go",
+                  "score": 62.1
+                }
+              ]
             },
             {
               "position": 3,
@@ -61,7 +82,12 @@
               "repo_name": "platform",
               "pr_number": 55,
               "role": "author",
-              "scores": [{ "skill": "go", "score": 60.4 }]
+              "scores": [
+                {
+                  "skill": "go",
+                  "score": 60.4
+                }
+              ]
             },
             {
               "position": 4,
@@ -69,7 +95,12 @@
               "repo_name": "platform",
               "pr_number": 56,
               "role": "author",
-              "scores": [{ "skill": "go", "score": 54.8 }]
+              "scores": [
+                {
+                  "skill": "go",
+                  "score": 54.8
+                }
+              ]
             },
             {
               "position": 5,
@@ -77,12 +108,23 @@
               "repo_name": "smalllib",
               "pr_number": 12,
               "role": "author",
-              "scores": [{ "skill": "go", "score": 64.4 }]
+              "scores": [
+                {
+                  "skill": "go",
+                  "score": 64.4
+                }
+              ]
             }
           ],
-          "projects": [],
-          "skills": [{ "slug": "go", "origin": "user_declared", "nominated_primary": true, "score": 64.2, "standing": "primary" }],
-          "suggestions": [],
+          "skills": [
+            {
+              "slug": "go",
+              "origin": "user_declared",
+              "nominated_primary": true,
+              "score": 64.2,
+              "standing": "primary"
+            }
+          ],
           "submitted_at": "<timestamp>",
           "evaluated_at": "2026-08-10T09:00:00Z",
           "locked_until": "2026-08-17T09:00:00Z"
@@ -92,61 +134,138 @@
     {
       "_step": "Bob has no claims. An empty list, not a 404 — the collection exists, it is just his and empty.",
       "as": "bob",
-      "request": { "method": "GET", "path": "/claims" },
-      "expect": { "status": 200, "body": { "total": 0, "claims": [] } }
+      "request": {
+        "method": "GET",
+        "path": "/claims"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "total": 0,
+          "claims": []
+        }
+      }
     },
     {
       "_step": "Bob reading Alice's real claim id. 404, identical to the response for an id that does not exist.",
       "as": "bob",
-      "request": { "method": "GET", "path": "/claims/01920000-0000-7000-8000-0000000f0001" },
-      "expect": { "status": 404, "body": { "error": "claim_not_found" } }
+      "request": {
+        "method": "GET",
+        "path": "/claims/01920000-0000-7000-8000-0000000f0001"
+      },
+      "expect": {
+        "status": 404,
+        "body": {
+          "error": "claim_not_found"
+        }
+      }
     },
     {
       "as": "bob",
-      "request": { "method": "GET", "path": "/claims/01920000-0000-7000-8000-0000000fdead" },
+      "request": {
+        "method": "GET",
+        "path": "/claims/01920000-0000-7000-8000-0000000fdead"
+      },
       "expect": {
         "status": 404,
         "_note": "Byte-identical to the previous response. That equality is the property under test.",
-        "body": { "error": "claim_not_found" }
+        "body": {
+          "error": "claim_not_found"
+        }
       }
     },
     {
       "_step": "A HIRER has no claim surface at all, verified or not. Claims are contributor-private; the scorecard is the hirer's view.",
       "as": "hank",
-      "request": { "method": "GET", "path": "/claims/01920000-0000-7000-8000-0000000f0001" },
-      "expect": { "status": 403, "body": { "error": "contributor_required" } }
+      "request": {
+        "method": "GET",
+        "path": "/claims/01920000-0000-7000-8000-0000000f0001"
+      },
+      "expect": {
+        "status": 403,
+        "body": {
+          "error": "contributor_required"
+        }
+      }
     },
     {
       "as": "hank",
-      "request": { "method": "GET", "path": "/claims" },
-      "expect": { "status": 403, "body": { "error": "contributor_required" } }
+      "request": {
+        "method": "GET",
+        "path": "/claims"
+      },
+      "expect": {
+        "status": 403,
+        "body": {
+          "error": "contributor_required"
+        }
+      }
     },
     {
       "_step": "Not even an admin reads a claim through this path. Admin claim access, if it is ever needed, is a separate audited surface.",
       "as": "root",
-      "request": { "method": "GET", "path": "/claims/01920000-0000-7000-8000-0000000f0001" },
-      "expect": { "status": 403, "body": { "error": "contributor_required" } }
+      "request": {
+        "method": "GET",
+        "path": "/claims/01920000-0000-7000-8000-0000000f0001"
+      },
+      "expect": {
+        "status": 403,
+        "body": {
+          "error": "contributor_required"
+        }
+      }
     },
     {
       "as": "anonymous",
-      "request": { "method": "GET", "path": "/claims/01920000-0000-7000-8000-0000000f0001" },
-      "expect": { "status": 401, "body": { "error": "unauthenticated" } }
+      "request": {
+        "method": "GET",
+        "path": "/claims/01920000-0000-7000-8000-0000000f0001"
+      },
+      "expect": {
+        "status": 401,
+        "body": {
+          "error": "unauthenticated"
+        }
+      }
     },
     {
       "_step": "A malformed id is a 400, distinguishable from a well-formed id that is not yours. It leaks nothing — the client sent something that is not a uuid.",
       "as": "alice",
-      "request": { "method": "GET", "path": "/claims/not-a-uuid" },
-      "expect": { "status": 400, "body": { "error": "invalid_id" } }
+      "request": {
+        "method": "GET",
+        "path": "/claims/not-a-uuid"
+      },
+      "expect": {
+        "status": 400,
+        "body": {
+          "error": "invalid_id"
+        }
+      }
     },
     {
       "_step": "Newest first. A second draft created now sorts above the seeded evaluated claim.",
       "as": "alice",
-      "request": { "method": "POST", "path": "/claims", "body": {} },
-      "expect": { "status": 201, "body": { "id": "<uuid>", "status": "draft", "version": 1, "created_at": "<timestamp>" } }
+      "request": {
+        "method": "POST",
+        "path": "/claims",
+        "body": {}
+      },
+      "expect": {
+        "status": 201,
+        "body": {
+          "id": "<uuid>",
+          "status": "draft",
+          "version": 1,
+          "created_at": "<timestamp>"
+        }
+      }
     },
     {
       "as": "alice",
-      "request": { "method": "GET", "path": "/claims" },
+      "request": {
+        "method": "GET",
+        "path": "/claims"
+      },
       "expect": {
         "status": 200,
         "body": {

@@ -1,7 +1,12 @@
 {
   "name": "a rubric sweep re-queues the corpus and empties search until it drains",
   "description": "ADR-0007 §Endpoints: 'POST /admin/evaluations/sweep — global re-run for prompt/model change'. When the prompt, the model, or a rubric constant changes, every existing score was produced by a different function and is no longer comparable to a new one.\n\nThe consequence the fixture exists to pin is the interaction with ADR-0005's search gate, 'AND rubric_version = $active'. Bumping the active rubric makes the entire scored population fall OUT of search immediately, and back in only as re-evaluation drains. That is deliberate: a leaderboard mixing v1 and v2 scores ranks people by which version happened to judge them. Half-swept results are worse than none, so the sweep is enqueue-only and idempotent — a second call while one is running adds nothing.",
-  "seed": ["principals", "catalogue", "repositories", "scored_population"],
+  "seed": [
+    "principals",
+    "catalogue",
+    "repositories",
+    "scored_population"
+  ],
   "steps": [
     {
       "as": "hank",
@@ -378,9 +383,7 @@
           ],
           "overall_score": 65.1,
           "generalist_score": 65.1,
-          "rubric_version": "v2",
-          "stale": false,
-          "reevaluation_in_progress": false
+          "rubric_version": "v2"
         }
       }
     },

@@ -1,7 +1,12 @@
 {
   "name": "shortlisting raises a request; the email is released only on acceptance",
   "description": "ADR-0005, and the deliberate inversion of how sourcing tools normally work. Adding someone to a shortlist does NOT disclose their email — it creates a contact request the contributor must accept. Releasing contact details on the strength of one side's interest is what makes those tools feel extractive, and the whole consent model would be hollow if a shortlist click bypassed it.\n\nThe request also discloses what we know about the hirer: sam_studio's organization was verified on identity but never on payment, so the contributor is told before deciding.\n\nUpdated for RFC-0008 §3a: adding an entry stages it privately and discloses nothing. The contact request — and therefore the disclosure this case is about — is created by confirm. That moves WHEN consent is sought without changing the rule that it must be sought.",
-  "seed": ["principals", "catalogue", "repositories", "scored_population"],
+  "seed": [
+    "principals",
+    "catalogue",
+    "repositories",
+    "scored_population"
+  ],
   "steps": [
     {
       "as": "sam_studio",
@@ -41,10 +46,17 @@
         "status": 201,
         "_note": "No email in the response. A contact request was raised instead.",
         "body": {
-          "user_id": "<uuid>",
-          "added_at": "<timestamp>",
-          "email": null,
-          "notified_at": null
+          "_note": "Staged, not disclosed. notified_at is null until confirm, and no address appears anywhere — releasing one is what accepting a contact request does (ADR-0008 §3a).",
+          "shortlist_id": "<uuid>",
+          "user": {
+            "id": "01920000-0000-7000-8000-00000000a001",
+            "display_name": "Alice Okafor",
+            "github_login": "<string>"
+          },
+          "note": null,
+          "added_by": "<uuid>",
+          "notified_at": null,
+          "added_at": "<timestamp>"
         },
         "db": {
           "contact_requests": {
@@ -146,7 +158,8 @@
               "disclosure": "This organization is hiring for the first time and has not verified payment capability.",
               "_note": "Not a warning against them — a fact. The contributor carries the risk of an unpaid engagement, so the contributor gets the fact and the choice."
             }
-          ]
+          ],
+          "total": 1
         }
       }
     },
@@ -239,10 +252,17 @@
       "expect": {
         "status": 201,
         "body": {
-          "user_id": "<uuid>",
-          "added_at": "<timestamp>",
-          "email": null,
-          "notified_at": null
+          "_note": "A second organization stages the same contributor. Neither is told about the other.",
+          "shortlist_id": "<uuid>",
+          "user": {
+            "id": "01920000-0000-7000-8000-00000000a001",
+            "display_name": "Alice Okafor",
+            "github_login": "<string>"
+          },
+          "note": null,
+          "added_by": "<uuid>",
+          "notified_at": null,
+          "added_at": "<timestamp>"
         },
         "db": {
           "contact_requests": {
@@ -316,7 +336,8 @@
               "expires_at": "<timestamp>",
               "disclosure": null
             }
-          ]
+          ],
+          "total": 1
         }
       }
     },

@@ -187,6 +187,86 @@ def check_response_shapes(path: Path, index: int, step: dict) -> None:
                 fail(path, f"{at}.results[{position}] is missing '{key}' — RFC-0008 §1a")
 
 
+def principal_kinds() -> dict[str, str]:
+    """Map each seeded principal key to its account type.
+
+    Needed because some endpoints are polymorphic: ``GET /me`` answers a
+    contributor with availability and scores, and a hirer with capabilities and
+    an organization. Two shapes for two account types is not a contradiction,
+    and comparing them as though it were would report a conflict that cannot be
+    fixed.
+    """
+    doc = read_json(SEEDS / "principals.json") or {}
+    kinds = {}
+    for group, kind in (("contributors", "contributor"), ("hirers", "hirer"), ("admins", "admin")):
+        for entry in doc.get(group, []):
+            if key := entry.get("key"):
+                kinds[key] = kind
+    return kinds
+
+
+def check_shape_consistency(cases: list[tuple[Path, dict]]) -> None:
+    """Fail when two fixtures snapshot one endpoint incompatibly.
+
+    A field can be omitted from a response only when its value is absent. So if
+    any snapshot records a field as 0, null, [] or false while another omits it
+    for the same endpoint, no implementation satisfies both — the two fixtures
+    describe different APIs.
+
+    Eleven endpoints were in that state when the first real API started
+    answering, and every one of them had passed stage-3 review, because nothing
+    compared snapshots ACROSS fixtures. This is that comparison.
+    """
+    observed: dict[tuple[str, str, str], list[tuple[str, dict]]] = {}
+    kinds = principal_kinds()
+
+    for path, doc in cases:
+        for index, step in enumerate(doc.get("steps", [])):
+            request = step.get("request", {})
+            expect = step.get("expect", {})
+            body = expect.get("body")
+            if not isinstance(body, dict) or expect.get("status", 200) >= 400:
+                continue
+
+            # Keyed on the caller's account type as well as the route, so a
+            # polymorphic endpoint is compared shape-for-shape.
+            endpoint = (
+                request.get("method", ""),
+                normalise_path(request.get("path", "")),
+                kinds.get(step.get("as", ""), "anonymous"),
+            )
+            fields = {k: v for k, v in body.items() if not k.startswith("_")}
+            observed.setdefault(endpoint, []).append((f"{path.name}#{index}", fields))
+
+    for (method, route, kind), snapshots in sorted(observed.items()):
+        if len(snapshots) < 2:
+            continue
+        every = set().union(*(set(f) for _, f in snapshots))
+
+        for field in sorted(every):
+            empty_in = [w for w, f in snapshots if field in f and is_empty(f[field])]
+            absent_in = [w for w, f in snapshots if field not in f]
+            if not empty_in or not absent_in:
+                continue
+            fail(
+                ROOT / "backend/e2e/fixtures",
+                f"{method} {route} (as {kind}): '{field}' is recorded as empty by {empty_in[0]} "
+                f"and omitted by {absent_in[0]} — a field cannot be both, so no "
+                f"implementation satisfies both snapshots",
+            )
+
+
+def is_empty(value: object) -> bool:
+    """Whether a value is one a response could legitimately omit."""
+    return value in (None, "", 0, False) or value == [] or value == {}
+
+
+def normalise_path(path: str) -> str:
+    """Collapse ids and placeholders, so two calls to one endpoint compare."""
+    path = re.sub(r"\{\{[^}]+\}\}", "{id}", path).split("?")[0]
+    return re.sub(r"/[0-9a-f]{8}-[0-9a-f-]{27,}", "/{id}", path)
+
+
 def check_case(path: Path, doc: dict, principals: set[str], seed_docs: dict[str, dict]) -> None:
     bound: set[str] = set()
     seeded = principals | seeded_row_keys(doc["seed"], seed_docs)
@@ -228,6 +308,7 @@ def main() -> int:
         return 1
 
     names: dict[str, Path] = {}
+    cases: list[tuple[Path, dict]] = []
     for path in files:
         doc = read_json(path)
         if doc is None:
@@ -245,6 +326,9 @@ def main() -> int:
         names[doc["name"]] = path
 
         check_case(path, doc, principals, seed_docs)
+        cases.append((path, doc))
+
+    check_shape_consistency(cases)
 
     if errors:
         plural = "" if len(errors) == 1 else "s"
