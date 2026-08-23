@@ -1,14 +1,106 @@
 {
   "name": "a scored claim locks for seven days, other skills stay free",
   "description": "ADR-0003: the lock exists to stop score-rerolling — resubmitting slightly different evidence until the number improves, which is both a gaming vector and a direct cost since every submission is a model call. It is scoped to the SCORED CLAIM, not the account, so a contributor mid-way through building other skills is not frozen. No paid bypass in v1.",
-  "seed": ["principals", "catalogue", "repositories", "alice_go_primary"],
+  "seed": [
+    "principals",
+    "catalogue",
+    "repositories",
+    "alice_go_primary"
+  ],
   "steps": [
     {
       "as": "alice",
-      "request": { "method": "GET", "path": "/claims/{{alice_go_claim.id}}" },
+      "request": {
+        "method": "GET",
+        "path": "/claims/{{alice_go_claim.id}}"
+      },
       "expect": {
         "status": 200,
-        "body": { "id": "<uuid>", "status": "evaluated", "version": 1, "evaluated_at": "<timestamp>", "locked_until": "<timestamp>" }
+        "body": {
+          "id": "<uuid>",
+          "status": "evaluated",
+          "version": 1,
+          "evaluated_at": "<timestamp>",
+          "locked_until": "<timestamp>",
+          "nominated_primary": "go",
+          "prs": [
+            {
+              "position": 1,
+              "repo_owner": "acme",
+              "repo_name": "bigrepo",
+              "pr_number": 101,
+              "role": "author",
+              "scores": [
+                {
+                  "skill": "go",
+                  "score": 79.3
+                }
+              ]
+            },
+            {
+              "position": 2,
+              "repo_owner": "acme",
+              "repo_name": "bigrepo",
+              "pr_number": 102,
+              "role": "author",
+              "scores": [
+                {
+                  "skill": "go",
+                  "score": 62.1
+                }
+              ]
+            },
+            {
+              "position": 3,
+              "repo_owner": "acme",
+              "repo_name": "platform",
+              "pr_number": 55,
+              "role": "author",
+              "scores": [
+                {
+                  "skill": "go",
+                  "score": 60.4
+                }
+              ]
+            },
+            {
+              "position": 4,
+              "repo_owner": "acme",
+              "repo_name": "platform",
+              "pr_number": 56,
+              "role": "author",
+              "scores": [
+                {
+                  "skill": "go",
+                  "score": 54.8
+                }
+              ]
+            },
+            {
+              "position": 5,
+              "repo_owner": "indie",
+              "repo_name": "smalllib",
+              "pr_number": 12,
+              "role": "author",
+              "scores": [
+                {
+                  "skill": "go",
+                  "score": 64.4
+                }
+              ]
+            }
+          ],
+          "skills": [
+            {
+              "slug": "go",
+              "origin": "user_declared",
+              "nominated_primary": true,
+              "score": 64.2,
+              "standing": "primary"
+            }
+          ],
+          "submitted_at": "<timestamp>"
+        }
       }
     },
     {
@@ -16,7 +108,14 @@
       "request": {
         "method": "POST",
         "path": "/claims/{{alice_go_claim.id}}/evidence/prs",
-        "body": { "prs": [{ "position": 5, "url": "https://github.com/acme/bigrepo/pull/904" }] }
+        "body": {
+          "prs": [
+            {
+              "position": 5,
+              "url": "https://github.com/acme/bigrepo/pull/904"
+            }
+          ]
+        }
       },
       "expect": {
         "status": 409,
@@ -30,31 +129,81 @@
     {
       "_step": "A DIFFERENT skill is unaffected. The lock is per claim.",
       "as": "alice",
-      "request": { "method": "POST", "path": "/claims", "body": {} },
-      "expect": { "status": 201, "body": { "id": "<uuid>", "status": "draft", "version": 1, "created_at": "<timestamp>" } }
+      "request": {
+        "method": "POST",
+        "path": "/claims",
+        "body": {}
+      },
+      "expect": {
+        "status": 201,
+        "body": {
+          "id": "<uuid>",
+          "status": "draft",
+          "version": 1,
+          "created_at": "<timestamp>"
+        }
+      }
     },
     {
       "as": "alice",
       "request": {
         "method": "POST",
         "path": "/claims/{{claim_id}}/skills",
-        "body": { "skills": [{ "slug": "postgres", "nominated_primary": true }] }
+        "body": {
+          "skills": [
+            {
+              "slug": "postgres",
+              "nominated_primary": true
+            }
+          ]
+        }
       },
-      "expect": { "status": 200, "body": { "skills": [{ "slug": "postgres", "origin": "user_declared", "nominated_primary": true }] } }
+      "expect": {
+        "status": 200,
+        "body": {
+          "skills": [
+            {
+              "slug": "postgres",
+              "origin": "user_declared",
+              "nominated_primary": true,
+              "scoring_mode": "standard"
+            }
+          ]
+        }
+      }
     },
     {
       "_step": "Advance past the lock. Only a fake clock makes this testable.",
       "as": "system",
-      "request": { "method": "ADVANCE_CLOCK", "path": "/" },
-      "fake": { "clock": { "advance": "7d1h" } },
-      "expect": { "status": 200, "body": { "now": "<timestamp>" } }
+      "request": {
+        "method": "ADVANCE_CLOCK",
+        "path": "/"
+      },
+      "fake": {
+        "clock": {
+          "advance": "7d1h"
+        }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "now": "<timestamp>"
+        }
+      }
     },
     {
       "as": "alice",
       "request": {
         "method": "POST",
         "path": "/claims/{{alice_go_claim.id}}/evidence/prs",
-        "body": { "prs": [{ "position": 5, "url": "https://github.com/acme/bigrepo/pull/904" }] }
+        "body": {
+          "prs": [
+            {
+              "position": 5,
+              "url": "https://github.com/acme/bigrepo/pull/904"
+            }
+          ]
+        }
       },
       "expect": {
         "status": 200,
@@ -62,17 +211,32 @@
         "body": {
           "claim_status": "draft",
           "version": 2,
-          "prs": [{ "position": 5, "repo_owner": "acme", "repo_name": "bigrepo", "pr_number": 904, "role": "author" }]
+          "prs": [
+            {
+              "position": 5,
+              "repo_owner": "acme",
+              "repo_name": "bigrepo",
+              "pr_number": 904,
+              "role": "author"
+            }
+          ]
         }
       }
     },
     {
       "_step": "Resubmitting unchanged evidence is refused by fingerprint, without a model call.",
       "as": "alice",
-      "request": { "method": "POST", "path": "/claims/{{claim_id}}/submit", "body": {} },
+      "request": {
+        "method": "POST",
+        "path": "/claims/{{claim_id}}/submit",
+        "body": {}
+      },
       "expect": {
         "status": 409,
-        "body": { "error": "evidence_unchanged", "message": "This claim has already been evaluated with identical evidence." }
+        "body": {
+          "error": "evidence_unchanged",
+          "message": "This claim has already been evaluated with identical evidence."
+        }
       }
     }
   ]

@@ -1,23 +1,55 @@
 {
   "name": "a pr-review claim requires the reviewer role, not authorship",
   "description": "ADR-0003: pr-review is claimed like any skill, but validation inverts. The claimant must have REVIEWED the PR and must NOT have authored it — reviewing your own pull request is not review work. Project evidence is also refused, since pr-review is judged_only and projects would contribute nothing.",
-  "seed": ["principals", "catalogue", "repositories"],
+  "seed": [
+    "principals",
+    "catalogue",
+    "repositories"
+  ],
   "steps": [
     {
       "as": "alice",
-      "request": { "method": "POST", "path": "/claims", "body": {} },
-      "expect": { "status": 201, "body": { "id": "<uuid>", "status": "draft", "version": 1, "created_at": "<timestamp>" } }
+      "request": {
+        "method": "POST",
+        "path": "/claims",
+        "body": {}
+      },
+      "expect": {
+        "status": 201,
+        "body": {
+          "id": "<uuid>",
+          "status": "draft",
+          "version": 1,
+          "created_at": "<timestamp>"
+        }
+      }
     },
     {
       "as": "alice",
       "request": {
         "method": "POST",
         "path": "/claims/{{claim_id}}/skills",
-        "body": { "skills": [{ "slug": "pr-review", "nominated_primary": true }] }
+        "body": {
+          "skills": [
+            {
+              "slug": "pr-review",
+              "nominated_primary": true
+            }
+          ]
+        }
       },
       "expect": {
         "status": 200,
-        "body": { "skills": [{ "slug": "pr-review", "origin": "user_declared", "nominated_primary": true, "scoring_mode": "judged_only" }] }
+        "body": {
+          "skills": [
+            {
+              "slug": "pr-review",
+              "origin": "user_declared",
+              "nominated_primary": true,
+              "scoring_mode": "judged_only"
+            }
+          ]
+        }
       }
     },
     {
@@ -26,7 +58,14 @@
       "request": {
         "method": "POST",
         "path": "/claims/{{claim_id}}/evidence/projects",
-        "body": { "projects": [{ "url": "https://github.com/acme/bigrepo", "contribution_summary": "Maintainer." }] }
+        "body": {
+          "projects": [
+            {
+              "url": "https://github.com/acme/bigrepo",
+              "contribution_summary": "Maintainer."
+            }
+          ]
+        }
       },
       "expect": {
         "status": 422,
@@ -44,9 +83,21 @@
         "path": "/claims/{{claim_id}}/evidence/prs",
         "body": {
           "prs": [
-            { "position": 1, "url": "https://github.com/acme/bigrepo/pull/903", "role": "reviewer" },
-            { "position": 2, "url": "https://github.com/acme/bigrepo/pull/101", "role": "reviewer" },
-            { "position": 3, "url": "https://github.com/acme/bigrepo/pull/102", "role": "reviewer" }
+            {
+              "position": 1,
+              "url": "https://github.com/acme/bigrepo/pull/903",
+              "role": "reviewer"
+            },
+            {
+              "position": 2,
+              "url": "https://github.com/acme/bigrepo/pull/101",
+              "role": "reviewer"
+            },
+            {
+              "position": 3,
+              "url": "https://github.com/acme/bigrepo/pull/102",
+              "role": "reviewer"
+            }
           ]
         }
       },
@@ -54,16 +105,38 @@
         "status": 200,
         "body": {
           "prs": [
-            { "position": 1, "repo_owner": "acme", "repo_name": "bigrepo", "pr_number": 903, "role": "reviewer" },
-            { "position": 2, "repo_owner": "acme", "repo_name": "bigrepo", "pr_number": 101, "role": "reviewer" },
-            { "position": 3, "repo_owner": "acme", "repo_name": "bigrepo", "pr_number": 102, "role": "reviewer" }
+            {
+              "position": 1,
+              "repo_owner": "acme",
+              "repo_name": "bigrepo",
+              "pr_number": 903,
+              "role": "reviewer"
+            },
+            {
+              "position": 2,
+              "repo_owner": "acme",
+              "repo_name": "bigrepo",
+              "pr_number": 101,
+              "role": "reviewer"
+            },
+            {
+              "position": 3,
+              "repo_owner": "acme",
+              "repo_name": "bigrepo",
+              "pr_number": 102,
+              "role": "reviewer"
+            }
           ]
         }
       }
     },
     {
       "as": "alice",
-      "request": { "method": "POST", "path": "/claims/{{claim_id}}/submit", "body": {} },
+      "request": {
+        "method": "POST",
+        "path": "/claims/{{claim_id}}/submit",
+        "body": {}
+      },
       "expect": {
         "status": 422,
         "body": {
@@ -75,7 +148,11 @@
               "reason": "authored_by_claimant",
               "message": "PR 2 (acme/bigrepo#101) was authored by you. Reviewing your own pull request is not review work."
             },
-            { "position": 3, "reason": "not_reviewed_by_claimant", "message": "PR 3 (acme/bigrepo#102) has no review from you." }
+            {
+              "position": 3,
+              "reason": "not_reviewed_by_claimant",
+              "message": "PR 3 (acme/bigrepo#102) has no review from you."
+            }
           ]
         }
       }

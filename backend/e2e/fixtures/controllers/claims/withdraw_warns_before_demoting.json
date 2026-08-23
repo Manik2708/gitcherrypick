@@ -23,11 +23,14 @@
               "slug": "go",
               "standing": "primary",
               "distinct_pr_count": 5,
-              "score": 64.2
+              "score": 64.2,
+              "rubric_version": "v1",
+              "stale": false
             }
           ],
           "overall_score": 64.2,
-          "generalist_score": 64.2
+          "generalist_score": 64.2,
+          "rubric_version": "v1"
         }
       }
     },

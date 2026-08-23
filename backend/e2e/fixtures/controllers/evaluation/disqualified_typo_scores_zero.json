@@ -1,12 +1,28 @@
 {
   "name": "a typo fix in a huge repo scores zero, not eighteen",
   "description": "THE regression test for ADR-0007 §1. Before disqualification existed, a README typo in a 40,000-star repository scored ~18, because project reach is a property of the repository rather than the change — outscoring a careful fix in a small library. The verdict must bypass the arithmetic entirely, not reduce it.\n\nIt also proves the consequence in ADR-0007 §3: the rejected PR does not count toward standing, so Go sits at FOUR surviving PRs and stays secondary — unranked, despite the claim carrying five.",
-  "seed": ["principals", "catalogue", "repositories"],
+  "seed": [
+    "principals",
+    "catalogue",
+    "repositories"
+  ],
   "steps": [
     {
       "as": "alice",
-      "request": { "method": "POST", "path": "/claims", "body": {} },
-      "expect": { "status": 201, "body": { "id": "<uuid>", "status": "draft", "version": 1, "created_at": "<timestamp>" } }
+      "request": {
+        "method": "POST",
+        "path": "/claims",
+        "body": {}
+      },
+      "expect": {
+        "status": 201,
+        "body": {
+          "id": "<uuid>",
+          "status": "draft",
+          "version": 1,
+          "created_at": "<timestamp>"
+        }
+      }
     },
     {
       "as": "alice",
@@ -15,11 +31,26 @@
         "path": "/claims/{{claim_id}}/evidence/prs",
         "body": {
           "prs": [
-            { "position": 1, "url": "https://github.com/acme/bigrepo/pull/101" },
-            { "position": 2, "url": "https://github.com/acme/bigrepo/pull/102" },
-            { "position": 3, "url": "https://github.com/acme/platform/pull/55" },
-            { "position": 4, "url": "https://github.com/acme/platform/pull/56" },
-            { "position": 5, "url": "https://github.com/acme/bigrepo/pull/900" }
+            {
+              "position": 1,
+              "url": "https://github.com/acme/bigrepo/pull/101"
+            },
+            {
+              "position": 2,
+              "url": "https://github.com/acme/bigrepo/pull/102"
+            },
+            {
+              "position": 3,
+              "url": "https://github.com/acme/platform/pull/55"
+            },
+            {
+              "position": 4,
+              "url": "https://github.com/acme/platform/pull/56"
+            },
+            {
+              "position": 5,
+              "url": "https://github.com/acme/bigrepo/pull/900"
+            }
           ]
         }
       },
@@ -27,11 +58,41 @@
         "status": 200,
         "body": {
           "prs": [
-            { "position": 1, "repo_owner": "acme", "repo_name": "bigrepo", "pr_number": 101, "role": "author" },
-            { "position": 2, "repo_owner": "acme", "repo_name": "bigrepo", "pr_number": 102, "role": "author" },
-            { "position": 3, "repo_owner": "acme", "repo_name": "platform", "pr_number": 55, "role": "author" },
-            { "position": 4, "repo_owner": "acme", "repo_name": "platform", "pr_number": 56, "role": "author" },
-            { "position": 5, "repo_owner": "acme", "repo_name": "bigrepo", "pr_number": 900, "role": "author" }
+            {
+              "position": 1,
+              "repo_owner": "acme",
+              "repo_name": "bigrepo",
+              "pr_number": 101,
+              "role": "author"
+            },
+            {
+              "position": 2,
+              "repo_owner": "acme",
+              "repo_name": "bigrepo",
+              "pr_number": 102,
+              "role": "author"
+            },
+            {
+              "position": 3,
+              "repo_owner": "acme",
+              "repo_name": "platform",
+              "pr_number": 55,
+              "role": "author"
+            },
+            {
+              "position": 4,
+              "repo_owner": "acme",
+              "repo_name": "platform",
+              "pr_number": 56,
+              "role": "author"
+            },
+            {
+              "position": 5,
+              "repo_owner": "acme",
+              "repo_name": "bigrepo",
+              "pr_number": 900,
+              "role": "author"
+            }
           ]
         }
       }
@@ -41,22 +102,54 @@
       "request": {
         "method": "POST",
         "path": "/claims/{{claim_id}}/skills",
-        "body": { "skills": [{ "slug": "go", "nominated_primary": true }] }
+        "body": {
+          "skills": [
+            {
+              "slug": "go",
+              "nominated_primary": true
+            }
+          ]
+        }
       },
-      "expect": { "status": 200, "body": { "skills": [{ "slug": "go", "origin": "user_declared", "nominated_primary": true }] } }
+      "expect": {
+        "status": 200,
+        "body": {
+          "skills": [
+            {
+              "slug": "go",
+              "origin": "user_declared",
+              "nominated_primary": true,
+              "scoring_mode": "standard"
+            }
+          ]
+        }
+      }
     },
     {
       "as": "alice",
-      "request": { "method": "POST", "path": "/claims/{{claim_id}}/submit", "body": {} },
+      "request": {
+        "method": "POST",
+        "path": "/claims/{{claim_id}}/submit",
+        "body": {}
+      },
       "expect": {
         "status": 202,
-        "body": { "id": "<uuid>", "status": "queued", "version": 1, "submitted_at": "<timestamp>", "estimated_result_within_hours": 24 }
+        "body": {
+          "id": "<uuid>",
+          "status": "queued",
+          "version": 1,
+          "submitted_at": "<timestamp>",
+          "estimated_result_within_hours": 24
+        }
       }
     },
     {
       "_step": "Drain the queue against a canned judgement. Position 5 is disqualified; the other four score normally.",
       "as": "system",
-      "request": { "method": "RUN_EVALUATOR", "path": "/" },
+      "request": {
+        "method": "RUN_EVALUATOR",
+        "path": "/"
+      },
       "fake": {
         "ai": {
           "judgements": [
@@ -65,11 +158,26 @@
               "skill_slug": "go",
               "disqualified": false,
               "dimensions": {
-                "substance": { "score": 84, "remark": "Reworked the retry path to be idempotent across redelivery." },
-                "complexity": { "score": 88, "remark": "Required reasoning about interleaving and partial failure." },
-                "conversation_quality": { "score": 79, "remark": "Drove a design discussion that changed the approach." },
-                "craft": { "score": 76, "remark": "Tests cover the redelivery case; naming is clear." },
-                "skill_specificity": { "score": 90, "remark": "Concurrency work in idiomatic Go throughout." }
+                "substance": {
+                  "score": 84,
+                  "remark": "Reworked the retry path to be idempotent across redelivery."
+                },
+                "complexity": {
+                  "score": 88,
+                  "remark": "Required reasoning about interleaving and partial failure."
+                },
+                "conversation_quality": {
+                  "score": 79,
+                  "remark": "Drove a design discussion that changed the approach."
+                },
+                "craft": {
+                  "score": 76,
+                  "remark": "Tests cover the redelivery case; naming is clear."
+                },
+                "skill_specificity": {
+                  "score": 90,
+                  "remark": "Concurrency work in idiomatic Go throughout."
+                }
               }
             },
             {
@@ -77,11 +185,26 @@
               "skill_slug": "go",
               "disqualified": false,
               "dimensions": {
-                "substance": { "score": 61, "remark": "Bounded a renewal loop; contained but real." },
-                "complexity": { "score": 70, "remark": "Clock skew makes the naive fix wrong." },
-                "conversation_quality": { "score": 55, "remark": "Some review, applied without much discussion." },
-                "craft": { "score": 68, "remark": "Test added; error handling at the right boundary." },
-                "skill_specificity": { "score": 82, "remark": "Squarely Go concurrency." }
+                "substance": {
+                  "score": 61,
+                  "remark": "Bounded a renewal loop; contained but real."
+                },
+                "complexity": {
+                  "score": 70,
+                  "remark": "Clock skew makes the naive fix wrong."
+                },
+                "conversation_quality": {
+                  "score": 55,
+                  "remark": "Some review, applied without much discussion."
+                },
+                "craft": {
+                  "score": 68,
+                  "remark": "Test added; error handling at the right boundary."
+                },
+                "skill_specificity": {
+                  "score": 82,
+                  "remark": "Squarely Go concurrency."
+                }
               }
             },
             {
@@ -89,11 +212,26 @@
               "skill_slug": "go",
               "disqualified": false,
               "dimensions": {
-                "substance": { "score": 72, "remark": "New operator; substantial surface." },
-                "complexity": { "score": 65, "remark": "Follows an established controller pattern." },
-                "conversation_quality": { "score": 62, "remark": "Reviewed thoroughly, revised twice." },
-                "craft": { "score": 70, "remark": "Readable; some duplication in the reconciler." },
-                "skill_specificity": { "score": 45, "remark": "Mostly Kubernetes work expressed in Go." }
+                "substance": {
+                  "score": 72,
+                  "remark": "New operator; substantial surface."
+                },
+                "complexity": {
+                  "score": 65,
+                  "remark": "Follows an established controller pattern."
+                },
+                "conversation_quality": {
+                  "score": 62,
+                  "remark": "Reviewed thoroughly, revised twice."
+                },
+                "craft": {
+                  "score": 70,
+                  "remark": "Readable; some duplication in the reconciler."
+                },
+                "skill_specificity": {
+                  "score": 45,
+                  "remark": "Mostly Kubernetes work expressed in Go."
+                }
               }
             },
             {
@@ -101,11 +239,26 @@
               "skill_slug": "go",
               "disqualified": false,
               "dimensions": {
-                "substance": { "score": 58, "remark": "Lease reconciliation on restart." },
-                "complexity": { "score": 60, "remark": "Restart semantics needed care." },
-                "conversation_quality": { "score": 48, "remark": "Brief review, one substantive comment." },
-                "craft": { "score": 64, "remark": "Adequate tests." },
-                "skill_specificity": { "score": 50, "remark": "Split between Go and Kubernetes concerns." }
+                "substance": {
+                  "score": 58,
+                  "remark": "Lease reconciliation on restart."
+                },
+                "complexity": {
+                  "score": 60,
+                  "remark": "Restart semantics needed care."
+                },
+                "conversation_quality": {
+                  "score": 48,
+                  "remark": "Brief review, one substantive comment."
+                },
+                "craft": {
+                  "score": 64,
+                  "remark": "Adequate tests."
+                },
+                "skill_specificity": {
+                  "score": 50,
+                  "remark": "Split between Go and Kubernetes concerns."
+                }
               }
             },
             {
@@ -114,11 +267,26 @@
               "disqualified": true,
               "disqualification_reason": "typo_or_wording",
               "dimensions": {
-                "substance": { "score": 1, "remark": "One character in a README." },
-                "complexity": { "score": 0, "remark": "None." },
-                "conversation_quality": { "score": 0, "remark": "No discussion." },
-                "craft": { "score": 2, "remark": "Nothing to assess." },
-                "skill_specificity": { "score": 0, "remark": "No Go was written." }
+                "substance": {
+                  "score": 1,
+                  "remark": "One character in a README."
+                },
+                "complexity": {
+                  "score": 0,
+                  "remark": "None."
+                },
+                "conversation_quality": {
+                  "score": 0,
+                  "remark": "No discussion."
+                },
+                "craft": {
+                  "score": 2,
+                  "remark": "Nothing to assess."
+                },
+                "skill_specificity": {
+                  "score": 0,
+                  "remark": "No Go was written."
+                }
               }
             }
           ]
@@ -126,36 +294,61 @@
       },
       "expect": {
         "status": 200,
-        "body": { "processed": 1, "failed": 0 },
+        "body": {
+          "processed": 1,
+          "failed": 0
+        },
         "db": {
           "pr_skill_scores": {
             "_note": "FOUR rows, not five. A disqualified pair is dropped, never stored as a zero — the CHECK (score > 0) forbids it.",
-            "where": { "skill_slug": "go" },
+            "where": {
+              "skill_slug": "go"
+            },
             "count": 4
           },
           "user_skill_pr_links": {
             "_note": "The link is kept with status 'rejected', which is what blocks resubmitting this PR for Go to reroll the verdict.",
-            "where": { "user_id": "{{alice.id}}", "pr_number": 900 },
+            "where": {
+              "user_id": "{{alice.id}}",
+              "pr_number": 900
+            },
             "count": 1,
-            "all_match": { "status": "rejected", "rejection_reason": "typo_or_wording" }
+            "all_match": {
+              "status": "rejected",
+              "rejection_reason": "typo_or_wording"
+            }
           },
           "user_skills": {
             "_note": "FOUR scored links, so Go is secondary and unranked. This is the standing consequence of a single rejected PR.",
-            "where": { "user_id": "{{alice.id}}", "skill_slug": "go" },
+            "where": {
+              "user_id": "{{alice.id}}",
+              "skill_slug": "go"
+            },
             "count": 1,
-            "all_match": { "standing": "secondary", "distinct_pr_count": 4 }
+            "all_match": {
+              "standing": "secondary",
+              "distinct_pr_count": 4
+            }
           },
           "users": {
             "_note": "No primary skill anywhere, so BOTH user-level scores are NULL — not zero. Absence is not a score.",
-            "where": { "id": "{{alice.id}}" },
-            "all_match": { "overall_score": null, "generalist_score": null }
+            "where": {
+              "id": "{{alice.id}}"
+            },
+            "all_match": {
+              "overall_score": null,
+              "generalist_score": null
+            }
           }
         }
       }
     },
     {
       "as": "alice",
-      "request": { "method": "GET", "path": "/claims/{{claim_id}}" },
+      "request": {
+        "method": "GET",
+        "path": "/claims/{{claim_id}}"
+      },
       "expect": {
         "status": 200,
         "_note": "The result must say WHICH PR was rejected and why — ADR-0007 consequences. Otherwise the first re-evaluation request is about confusion rather than disagreement.",
@@ -166,10 +359,46 @@
           "evaluated_at": "<timestamp>",
           "locked_until": "<timestamp>",
           "prs": [
-            { "position": 1, "pr_number": 101, "scores": [{ "skill": "go", "score": 79.3 }] },
-            { "position": 2, "pr_number": 102, "scores": [{ "skill": "go", "score": 62.1 }] },
-            { "position": 3, "pr_number": 55, "scores": [{ "skill": "go", "score": 60.4 }] },
-            { "position": 4, "pr_number": 56, "scores": [{ "skill": "go", "score": 54.8 }] },
+            {
+              "position": 1,
+              "pr_number": 101,
+              "scores": [
+                {
+                  "skill": "go",
+                  "score": 79.3
+                }
+              ]
+            },
+            {
+              "position": 2,
+              "pr_number": 102,
+              "scores": [
+                {
+                  "skill": "go",
+                  "score": 62.1
+                }
+              ]
+            },
+            {
+              "position": 3,
+              "pr_number": 55,
+              "scores": [
+                {
+                  "skill": "go",
+                  "score": 60.4
+                }
+              ]
+            },
+            {
+              "position": 4,
+              "pr_number": 56,
+              "scores": [
+                {
+                  "skill": "go",
+                  "score": 54.8
+                }
+              ]
+            },
             {
               "position": 5,
               "pr_number": 900,

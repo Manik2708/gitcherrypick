@@ -1,12 +1,28 @@
 {
   "name": "validation names the specific failing item",
   "description": "ADR-0003: a claim failing validation is rejected NAMING the failing item, not with a generic error. The contributor is doing curation work and a vague rejection wastes it. Four distinct failures in one claim, so the error must carry all of them rather than stopping at the first.",
-  "seed": ["principals", "catalogue", "repositories"],
+  "seed": [
+    "principals",
+    "catalogue",
+    "repositories"
+  ],
   "steps": [
     {
       "as": "alice",
-      "request": { "method": "POST", "path": "/claims", "body": {} },
-      "expect": { "status": 201, "body": { "id": "<uuid>", "status": "draft", "version": 1, "created_at": "<timestamp>" } }
+      "request": {
+        "method": "POST",
+        "path": "/claims",
+        "body": {}
+      },
+      "expect": {
+        "status": 201,
+        "body": {
+          "id": "<uuid>",
+          "status": "draft",
+          "version": 1,
+          "created_at": "<timestamp>"
+        }
+      }
     },
     {
       "as": "alice",
@@ -15,11 +31,26 @@
         "path": "/claims/{{claim_id}}/evidence/prs",
         "body": {
           "prs": [
-            { "position": 1, "url": "https://github.com/acme/bigrepo/pull/101" },
-            { "position": 2, "url": "https://github.com/acme/bigrepo/pull/902" },
-            { "position": 3, "url": "https://github.com/acme/bigrepo/pull/901" },
-            { "position": 4, "url": "https://github.com/private/hidden/pull/1" },
-            { "position": 5, "url": "not-a-github-url" }
+            {
+              "position": 1,
+              "url": "https://github.com/acme/bigrepo/pull/101"
+            },
+            {
+              "position": 2,
+              "url": "https://github.com/acme/bigrepo/pull/902"
+            },
+            {
+              "position": 3,
+              "url": "https://github.com/acme/bigrepo/pull/901"
+            },
+            {
+              "position": 4,
+              "url": "https://github.com/private/hidden/pull/1"
+            },
+            {
+              "position": 5,
+              "url": "not-a-github-url"
+            }
           ]
         }
       },
@@ -28,11 +59,42 @@
         "_note": "Accepting evidence does not validate it against GitHub. Only URL parsing happens here, so a draft may hold anything — the checks run at submit.",
         "body": {
           "prs": [
-            { "position": 1, "repo_owner": "acme", "repo_name": "bigrepo", "pr_number": 101, "role": "author" },
-            { "position": 2, "repo_owner": "acme", "repo_name": "bigrepo", "pr_number": 902, "role": "author" },
-            { "position": 3, "repo_owner": "acme", "repo_name": "bigrepo", "pr_number": 901, "role": "author" },
-            { "position": 4, "repo_owner": "private", "repo_name": "hidden", "pr_number": 1, "role": "author" },
-            { "position": 5, "repo_owner": null, "repo_name": null, "pr_number": null, "role": "author", "invalid_reason": "malformed_url" }
+            {
+              "position": 1,
+              "repo_owner": "acme",
+              "repo_name": "bigrepo",
+              "pr_number": 101,
+              "role": "author"
+            },
+            {
+              "position": 2,
+              "repo_owner": "acme",
+              "repo_name": "bigrepo",
+              "pr_number": 902,
+              "role": "author"
+            },
+            {
+              "position": 3,
+              "repo_owner": "acme",
+              "repo_name": "bigrepo",
+              "pr_number": 901,
+              "role": "author"
+            },
+            {
+              "position": 4,
+              "repo_owner": "private",
+              "repo_name": "hidden",
+              "pr_number": 1,
+              "role": "author"
+            },
+            {
+              "position": 5,
+              "repo_owner": null,
+              "repo_name": null,
+              "pr_number": null,
+              "role": "author",
+              "invalid_reason": "malformed_url"
+            }
           ]
         }
       }
@@ -42,13 +104,36 @@
       "request": {
         "method": "POST",
         "path": "/claims/{{claim_id}}/skills",
-        "body": { "skills": [{ "slug": "go", "nominated_primary": true }] }
+        "body": {
+          "skills": [
+            {
+              "slug": "go",
+              "nominated_primary": true
+            }
+          ]
+        }
       },
-      "expect": { "status": 200, "body": { "skills": [{ "slug": "go", "origin": "user_declared", "nominated_primary": true }] } }
+      "expect": {
+        "status": 200,
+        "body": {
+          "skills": [
+            {
+              "slug": "go",
+              "origin": "user_declared",
+              "nominated_primary": true,
+              "scoring_mode": "standard"
+            }
+          ]
+        }
+      }
     },
     {
       "as": "alice",
-      "request": { "method": "POST", "path": "/claims/{{claim_id}}/submit", "body": {} },
+      "request": {
+        "method": "POST",
+        "path": "/claims/{{claim_id}}/submit",
+        "body": {}
+      },
       "expect": {
         "status": 422,
         "_note": "ALL failures reported. Position 1 is valid and correctly absent from the list.",
@@ -56,16 +141,39 @@
           "error": "invalid_evidence",
           "claim_status": "invalid",
           "items": [
-            { "position": 2, "reason": "not_merged", "message": "PR 2 (acme/bigrepo#902) is not merged." },
-            { "position": 3, "reason": "not_authored_by_claimant", "message": "PR 3 (acme/bigrepo#901) was authored by someone else." },
-            { "position": 4, "reason": "not_public", "message": "PR 4 (private/hidden#1) is not publicly visible." },
-            { "position": 5, "reason": "malformed_url", "message": "PR 5 is not a GitHub pull request URL." }
+            {
+              "position": 2,
+              "reason": "not_merged",
+              "message": "PR 2 (acme/bigrepo#902) is not merged."
+            },
+            {
+              "position": 3,
+              "reason": "not_authored_by_claimant",
+              "message": "PR 3 (acme/bigrepo#901) was authored by someone else."
+            },
+            {
+              "position": 4,
+              "reason": "not_public",
+              "message": "PR 4 (private/hidden#1) is not publicly visible."
+            },
+            {
+              "position": 5,
+              "reason": "malformed_url",
+              "message": "PR 5 is not a GitHub pull request URL."
+            }
           ]
         },
         "db": {
           "_note": "Nothing written, nothing enqueued — a failed validation must never spend a model call.",
-          "user_skill_pr_links": { "where": { "user_id": "{{alice.id}}" }, "count": 0 },
-          "evaluation_jobs": { "count": 0 }
+          "user_skill_pr_links": {
+            "where": {
+              "user_id": "{{alice.id}}"
+            },
+            "count": 0
+          },
+          "evaluation_jobs": {
+            "count": 0
+          }
         }
       }
     }

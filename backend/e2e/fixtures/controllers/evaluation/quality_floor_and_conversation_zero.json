@@ -1,12 +1,28 @@
 {
   "name": "the quality floor catches what the named grounds miss",
   "description": "ADR-0007 §2. The nine disqualification grounds are exhaustive but will not catch everything. The floor is the backstop: mean dimension score below 5 zeroes the pair regardless of verdict, computed in Go rather than returned by the model. A meaningless contribution to a large repository must score zero however large the repository is.\n\nAlso pins ADR-0007 §7: a PR with no review discussion scores 0 on conversation_quality with no benefit of the doubt — and a zero there does NOT sink the PR, because it is one dimension of five.",
-  "seed": ["principals", "catalogue", "repositories"],
+  "seed": [
+    "principals",
+    "catalogue",
+    "repositories"
+  ],
   "steps": [
     {
       "as": "alice",
-      "request": { "method": "POST", "path": "/claims", "body": {} },
-      "expect": { "status": 201, "body": { "id": "<uuid>", "status": "draft", "version": 1, "created_at": "<timestamp>" } }
+      "request": {
+        "method": "POST",
+        "path": "/claims",
+        "body": {}
+      },
+      "expect": {
+        "status": 201,
+        "body": {
+          "id": "<uuid>",
+          "status": "draft",
+          "version": 1,
+          "created_at": "<timestamp>"
+        }
+      }
     },
     {
       "as": "alice",
@@ -15,9 +31,18 @@
         "path": "/claims/{{claim_id}}/evidence/prs",
         "body": {
           "prs": [
-            { "position": 1, "url": "https://github.com/acme/bigrepo/pull/101" },
-            { "position": 2, "url": "https://github.com/acme/bigrepo/pull/904" },
-            { "position": 3, "url": "https://github.com/acme/bigrepo/pull/102" }
+            {
+              "position": 1,
+              "url": "https://github.com/acme/bigrepo/pull/101"
+            },
+            {
+              "position": 2,
+              "url": "https://github.com/acme/bigrepo/pull/904"
+            },
+            {
+              "position": 3,
+              "url": "https://github.com/acme/bigrepo/pull/102"
+            }
           ]
         }
       },
@@ -25,9 +50,27 @@
         "status": 200,
         "body": {
           "prs": [
-            { "position": 1, "repo_owner": "acme", "repo_name": "bigrepo", "pr_number": 101, "role": "author" },
-            { "position": 2, "repo_owner": "acme", "repo_name": "bigrepo", "pr_number": 904, "role": "author" },
-            { "position": 3, "repo_owner": "acme", "repo_name": "bigrepo", "pr_number": 102, "role": "author" }
+            {
+              "position": 1,
+              "repo_owner": "acme",
+              "repo_name": "bigrepo",
+              "pr_number": 101,
+              "role": "author"
+            },
+            {
+              "position": 2,
+              "repo_owner": "acme",
+              "repo_name": "bigrepo",
+              "pr_number": 904,
+              "role": "author"
+            },
+            {
+              "position": 3,
+              "repo_owner": "acme",
+              "repo_name": "bigrepo",
+              "pr_number": 102,
+              "role": "author"
+            }
           ]
         }
       }
@@ -37,21 +80,53 @@
       "request": {
         "method": "POST",
         "path": "/claims/{{claim_id}}/skills",
-        "body": { "skills": [{ "slug": "go", "nominated_primary": true }] }
+        "body": {
+          "skills": [
+            {
+              "slug": "go",
+              "nominated_primary": true
+            }
+          ]
+        }
       },
-      "expect": { "status": 200, "body": { "skills": [{ "slug": "go", "origin": "user_declared", "nominated_primary": true }] } }
+      "expect": {
+        "status": 200,
+        "body": {
+          "skills": [
+            {
+              "slug": "go",
+              "origin": "user_declared",
+              "nominated_primary": true,
+              "scoring_mode": "standard"
+            }
+          ]
+        }
+      }
     },
     {
       "as": "alice",
-      "request": { "method": "POST", "path": "/claims/{{claim_id}}/submit", "body": {} },
+      "request": {
+        "method": "POST",
+        "path": "/claims/{{claim_id}}/submit",
+        "body": {}
+      },
       "expect": {
         "status": 202,
-        "body": { "id": "<uuid>", "status": "queued", "version": 1, "submitted_at": "<timestamp>", "estimated_result_within_hours": 24 }
+        "body": {
+          "id": "<uuid>",
+          "status": "queued",
+          "version": 1,
+          "submitted_at": "<timestamp>",
+          "estimated_result_within_hours": 24
+        }
       }
     },
     {
       "as": "system",
-      "request": { "method": "RUN_EVALUATOR", "path": "/" },
+      "request": {
+        "method": "RUN_EVALUATOR",
+        "path": "/"
+      },
       "fake": {
         "ai": {
           "judgements": [
@@ -61,11 +136,26 @@
               "disqualified": false,
               "_note": "conversation_quality 0 — merged without discussion. Mean is 63.6, well clear of the floor, so this PR scores normally.",
               "dimensions": {
-                "substance": { "score": 84, "remark": "Reworked the retry path to be idempotent." },
-                "complexity": { "score": 88, "remark": "Required reasoning about interleaving." },
-                "conversation_quality": { "score": 0, "remark": "No review conversation on this pull request." },
-                "craft": { "score": 76, "remark": "Tests cover the redelivery case." },
-                "skill_specificity": { "score": 90, "remark": "Concurrency work in idiomatic Go." }
+                "substance": {
+                  "score": 84,
+                  "remark": "Reworked the retry path to be idempotent."
+                },
+                "complexity": {
+                  "score": 88,
+                  "remark": "Required reasoning about interleaving."
+                },
+                "conversation_quality": {
+                  "score": 0,
+                  "remark": "No review conversation on this pull request."
+                },
+                "craft": {
+                  "score": 76,
+                  "remark": "Tests cover the redelivery case."
+                },
+                "skill_specificity": {
+                  "score": 90,
+                  "remark": "Concurrency work in idiomatic Go."
+                }
               }
             },
             {
@@ -74,11 +164,26 @@
               "disqualified": false,
               "_note": "NOT disqualified by the model — no named ground fits an index addition. Mean is (3+2+0+4+1)/5 = 2.0, below the floor of 5, so Go computes zero and drops it.",
               "dimensions": {
-                "substance": { "score": 3, "remark": "A single index, no reasoning offered." },
-                "complexity": { "score": 2, "remark": "None." },
-                "conversation_quality": { "score": 0, "remark": "No discussion." },
-                "craft": { "score": 4, "remark": "Correct, nothing to assess." },
-                "skill_specificity": { "score": 1, "remark": "No Go of consequence." }
+                "substance": {
+                  "score": 3,
+                  "remark": "A single index, no reasoning offered."
+                },
+                "complexity": {
+                  "score": 2,
+                  "remark": "None."
+                },
+                "conversation_quality": {
+                  "score": 0,
+                  "remark": "No discussion."
+                },
+                "craft": {
+                  "score": 4,
+                  "remark": "Correct, nothing to assess."
+                },
+                "skill_specificity": {
+                  "score": 1,
+                  "remark": "No Go of consequence."
+                }
               }
             },
             {
@@ -86,11 +191,26 @@
               "skill_slug": "go",
               "disqualified": false,
               "dimensions": {
-                "substance": { "score": 61, "remark": "Bounded a renewal loop." },
-                "complexity": { "score": 70, "remark": "Clock skew makes the naive fix wrong." },
-                "conversation_quality": { "score": 55, "remark": "Some review, applied without much discussion." },
-                "craft": { "score": 68, "remark": "Test added." },
-                "skill_specificity": { "score": 82, "remark": "Squarely Go concurrency." }
+                "substance": {
+                  "score": 61,
+                  "remark": "Bounded a renewal loop."
+                },
+                "complexity": {
+                  "score": 70,
+                  "remark": "Clock skew makes the naive fix wrong."
+                },
+                "conversation_quality": {
+                  "score": 55,
+                  "remark": "Some review, applied without much discussion."
+                },
+                "craft": {
+                  "score": 68,
+                  "remark": "Test added."
+                },
+                "skill_specificity": {
+                  "score": 82,
+                  "remark": "Squarely Go concurrency."
+                }
               }
             }
           ]
@@ -98,30 +218,50 @@
       },
       "expect": {
         "status": 200,
-        "body": { "processed": 1, "failed": 0 },
+        "body": {
+          "processed": 1,
+          "failed": 0
+        },
         "db": {
           "pr_skill_scores": {
             "_note": "Two rows. PR 904 floored out and is not stored — CHECK (score > 0) forbids a zero.",
-            "where": { "skill_slug": "go" },
+            "where": {
+              "skill_slug": "go"
+            },
             "count": 2
           },
           "user_skill_pr_links": {
             "_note": "Recorded as below_quality_floor, which is computed in Go and is deliberately absent from the enum the model sees.",
-            "where": { "user_id": "{{alice.id}}", "pr_number": 904 },
+            "where": {
+              "user_id": "{{alice.id}}",
+              "pr_number": 904
+            },
             "count": 1,
-            "all_match": { "status": "rejected", "rejection_reason": "below_quality_floor" }
+            "all_match": {
+              "status": "rejected",
+              "rejection_reason": "below_quality_floor"
+            }
           },
           "user_skills": {
-            "where": { "user_id": "{{alice.id}}", "skill_slug": "go" },
+            "where": {
+              "user_id": "{{alice.id}}",
+              "skill_slug": "go"
+            },
             "count": 1,
-            "all_match": { "standing": "secondary", "distinct_pr_count": 2 }
+            "all_match": {
+              "standing": "secondary",
+              "distinct_pr_count": 2
+            }
           }
         }
       }
     },
     {
       "as": "alice",
-      "request": { "method": "GET", "path": "/claims/{{claim_id}}" },
+      "request": {
+        "method": "GET",
+        "path": "/claims/{{claim_id}}"
+      },
       "expect": {
         "status": 200,
         "body": {
@@ -134,14 +274,34 @@
             {
               "position": 1,
               "pr_number": 101,
-              "scores": [{ "skill": "go", "score": 71.8 }],
+              "scores": [
+                {
+                  "skill": "go",
+                  "score": 71.8
+                }
+              ],
               "_note": "Scores well despite conversation_quality 0. One dimension of five, weighted 0.20.",
               "dimensions": {
-                "substance": { "score": 84, "remark": "Reworked the retry path to be idempotent." },
-                "complexity": { "score": 88, "remark": "Required reasoning about interleaving." },
-                "conversation_quality": { "score": 0, "remark": "No review conversation on this pull request." },
-                "craft": { "score": 76, "remark": "Tests cover the redelivery case." },
-                "skill_specificity": { "score": 90, "remark": "Concurrency work in idiomatic Go." }
+                "substance": {
+                  "score": 84,
+                  "remark": "Reworked the retry path to be idempotent."
+                },
+                "complexity": {
+                  "score": 88,
+                  "remark": "Required reasoning about interleaving."
+                },
+                "conversation_quality": {
+                  "score": 0,
+                  "remark": "No review conversation on this pull request."
+                },
+                "craft": {
+                  "score": 76,
+                  "remark": "Tests cover the redelivery case."
+                },
+                "skill_specificity": {
+                  "score": 90,
+                  "remark": "Concurrency work in idiomatic Go."
+                }
               }
             },
             {
@@ -151,9 +311,24 @@
               "rejection_reason": "below_quality_floor",
               "message": "This PR did not count toward any skill. Its assessed quality was too low to represent engineering work."
             },
-            { "position": 3, "pr_number": 102, "scores": [{ "skill": "go", "score": 62.1 }] }
+            {
+              "position": 3,
+              "pr_number": 102,
+              "scores": [
+                {
+                  "skill": "go",
+                  "score": 62.1
+                }
+              ]
+            }
           ],
-          "skills": [{ "slug": "go", "standing": "secondary", "distinct_pr_count": 2 }]
+          "skills": [
+            {
+              "slug": "go",
+              "standing": "secondary",
+              "distinct_pr_count": 2
+            }
+          ]
         }
       }
     }

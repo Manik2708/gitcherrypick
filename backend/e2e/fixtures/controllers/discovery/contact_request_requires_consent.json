@@ -118,8 +118,6 @@
         "status": 200,
         "_note": "The full scorecard IS visible — that is what verification buys. The email is not part of it.",
         "body": {
-          "display_name": "Alice Okafor",
-          "github_login": "aliceok",
           "email": null,
           "overall_score": 64.2,
           "generalist_score": 64.2,
@@ -130,7 +128,12 @@
               "distinct_pr_count": 5,
               "score": 64.2
             }
-          ]
+          ],
+          "user": {
+            "display_name": "Alice Okafor",
+            "github_login": "aliceok"
+          },
+          "rubric_version": "v1"
         }
       }
     },

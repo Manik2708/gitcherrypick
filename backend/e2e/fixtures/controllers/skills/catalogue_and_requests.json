@@ -1,25 +1,50 @@
 {
   "name": "aliases resolve, and skill requests are deduped before a human sees them",
   "description": "ADR-0003. Skills are a curated catalogue, never free text — otherwise the population claiming 'Go' ranks separately from the population claiming 'Golang', and anyone can mint a skill in which they are trivially top-ranked. Aliases exist for lookup only and are never claimable, so the claiming population cannot fragment across spellings.\n\nRequests are bounded on two sides: 3 per contributor per rolling week, and trigram dedupe against names and aliases BEFORE the queue. Most noise is spelling variants and no admin should spend attention on them.",
-  "seed": ["principals", "catalogue"],
+  "seed": [
+    "principals",
+    "catalogue"
+  ],
   "steps": [
     {
       "as": "alice",
-      "request": { "method": "GET", "path": "/skills?q=golang" },
+      "request": {
+        "method": "GET",
+        "path": "/skills?q=golang"
+      },
       "expect": {
         "status": 200,
         "_note": "The alias resolves to the canonical skill. 'golang' itself is never returned as claimable.",
-        "body": { "results": [{ "slug": "go", "name": "Go", "category": "language", "matched_via": "alias", "matched_alias": "golang" }] }
+        "body": {
+          "results": [
+            {
+              "slug": "go",
+              "name": "Go",
+              "category": "language",
+              "matched_via": "alias",
+              "matched_alias": "golang"
+            }
+          ]
+        }
       }
     },
     {
       "as": "alice",
-      "request": { "method": "GET", "path": "/skills?q=k8s" },
+      "request": {
+        "method": "GET",
+        "path": "/skills?q=k8s"
+      },
       "expect": {
         "status": 200,
         "body": {
           "results": [
-            { "slug": "kubernetes", "name": "Kubernetes", "category": "infrastructure", "matched_via": "alias", "matched_alias": "k8s" }
+            {
+              "slug": "kubernetes",
+              "name": "Kubernetes",
+              "category": "infrastructure",
+              "matched_via": "alias",
+              "matched_alias": "k8s"
+            }
           ]
         }
       }
@@ -27,19 +52,42 @@
     {
       "_step": "A claim naming an alias is refused. Only canonical slugs are claimable.",
       "as": "alice",
-      "request": { "method": "POST", "path": "/claims", "body": {} },
-      "expect": { "status": 201, "body": { "id": "<uuid>", "status": "draft", "version": 1, "created_at": "<timestamp>" } }
+      "request": {
+        "method": "POST",
+        "path": "/claims",
+        "body": {}
+      },
+      "expect": {
+        "status": 201,
+        "body": {
+          "id": "<uuid>",
+          "status": "draft",
+          "version": 1,
+          "created_at": "<timestamp>"
+        }
+      }
     },
     {
       "as": "alice",
       "request": {
         "method": "POST",
         "path": "/claims/{{claim_id}}/skills",
-        "body": { "skills": [{ "slug": "golang", "nominated_primary": true }] }
+        "body": {
+          "skills": [
+            {
+              "slug": "golang",
+              "nominated_primary": true
+            }
+          ]
+        }
       },
       "expect": {
         "status": 422,
-        "body": { "error": "unknown_skill", "message": "'golang' is an alias for 'go'. Claim 'go' instead.", "suggestion": "go" }
+        "body": {
+          "error": "unknown_skill",
+          "message": "'golang' is an alias for 'go'. Claim 'go' instead.",
+          "suggestion": "go"
+        }
       }
     },
     {
@@ -48,26 +96,49 @@
       "request": {
         "method": "POST",
         "path": "/skill-requests",
-        "body": { "proposed_name": "Go Lang", "rationale": "I write a lot of Go." }
+        "body": {
+          "proposed_name": "Go Lang",
+          "rationale": "I write a lot of Go."
+        }
       },
       "expect": {
         "status": 409,
         "body": {
           "error": "skill_already_exists",
-          "matched_skill": { "slug": "go", "name": "Go" },
+          "matched_skill": {
+            "slug": "go",
+            "name": "Go"
+          },
           "message": "'Go Lang' matches the existing skill 'Go'."
         },
-        "db": { "skill_requests": { "where": { "user_id": "{{alice.id}}" }, "count": 0 } }
+        "db": {
+          "skill_requests": {
+            "where": {
+              "user_id": "{{alice.id}}"
+            },
+            "count": 0
+          }
+        }
       }
     },
     {
       "as": "alice",
-      "request": { "method": "POST", "path": "/skill-requests", "body": { "proposed_name": "PostgreSQL", "rationale": "Database work." } },
+      "request": {
+        "method": "POST",
+        "path": "/skill-requests",
+        "body": {
+          "proposed_name": "PostgreSQL",
+          "rationale": "Database work."
+        }
+      },
       "expect": {
         "status": 409,
         "body": {
           "error": "skill_already_exists",
-          "matched_skill": { "slug": "postgres", "name": "PostgreSQL" },
+          "matched_skill": {
+            "slug": "postgres",
+            "name": "PostgreSQL"
+          },
           "message": "'PostgreSQL' matches the existing skill 'PostgreSQL'."
         }
       }
@@ -78,35 +149,81 @@
       "request": {
         "method": "POST",
         "path": "/skill-requests",
-        "body": { "proposed_name": "WebAssembly", "rationale": "Compiled three runtimes to wasm; no catalogue entry covers it." }
+        "body": {
+          "proposed_name": "WebAssembly",
+          "rationale": "Compiled three runtimes to wasm; no catalogue entry covers it."
+        }
       },
       "expect": {
         "status": 201,
-        "body": { "id": "<uuid>", "proposed_name": "WebAssembly", "status": "pending", "created_at": "<timestamp>" }
+        "body": {
+          "id": "<uuid>",
+          "proposed_name": "WebAssembly",
+          "status": "pending",
+          "created_at": "<timestamp>"
+        }
       }
-    },
-    {
-      "as": "alice",
-      "request": { "method": "POST", "path": "/skill-requests", "body": { "proposed_name": "eBPF", "rationale": "Kernel tracing work." } },
-      "expect": { "status": 201, "body": { "id": "<uuid>", "proposed_name": "eBPF", "status": "pending", "created_at": "<timestamp>" } }
     },
     {
       "as": "alice",
       "request": {
         "method": "POST",
         "path": "/skill-requests",
-        "body": { "proposed_name": "OpenTelemetry", "rationale": "Instrumentation work." }
+        "body": {
+          "proposed_name": "eBPF",
+          "rationale": "Kernel tracing work."
+        }
       },
       "expect": {
         "status": 201,
-        "body": { "id": "<uuid>", "proposed_name": "OpenTelemetry", "status": "pending", "created_at": "<timestamp>" }
+        "body": {
+          "id": "<uuid>",
+          "proposed_name": "eBPF",
+          "status": "pending",
+          "created_at": "<timestamp>"
+        }
+      }
+    },
+    {
+      "as": "alice",
+      "request": {
+        "method": "POST",
+        "path": "/skill-requests",
+        "body": {
+          "proposed_name": "OpenTelemetry",
+          "rationale": "Instrumentation work."
+        }
+      },
+      "expect": {
+        "status": 201,
+        "body": {
+          "id": "<uuid>",
+          "proposed_name": "OpenTelemetry",
+          "status": "pending",
+          "created_at": "<timestamp>"
+        }
       }
     },
     {
       "_step": "Fourth in a rolling week — refused. Deduped requests do not count against the limit, since they never entered the queue.",
       "as": "alice",
-      "request": { "method": "POST", "path": "/skill-requests", "body": { "proposed_name": "Zig", "rationale": "Systems work." } },
-      "expect": { "status": 429, "body": { "error": "rate_limited", "limit": 3, "window": "7d", "retry_after": "<timestamp>" } }
+      "request": {
+        "method": "POST",
+        "path": "/skill-requests",
+        "body": {
+          "proposed_name": "Zig",
+          "rationale": "Systems work."
+        }
+      },
+      "expect": {
+        "status": 429,
+        "body": {
+          "error": "rate_limited",
+          "limit": 3,
+          "window": "7d",
+          "retry_after": "<timestamp>"
+        }
+      }
     },
     {
       "as": "root",
@@ -118,7 +235,9 @@
           "slug": "opentelemetry",
           "name": "OpenTelemetry",
           "category": "observability",
-          "aliases": ["otel"]
+          "aliases": [
+            "otel"
+          ]
         }
       },
       "expect": {
@@ -126,14 +245,21 @@
         "body": {
           "id": "<uuid>",
           "status": "approved",
-          "created_skill": { "slug": "opentelemetry", "name": "OpenTelemetry" },
-          "reviewed_at": "<timestamp>"
+          "created_skill": {
+            "slug": "opentelemetry",
+            "name": "OpenTelemetry"
+          },
+          "reviewed_at": "<timestamp>",
+          "reviewed_by": "01920000-0000-7000-8000-00000000d001"
         }
       }
     },
     {
       "as": "alice",
-      "request": { "method": "GET", "path": "/skills?q=otel" },
+      "request": {
+        "method": "GET",
+        "path": "/skills?q=otel"
+      },
       "expect": {
         "status": 200,
         "body": {

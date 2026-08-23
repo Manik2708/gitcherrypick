@@ -1,12 +1,28 @@
 {
   "name": "AI-suggested skills are inert until the contributor accepts them",
   "description": "ADR-0003 §10 and RFC-0003. While judging, the model may attach skills the contributor did not declare. They are stored with origin='ai_suggested' and are invisible, unscored and excluded from every total until accepted — the model suggests, only the contributor promotes.\n\nThe property that matters is that a suggestion contributes NOTHING before acceptance: not to user_skills, not to distinct_pr_count, not to overall or generalist. Accepting is what converts it into an ordinary claim skill; dismissing closes it permanently. A suggestion is also not a way around the catalogue — the model can only suggest skills that already exist.",
-  "seed": ["principals", "catalogue", "repositories"],
+  "seed": [
+    "principals",
+    "catalogue",
+    "repositories"
+  ],
   "steps": [
     {
       "as": "alice",
-      "request": { "method": "POST", "path": "/claims", "body": {} },
-      "expect": { "status": 201, "body": { "id": "<uuid>", "status": "draft", "version": 1, "created_at": "<timestamp>" } }
+      "request": {
+        "method": "POST",
+        "path": "/claims",
+        "body": {}
+      },
+      "expect": {
+        "status": 201,
+        "body": {
+          "id": "<uuid>",
+          "status": "draft",
+          "version": 1,
+          "created_at": "<timestamp>"
+        }
+      }
     },
     {
       "as": "alice",
@@ -15,8 +31,14 @@
         "path": "/claims/{{claim_id}}/evidence/prs",
         "body": {
           "prs": [
-            { "position": 1, "url": "https://github.com/acme/platform/pull/55" },
-            { "position": 2, "url": "https://github.com/acme/platform/pull/56" }
+            {
+              "position": 1,
+              "url": "https://github.com/acme/platform/pull/55"
+            },
+            {
+              "position": 2,
+              "url": "https://github.com/acme/platform/pull/56"
+            }
           ]
         }
       },
@@ -24,8 +46,20 @@
         "status": 200,
         "body": {
           "prs": [
-            { "position": 1, "repo_owner": "acme", "repo_name": "platform", "pr_number": 55, "role": "author" },
-            { "position": 2, "repo_owner": "acme", "repo_name": "platform", "pr_number": 56, "role": "author" }
+            {
+              "position": 1,
+              "repo_owner": "acme",
+              "repo_name": "platform",
+              "pr_number": 55,
+              "role": "author"
+            },
+            {
+              "position": 2,
+              "repo_owner": "acme",
+              "repo_name": "platform",
+              "pr_number": 56,
+              "role": "author"
+            }
           ]
         }
       }
@@ -36,21 +70,53 @@
       "request": {
         "method": "POST",
         "path": "/claims/{{claim_id}}/skills",
-        "body": { "skills": [{ "slug": "go", "nominated_primary": true }] }
+        "body": {
+          "skills": [
+            {
+              "slug": "go",
+              "nominated_primary": true
+            }
+          ]
+        }
       },
-      "expect": { "status": 200, "body": { "skills": [{ "slug": "go", "origin": "user_declared", "nominated_primary": true }] } }
+      "expect": {
+        "status": 200,
+        "body": {
+          "skills": [
+            {
+              "slug": "go",
+              "origin": "user_declared",
+              "nominated_primary": true,
+              "scoring_mode": "standard"
+            }
+          ]
+        }
+      }
     },
     {
       "as": "alice",
-      "request": { "method": "POST", "path": "/claims/{{claim_id}}/submit", "body": {} },
+      "request": {
+        "method": "POST",
+        "path": "/claims/{{claim_id}}/submit",
+        "body": {}
+      },
       "expect": {
         "status": 202,
-        "body": { "id": "<uuid>", "status": "queued", "version": 1, "submitted_at": "<timestamp>", "estimated_result_within_hours": 24 }
+        "body": {
+          "id": "<uuid>",
+          "status": "queued",
+          "version": 1,
+          "submitted_at": "<timestamp>",
+          "estimated_result_within_hours": 24
+        }
       }
     },
     {
       "as": "system",
-      "request": { "method": "RUN_EVALUATOR", "path": "/" },
+      "request": {
+        "method": "RUN_EVALUATOR",
+        "path": "/"
+      },
       "fake": {
         "ai": {
           "judgements": [
@@ -59,11 +125,26 @@
               "skill_slug": "go",
               "disqualified": false,
               "dimensions": {
-                "substance": { "score": 72, "remark": "New operator; substantial surface." },
-                "complexity": { "score": 65, "remark": "Follows an established controller pattern." },
-                "conversation_quality": { "score": 62, "remark": "Reviewed thoroughly, revised twice." },
-                "craft": { "score": 70, "remark": "Readable; some duplication in the reconciler." },
-                "skill_specificity": { "score": 45, "remark": "Mostly Kubernetes work expressed in Go." }
+                "substance": {
+                  "score": 72,
+                  "remark": "New operator; substantial surface."
+                },
+                "complexity": {
+                  "score": 65,
+                  "remark": "Follows an established controller pattern."
+                },
+                "conversation_quality": {
+                  "score": 62,
+                  "remark": "Reviewed thoroughly, revised twice."
+                },
+                "craft": {
+                  "score": 70,
+                  "remark": "Readable; some duplication in the reconciler."
+                },
+                "skill_specificity": {
+                  "score": 45,
+                  "remark": "Mostly Kubernetes work expressed in Go."
+                }
               }
             },
             {
@@ -71,43 +152,85 @@
               "skill_slug": "go",
               "disqualified": false,
               "dimensions": {
-                "substance": { "score": 58, "remark": "Lease reconciliation on restart." },
-                "complexity": { "score": 60, "remark": "Restart semantics needed care." },
-                "conversation_quality": { "score": 48, "remark": "Brief review, one substantive comment." },
-                "craft": { "score": 64, "remark": "Adequate tests." },
-                "skill_specificity": { "score": 50, "remark": "Split between Go and Kubernetes concerns." }
+                "substance": {
+                  "score": 58,
+                  "remark": "Lease reconciliation on restart."
+                },
+                "complexity": {
+                  "score": 60,
+                  "remark": "Restart semantics needed care."
+                },
+                "conversation_quality": {
+                  "score": 48,
+                  "remark": "Brief review, one substantive comment."
+                },
+                "craft": {
+                  "score": 64,
+                  "remark": "Adequate tests."
+                },
+                "skill_specificity": {
+                  "score": 50,
+                  "remark": "Split between Go and Kubernetes concerns."
+                }
               }
             }
           ],
           "suggested_skills": [
-            { "slug": "kubernetes", "rationale": "Both changes are operator and lease work against the cluster API." },
-            { "slug": "postgres", "rationale": "PR 56 reworks the lease table's index and transaction boundaries." }
+            {
+              "slug": "kubernetes",
+              "rationale": "Both changes are operator and lease work against the cluster API."
+            },
+            {
+              "slug": "postgres",
+              "rationale": "PR 56 reworks the lease table's index and transaction boundaries."
+            }
           ]
         }
       },
       "expect": {
         "status": 200,
-        "body": { "processed": 1, "failed": 0 },
+        "body": {
+          "processed": 1,
+          "failed": 0
+        },
         "db": {
           "claim_skills": {
             "_note": "Three rows: one declared, two suggested. The suggestions carry no accepted_at.",
-            "where": { "claim_id": "{{claim_id}}" },
+            "where": {
+              "claim_id": "{{claim_id}}"
+            },
             "count": 3
           },
           "user_skills": {
             "_note": "ONE row. A suggestion contributes nothing before acceptance — this is the assertion the whole case exists for.",
-            "where": { "user_id": "{{alice.id}}" },
+            "where": {
+              "user_id": "{{alice.id}}"
+            },
             "count": 1,
-            "all_match": { "skill_slug": "go", "standing": "secondary" }
+            "all_match": {
+              "skill_slug": "go",
+              "standing": "secondary"
+            }
           },
-          "user_skill_pr_links": { "where": { "user_id": "{{alice.id}}" }, "count": 2, "all_match": { "skill_slug": "go" } }
+          "user_skill_pr_links": {
+            "where": {
+              "user_id": "{{alice.id}}"
+            },
+            "count": 2,
+            "all_match": {
+              "skill_slug": "go"
+            }
+          }
         }
       }
     },
     {
       "_step": "The contributor sees the suggestions, clearly separated from what they claimed.",
       "as": "alice",
-      "request": { "method": "GET", "path": "/claims/{{claim_id}}" },
+      "request": {
+        "method": "GET",
+        "path": "/claims/{{claim_id}}"
+      },
       "capture": {
         "kubernetes_skill_id": "$.suggestions[0].skill_id",
         "postgres_skill_id": "$.suggestions[1].skill_id",
@@ -120,7 +243,15 @@
           "status": "evaluated",
           "version": 1,
           "nominated_primary": "go",
-          "skills": [{ "skill_id": "<uuid>", "slug": "go", "origin": "user_declared", "nominated_primary": true, "score": 39.4 }],
+          "skills": [
+            {
+              "skill_id": "<uuid>",
+              "slug": "go",
+              "origin": "user_declared",
+              "nominated_primary": true,
+              "score": 39.4
+            }
+          ],
           "suggestions": [
             {
               "skill_id": "<uuid>",
@@ -147,20 +278,37 @@
     {
       "_step": "The suggestion is invisible on the contributor's own skill list until accepted.",
       "as": "alice",
-      "request": { "method": "GET", "path": "/me/skills" },
+      "request": {
+        "method": "GET",
+        "path": "/me/skills"
+      },
       "expect": {
         "status": 200,
         "body": {
-          "skills": [{ "slug": "go", "standing": "secondary", "distinct_pr_count": 2, "score": 39.4 }],
+          "skills": [
+            {
+              "slug": "go",
+              "standing": "secondary",
+              "distinct_pr_count": 2,
+              "score": 39.4,
+              "rubric_version": "v1",
+              "stale": false
+            }
+          ],
           "overall_score": null,
-          "generalist_score": null
+          "generalist_score": null,
+          "rubric_version": "v1"
         }
       }
     },
     {
       "_step": "Accept Kubernetes. It becomes an ordinary claim skill and its already-judged PRs count toward standing.",
       "as": "alice",
-      "request": { "method": "POST", "path": "/claims/{{claim_id}}/suggestions/{{kubernetes_skill_id}}/accept", "body": {} },
+      "request": {
+        "method": "POST",
+        "path": "/claims/{{claim_id}}/suggestions/{{kubernetes_skill_id}}/accept",
+        "body": {}
+      },
       "expect": {
         "status": 200,
         "body": {
@@ -173,57 +321,142 @@
           "score": 41.7
         },
         "db": {
-          "user_skills": { "where": { "user_id": "{{alice.id}}" }, "count": 2 },
-          "user_skill_pr_links": { "where": { "user_id": "{{alice.id}}", "skill_slug": "kubernetes", "status": "scored" }, "count": 2 }
+          "user_skills": {
+            "where": {
+              "user_id": "{{alice.id}}"
+            },
+            "count": 2
+          },
+          "user_skill_pr_links": {
+            "where": {
+              "user_id": "{{alice.id}}",
+              "skill_slug": "kubernetes",
+              "status": "scored"
+            },
+            "count": 2
+          }
         }
       }
     },
     {
       "_step": "Dismiss Postgres. Closed permanently — the contributor has said no.",
       "as": "alice",
-      "request": { "method": "POST", "path": "/claims/{{claim_id}}/suggestions/{{postgres_skill_id}}/dismiss", "body": {} },
+      "request": {
+        "method": "POST",
+        "path": "/claims/{{claim_id}}/suggestions/{{postgres_skill_id}}/dismiss",
+        "body": {}
+      },
       "expect": {
         "status": 200,
-        "body": { "slug": "postgres", "origin": "ai_suggested", "dismissed_at": "<timestamp>" },
-        "db": { "user_skills": { "where": { "user_id": "{{alice.id}}", "skill_slug": "postgres" }, "count": 0 } }
+        "body": {
+          "slug": "postgres",
+          "origin": "ai_suggested",
+          "dismissed_at": "<timestamp>"
+        },
+        "db": {
+          "user_skills": {
+            "where": {
+              "user_id": "{{alice.id}}",
+              "skill_slug": "postgres"
+            },
+            "count": 0
+          }
+        }
       }
     },
     {
       "_step": "A decision is final in both directions. Accepting something already dismissed is a conflict, not a silent toggle.",
       "as": "alice",
-      "request": { "method": "POST", "path": "/claims/{{claim_id}}/suggestions/{{postgres_skill_id}}/accept", "body": {} },
-      "expect": { "status": 409, "body": { "error": "suggestion_already_decided", "dismissed_at": "<timestamp>" } }
+      "request": {
+        "method": "POST",
+        "path": "/claims/{{claim_id}}/suggestions/{{postgres_skill_id}}/accept",
+        "body": {}
+      },
+      "expect": {
+        "status": 409,
+        "body": {
+          "error": "suggestion_already_decided",
+          "dismissed_at": "<timestamp>"
+        }
+      }
     },
     {
       "as": "alice",
-      "request": { "method": "POST", "path": "/claims/{{claim_id}}/suggestions/{{kubernetes_skill_id}}/dismiss", "body": {} },
-      "expect": { "status": 409, "body": { "error": "suggestion_already_decided", "accepted_at": "<timestamp>" } }
+      "request": {
+        "method": "POST",
+        "path": "/claims/{{claim_id}}/suggestions/{{kubernetes_skill_id}}/dismiss",
+        "body": {}
+      },
+      "expect": {
+        "status": 409,
+        "body": {
+          "error": "suggestion_already_decided",
+          "accepted_at": "<timestamp>"
+        }
+      }
     },
     {
       "_step": "Only the owner decides. Another contributor cannot act on someone else's suggestion, and gets a 404 rather than a 403.",
       "as": "bob",
-      "request": { "method": "POST", "path": "/claims/{{claim_id}}/suggestions/{{kubernetes_skill_id}}/accept", "body": {} },
-      "expect": { "status": 404, "body": { "error": "claim_not_found" } }
+      "request": {
+        "method": "POST",
+        "path": "/claims/{{claim_id}}/suggestions/{{kubernetes_skill_id}}/accept",
+        "body": {}
+      },
+      "expect": {
+        "status": 404,
+        "body": {
+          "error": "claim_not_found"
+        }
+      }
     },
     {
       "_step": "A declared skill is not a suggestion and cannot be accepted through this path.",
       "as": "alice",
-      "request": { "method": "POST", "path": "/claims/{{claim_id}}/suggestions/{{go_skill_id}}/accept", "body": {} },
-      "expect": { "status": 422, "body": { "error": "not_a_suggestion", "origin": "user_declared" } }
+      "request": {
+        "method": "POST",
+        "path": "/claims/{{claim_id}}/suggestions/{{go_skill_id}}/accept",
+        "body": {}
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "not_a_suggestion",
+          "origin": "user_declared"
+        }
+      }
     },
     {
       "as": "alice",
-      "request": { "method": "GET", "path": "/me/skills" },
+      "request": {
+        "method": "GET",
+        "path": "/me/skills"
+      },
       "expect": {
         "status": 200,
         "_note": "Two secondary skills, neither ranked. Postgres never appears — it was dismissed.",
         "body": {
           "skills": [
-            { "slug": "kubernetes", "standing": "secondary", "distinct_pr_count": 2, "score": 41.7 },
-            { "slug": "go", "standing": "secondary", "distinct_pr_count": 2, "score": 39.4 }
+            {
+              "slug": "kubernetes",
+              "standing": "secondary",
+              "distinct_pr_count": 2,
+              "score": 41.7,
+              "rubric_version": "v1",
+              "stale": false
+            },
+            {
+              "slug": "go",
+              "standing": "secondary",
+              "distinct_pr_count": 2,
+              "score": 39.4,
+              "rubric_version": "v1",
+              "stale": false
+            }
           ],
           "overall_score": null,
-          "generalist_score": null
+          "generalist_score": null,
+          "rubric_version": "v1"
         }
       }
     }
