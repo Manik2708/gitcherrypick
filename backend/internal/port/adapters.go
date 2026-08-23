@@ -152,21 +152,33 @@ type OAuthIdentity struct {
 
 // --- auth primitives ---------------------------------------------------------
 
+// AccessClaims is everything an access token asserts (ADR-0011): identity, and
+// nothing else. No organization, no hiring capability, no verification state —
+// embedding any of those would let a suspended organization keep acting until
+// the token expired, when RequireHiringCapability exists to revoke immediately.
+type AccessClaims struct {
+	// Subject is the account id, stringified. Which id type it parses back to
+	// depends on Kind, because the three account types share no table.
+	Subject string
+	Kind    domain.PrincipalKind
+}
+
 // TokenIssuer mints and verifies access tokens.
 //
-// Access tokens are short-lived and stateless; refresh tokens are opaque,
-// hashed and stored, which is what makes reuse detection possible. Only the
-// access side lives here — the refresh side is SessionRepository, because it
-// is state.
+// It deals in claims rather than domain.Principal, and the distinction is
+// load-bearing. A Principal carries a whole *Contributor — scores, availability,
+// bio — which a 15-minute bearer token cannot hold, so middleware reads the
+// entity from Postgres on every request regardless (ADR-0011). Taking a
+// Principal here would mean callers passing a half-filled one, and a
+// *Contributor with a zeroed OverallScore is indistinguishable from a measured
+// zero.
+//
+// Refresh tokens are NOT here. They are opaque random bytes, which is exactly
+// what TokenMinter makes, and one generator means one place where entropy and
+// hash algorithm are decided.
 type TokenIssuer interface {
-	Issue(ctx context.Context, p domain.Principal, ttl time.Duration) (string, error)
-	Verify(ctx context.Context, token string) (*domain.Principal, error)
-
-	// NewRefreshToken returns the plaintext to hand out and the hash to store.
-	// Returning both forces the caller to store the hash: there is no method
-	// that would let it store the plaintext instead.
-	NewRefreshToken() (plaintext string, hash []byte, err error)
-	HashRefreshToken(plaintext string) []byte
+	Issue(ctx context.Context, c AccessClaims, ttl time.Duration) (string, error)
+	Verify(ctx context.Context, token string) (*AccessClaims, error)
 }
 
 // PasswordHasher is the password primitive, for the email provider only.

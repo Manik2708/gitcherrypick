@@ -38,6 +38,10 @@ type Middleware interface {
 // header and no bypass: the e2e suite signs in through the real endpoints and
 // carries a real bearer token, because an authentication bypass compiled into
 // the shipping binary is one build-tag mistake away from production.
+//
+// The suite reaches its fakes over a separate process instead (ADR-0010), and
+// moves time through a configured clock source (ADR-0012). Neither adds a route
+// to this server.
 type PrincipalResolver interface {
 	Middleware
 }
@@ -45,26 +49,6 @@ type PrincipalResolver interface {
 // Server assembles controllers into a listening HTTP server.
 type Server interface {
 	Mount(controllers ...Controller)
-	ListenAndServe(addr string) error
-	Shutdown() error
-}
-
-// ControlPlane is the fake-control listener used by the integration suite.
-//
-// It binds a SEPARATE socket and exists only when the binary is started with
-// --adapters=fake. Production binds no control listener at all, so there is no
-// route to reach — not a route that checks a flag and refuses. That distinction
-// is the reason this is a second listener rather than a path on the main one.
-type ControlPlane interface {
-	// PrimeFake pushes adapter state — canned GitHub responses, AI judgements,
-	// a clock setting — into the running process before a step's request.
-	PrimeFake(kind string, payload []byte) error
-
-	// RunAction drives a background job synchronously, so a fixture can assert
-	// on its effects without polling. The alternative is a sleep, and a sleep
-	// is a flake with a timer attached.
-	RunAction(name string, payload []byte) ([]byte, error)
-
 	ListenAndServe(addr string) error
 	Shutdown() error
 }
