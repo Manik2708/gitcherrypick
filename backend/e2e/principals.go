@@ -1,9 +1,6 @@
 package e2e
 
-import (
-	"bytes"
-	"io"
-)
+import ()
 
 // Principals is the seeded cast, loaded from fixtures/seed/principals.json.
 //
@@ -12,18 +9,25 @@ import (
 // have no OAuth path at all — ADR-0002), and the identity to prime the fake
 // GitHub adapter with so a real callback resolves to a seeded user.
 type Principals struct {
-	Contributors  []Contributor `json:"contributors"`
-	Organizations []struct {
-		Key             string  `json:"key"`
-		ID              string  `json:"id"`
-		Name            string  `json:"name"`
-		Slug            string  `json:"slug"`
-		LinkedInURL     *string `json:"linkedin_url"`
-		Verified        bool    `json:"verified"`
-		PaymentVerified bool    `json:"payment_verified"`
-	} `json:"organizations"`
-	Hirers []Hirer `json:"hirers"`
-	Admins []Admin `json:"admins"`
+	Contributors  []Contributor  `json:"contributors"`
+	Organizations []Organization `json:"organizations"`
+	Hirers        []Hirer        `json:"hirers"`
+	Admins        []Admin        `json:"admins"`
+}
+
+// Organization is a seeded hiring organization.
+//
+// Verified and PaymentVerified are separate: verification gates hiring
+// capability, while payment status is disclosed to a contributor deciding
+// whether to release their address (ADR-0002 §5).
+type Organization struct {
+	Key             string  `json:"key"`
+	ID              string  `json:"id"`
+	Name            string  `json:"name"`
+	Slug            string  `json:"slug"`
+	LinkedInURL     *string `json:"linkedin_url"`
+	Verified        bool    `json:"verified"`
+	PaymentVerified bool    `json:"payment_verified"`
 }
 
 // Contributor is a seeded GitHub-authenticated user.
@@ -34,10 +38,19 @@ type Contributor struct {
 	Email        string `json:"email"`
 	GitHubUserID int64  `json:"github_user_id"`
 	GitHubLogin  string `json:"github_login"`
-	Availability *struct {
-		Status        string `json:"status"`
-		ExpiresInDays *int   `json:"expires_in_days"`
-	} `json:"availability"`
+
+	// Nil when the contributor never set one. Distinct from a lapsed window,
+	// which is a present setting whose expiry has passed.
+	Availability *Availability `json:"availability"`
+}
+
+// Availability is a seeded discovery window.
+//
+// ExpiresInDays is relative and may be negative, which is how a fixture seeds a
+// lapsed window against the real clock (ADR-0010 §5).
+type Availability struct {
+	Status        string `json:"status"`
+	ExpiresInDays *int   `json:"expires_in_days"`
 }
 
 // Hirer is a seeded recruiter. AuthProvider decides which sign-in path the
@@ -108,6 +121,3 @@ func (p Principals) IsHirer(key string) bool { _, ok := p.Hirer(key); return ok 
 
 // IsAdmin reports whether the key names a seeded administrator.
 func (p Principals) IsAdmin(key string) bool { _, ok := p.Admin(key); return ok }
-
-// jsonReader adapts a byte slice for an http.Request body.
-func jsonReader(b []byte) io.Reader { return bytes.NewReader(b) }

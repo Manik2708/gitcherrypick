@@ -25,6 +25,14 @@ type Case struct {
 	Seed        []string `json:"seed"`
 	Steps       []Step   `json:"steps"`
 
+	// ThirdParty is everything cmd/fakethirdparty will say during this case:
+	// pull requests, repositories, model judgements (ADR-0010).
+	//
+	// The seeded principals' OAuth identities are NOT declared here — the
+	// harness projects those from principals.json, so a fixture states only the
+	// facts its assertions turn on.
+	ThirdParty json.RawMessage `json:"third_party,omitempty"`
+
 	// Path is where this came from, so a failure names a file rather than a
 	// subtest. Not part of the JSON.
 	Path string `json:"-"`

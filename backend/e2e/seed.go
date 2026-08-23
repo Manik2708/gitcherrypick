@@ -7,10 +7,13 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/Manik2708/gitcherrypick/backend/internal/adapter/crypto"
 )
 
 // Seeding writes rows with direct SQL rather than through the repository layer.
@@ -22,10 +25,36 @@ import (
 
 const seedRoot = "fixtures/seed"
 
-// Every seeded account that has a password shares one. The fixtures that sign
-// in state it literally, so the hash and the plaintext have to agree — stage 4
-// replaces this with a real argon2id hash of "correct-horse-battery".
-const seededPasswordHash = "$argon2id$v=19$m=65536,t=3,p=4$e2e$correct-horse-battery"
+// SeededPassword is shared by every seeded account that has one.
+//
+// The fixtures state it literally, so the stored hash must agree with it. It is
+// DERIVED from this constant at seed time rather than written out as a literal:
+// a hardcoded hash and a hardcoded plaintext are two facts that can drift, and
+// the drift presents as every sign-in fixture failing with "invalid
+// credentials" and no clue why.
+const SeededPassword = "correct-horse-battery"
+
+// seededHash is computed once, by the REAL hasher the API verifies with.
+//
+// Using the production hasher here is what makes the fixtures prove anything
+// about passwords: a stub hash would only prove that two stubs agree.
+var (
+	seededHashOnce sync.Once
+	seededHash     string
+	seededHashErr  error
+)
+
+func passwordHashForSeed() (string, error) {
+	seededHashOnce.Do(func() {
+		hash, err := crypto.NewArgon2Hasher().Hash(SeededPassword)
+		if err != nil {
+			seededHashErr = fmt.Errorf("hashing the seeded password: %w", err)
+			return
+		}
+		seededHash = string(hash)
+	})
+	return seededHash, seededHashErr
+}
 
 // Seed loads the named seed sets into a schema, in the order given. Sets are
 // not commutative: scored_population extends alice_go_primary.
@@ -154,7 +183,10 @@ func seedPrincipals(ctx context.Context, conn *pgx.Conn, bindings map[string]str
 		// one of which nobody set.
 		var passwordHash *string
 		if h.AuthProvider == "email" {
-			hash := seededPasswordHash
+			hash, err := passwordHashForSeed()
+			if err != nil {
+				return err
+			}
 			passwordHash = &hash
 		}
 		if _, err := conn.Exec(ctx,
@@ -218,11 +250,15 @@ func seedPrincipals(ctx context.Context, conn *pgx.Conn, bindings map[string]str
 		}
 	}
 
+	adminHash, err := passwordHashForSeed()
+	if err != nil {
+		return err
+	}
 	for _, a := range file.Admins {
 		if _, err := conn.Exec(ctx,
 			`INSERT INTO admin_accounts (id, email, password_hash, display_name)
 			 VALUES ($1, $2, $3, $4)`,
-			a.ID, a.Email, seededPasswordHash, a.DisplayName); err != nil {
+			a.ID, a.Email, adminHash, a.DisplayName); err != nil {
 			return fmt.Errorf("admin %s: %w", a.Key, err)
 		}
 		bindings[a.Key+".id"] = a.ID
@@ -230,26 +266,37 @@ func seedPrincipals(ctx context.Context, conn *pgx.Conn, bindings map[string]str
 	return nil
 }
 
-type catalogueFile struct {
-	Skills []struct {
-		Key         string   `json:"key"`
-		ID          string   `json:"id"`
-		Slug        string   `json:"slug"`
-		Name        string   `json:"name"`
-		Description string   `json:"description"`
-		Category    string   `json:"category"`
-		ScoringMode string   `json:"scoring_mode"`
-		Aliases     []string `json:"aliases"`
-	} `json:"skills"`
+// seedSkill is one entry in the skill catalogue.
+type seedSkill struct {
+	Key         string   `json:"key"`
+	ID          string   `json:"id"`
+	Slug        string   `json:"slug"`
+	Name        string   `json:"name"`
+	Description string   `json:"description"`
+	Category    string   `json:"category"`
+	ScoringMode string   `json:"scoring_mode"`
+	Aliases     []string `json:"aliases"`
+}
 
-	// An array, not a map: each entry names its own metric, because
-	// global_norms is keyed on (metric, generation) rather than on metric.
-	GlobalNorms []struct {
-		Metric     string             `json:"metric"`
-		Generation int                `json:"generation"`
-		MaxValue   float64            `json:"max_value"`
-		Quantiles  map[string]float64 `json:"quantiles"`
-	} `json:"global_norms"`
+// seedGlobalNorm fixes the maximum one metric is normalised against.
+//
+// Generation is a version counter ON the row, not part of its key —
+// global_norms is `metric PRIMARY KEY` (RFC-0005 schema), so a metric has
+// exactly one row and bumping the generation overwrites it rather than adding
+// a second.
+type seedGlobalNorm struct {
+	Metric     string             `json:"metric"`
+	Generation int                `json:"generation"`
+	MaxValue   float64            `json:"max_value"`
+	Quantiles  map[string]float64 `json:"quantiles"`
+}
+
+type catalogueFile struct {
+	Skills []seedSkill `json:"skills"`
+
+	// An array rather than a map keyed on metric, so the seed file reads in a
+	// fixed order and a diff stays legible.
+	GlobalNorms []seedGlobalNorm `json:"global_norms"`
 }
 
 func seedCatalogue(ctx context.Context, conn *pgx.Conn) error {
@@ -330,55 +377,74 @@ type scoredFile struct {
 	ScoredPopulation scoredSet `json:"scored_population"`
 }
 
+// seedPREvidence is one PR attached to a seeded claim.
+type seedPREvidence struct {
+	Position int    `json:"position"`
+	Repo     string `json:"repo"`
+	PRNumber int    `json:"pr_number"`
+	Role     string `json:"role"`
+}
+
+// seedClaim is a pre-scored claim. Fixed ids let a fixture reference one
+// directly and make a failure read the same on every run.
+type seedClaim struct {
+	Key              string           `json:"key"`
+	ID               string           `json:"id"`
+	User             string           `json:"user"`
+	Status           string           `json:"status"`
+	Version          int              `json:"version"`
+	EvaluatedAt      string           `json:"evaluated_at"`
+	LockedUntil      string           `json:"locked_until"`
+	NominatedPrimary string           `json:"nominated_primary"`
+	PREvidence       []seedPREvidence `json:"pr_evidence"`
+}
+
+// seedPRSkillScore pins one (PR, skill) score, so ranking is reproducible
+// without running the evaluator.
+type seedPRSkillScore struct {
+	Claim    string  `json:"claim"`
+	Position int     `json:"position"`
+	Skill    string  `json:"skill"`
+	Score    float64 `json:"score"`
+	QualityQ float64 `json:"quality_q"`
+	ReachR   float64 `json:"reach_r"`
+	Engage   float64 `json:"engagement_e"`
+}
+
+// seedUserSkill is a contributor's standing in one skill.
+type seedUserSkill struct {
+	User            string  `json:"user"`
+	Skill           string  `json:"skill"`
+	Standing        string  `json:"standing"`
+	DistinctPRCount int     `json:"distinct_pr_count"`
+	Score           float64 `json:"score"`
+	PRComponent     float64 `json:"pr_component"`
+	ProjectComp     float64 `json:"project_component"`
+}
+
+// seedUserScore is the pair of user-level numbers. Both are pointers because
+// null is not zero: a contributor with no primary skill has not been measured
+// (ADR-0007).
+type seedUserScore struct {
+	User       string   `json:"user"`
+	Overall    *float64 `json:"overall_score"`
+	Generalist *float64 `json:"generalist_score"`
+}
+
+// seedAvailability overrides a contributor's window, so a fixture can seed a
+// lapsed one without moving the clock (ADR-0010 §5).
+type seedAvailability struct {
+	User          string `json:"user"`
+	Status        string `json:"status"`
+	ExpiresInDays *int   `json:"expires_in_days"`
+}
+
 type scoredSet struct {
-	Claims []struct {
-		Key              string `json:"key"`
-		ID               string `json:"id"`
-		User             string `json:"user"`
-		Status           string `json:"status"`
-		Version          int    `json:"version"`
-		EvaluatedAt      string `json:"evaluated_at"`
-		LockedUntil      string `json:"locked_until"`
-		NominatedPrimary string `json:"nominated_primary"`
-		PREvidence       []struct {
-			Position int    `json:"position"`
-			Repo     string `json:"repo"`
-			PRNumber int    `json:"pr_number"`
-			Role     string `json:"role"`
-		} `json:"pr_evidence"`
-	} `json:"claims"`
-
-	PRSkillScores []struct {
-		Claim    string  `json:"claim"`
-		Position int     `json:"position"`
-		Skill    string  `json:"skill"`
-		Score    float64 `json:"score"`
-		QualityQ float64 `json:"quality_q"`
-		ReachR   float64 `json:"reach_r"`
-		Engage   float64 `json:"engagement_e"`
-	} `json:"pr_skill_scores"`
-
-	UserSkills []struct {
-		User            string  `json:"user"`
-		Skill           string  `json:"skill"`
-		Standing        string  `json:"standing"`
-		DistinctPRCount int     `json:"distinct_pr_count"`
-		Score           float64 `json:"score"`
-		PRComponent     float64 `json:"pr_component"`
-		ProjectComp     float64 `json:"project_component"`
-	} `json:"user_skills"`
-
-	Users []struct {
-		User       string   `json:"user"`
-		Overall    *float64 `json:"overall_score"`
-		Generalist *float64 `json:"generalist_score"`
-	} `json:"users"`
-
-	AvailabilityOverrides []struct {
-		User          string `json:"user"`
-		Status        string `json:"status"`
-		ExpiresInDays *int   `json:"expires_in_days"`
-	} `json:"availability_overrides"`
+	Claims                []seedClaim        `json:"claims"`
+	PRSkillScores         []seedPRSkillScore `json:"pr_skill_scores"`
+	UserSkills            []seedUserSkill    `json:"user_skills"`
+	Users                 []seedUserScore    `json:"users"`
+	AvailabilityOverrides []seedAvailability `json:"availability_overrides"`
 }
 
 func seedScoredSet(ctx context.Context, conn *pgx.Conn, s scoredSet, bindings map[string]string) error {
