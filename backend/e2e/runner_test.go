@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/cookiejar"
 	"os"
 	"path/filepath"
 	"strings"
@@ -77,33 +78,6 @@ func TestFixtures(t *testing.T) {
 	}
 }
 
-// sessionCache signs each principal in once per case and reuses the token.
-// Re-authenticating per step would mint a new session family every time, which
-// would quietly defeat the fixture that asserts a replayed refresh token
-// revokes the whole family.
-type sessionCache struct {
-	principals Principals
-	sessions   map[string]*Session
-}
-
-func (s *sessionCache) For(ctx context.Context, client *http.Client, as string) (*Session, error) {
-	if as == "" || as == "anonymous" {
-		return nil, nil
-	}
-	if s.sessions == nil {
-		s.sessions = map[string]*Session{}
-	}
-	if session, ok := s.sessions[as]; ok {
-		return session, nil
-	}
-	session, err := Authenticate(ctx, client, as, s.principals)
-	if err != nil {
-		return nil, fmt.Errorf("signing in as %s: %w", as, err)
-	}
-	s.sessions[as] = session
-	return session, nil
-}
-
 func runCase(t *testing.T, ctx context.Context, pool *pgxpool.Pool, ddl []string, principals Principals, c *Case) {
 	t.Helper()
 	// The description is the record of why this case exists. Printing it means
@@ -125,18 +99,41 @@ func runCase(t *testing.T, ctx context.Context, pool *pgxpool.Pool, ddl []string
 		t.Fatalf("seeding %v: %v", c.Seed, err)
 	}
 
-	client := &http.Client{Timeout: 20 * time.Second}
+	// One API per fixture, pointed at this fixture's schema. A shared process
+	// would serve every case from whichever schema it started with.
+	api, err := StartAPI(ctx, schema)
+	if err != nil {
+		t.Fatalf("starting the api: %v", err)
+	}
+	t.Cleanup(api.Stop)
+
+	// A cookie jar, because the OAuth state travels on one. Without it every
+	// callback would be refused as a flow nobody started — which is the check
+	// working, and would look like a bug.
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		t.Fatalf("building a cookie jar: %v", err)
+	}
+	client := &http.Client{Timeout: 20 * time.Second, Jar: jar}
 	sessions := &sessionCache{principals: principals}
+
+	// The fake third-party server holds no data of its own (ADR-0010). This
+	// installs everything this fixture will see, replacing whatever the
+	// previous one left — the same isolation rule the database follows.
+	control := NewControl(client)
+	if err := control.LoadCase(ctx, principals, c.Seed, c.ThirdParty); err != nil {
+		t.Fatalf("loading third-party state: %v", err)
+	}
 
 	for i, step := range c.Steps {
 		label := fmt.Sprintf("step %d: %s %s", i, step.Request.Method, step.Request.Path)
 
 		if step.Request.IsPseudo() {
-			// The evaluator, the clock and the daily jobs are driven through
-			// the harness rather than over HTTP. They arrive in stage 5.
-			t.Errorf("%s: harness pseudo-method %q is not implemented yet (stage 5)",
-				label, step.Request.Method)
-			return
+			if err := runPseudo(ctx, t, control, sessions, client, bindings, step); err != nil {
+				t.Errorf("%s: %v", label, err)
+				return
+			}
+			continue
 		}
 
 		path, err := resolve(step.Request.Path, bindings)
@@ -150,10 +147,11 @@ func runCase(t *testing.T, ctx context.Context, pool *pgxpool.Pool, ddl []string
 			return
 		}
 
-		// `fake` is applied BEFORE the request, so the adapter is primed when
-		// it arrives. It goes over the API's separate control listener, which
-		// exists only under --adapters=fake.
-		if err := ApplyFakes(ctx, client, step.Fake); err != nil {
+		// `fake` is applied BEFORE the request, so the fake server answers with
+		// it when the API calls out. It is a MERGE onto what LoadCase
+		// installed, so a step declaring one PR does not erase the identities
+		// the fixture is signed in with.
+		if err := control.ApplyFake(ctx, step.Fake); err != nil {
 			t.Errorf("%s: %v", label, err)
 			return
 		}
@@ -172,8 +170,14 @@ func runCase(t *testing.T, ctx context.Context, pool *pgxpool.Pool, ddl []string
 		}
 
 		if status != step.Expect.Status {
-			t.Errorf("%s: expected status %d, got %d\nbody: %s",
-				label, step.Expect.Status, status, truncate(string(respBody)))
+			// A 5xx says nothing about itself by design, so the server log is
+			// the only place the cause exists.
+			detail := ""
+			if status >= 500 {
+				detail = "\napi log:\n" + api.Log()
+			}
+			t.Errorf("%s: expected status %d, got %d\nbody: %s%s",
+				label, step.Expect.Status, status, truncate(string(respBody)), detail)
 		}
 		if diff := Compare(step.Expect.Body, respBody); diff != "" {
 			t.Errorf("%s: body does not match the snapshot\n%s", label, diff)

@@ -6,6 +6,7 @@ package mocks
 
 import (
 	"context"
+	"time"
 
 	"github.com/Manik2708/gitcherrypick/backend/internal/domain"
 	"github.com/Manik2708/gitcherrypick/backend/internal/port"
@@ -409,6 +410,74 @@ func (_c *SkillRepository_LinkPairs_Call) RunAndReturn(run func(ctx context.Cont
 	return _c
 }
 
+// MatchSkill provides a mock function for the type SkillRepository
+func (_mock *SkillRepository) MatchSkill(ctx context.Context, proposedName string) (*domain.Skill, error) {
+	ret := _mock.Called(ctx, proposedName)
+
+	if len(ret) == 0 {
+		panic("no return value specified for MatchSkill")
+	}
+
+	var r0 *domain.Skill
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (*domain.Skill, error)); ok {
+		return returnFunc(ctx, proposedName)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *domain.Skill); ok {
+		r0 = returnFunc(ctx, proposedName)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*domain.Skill)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = returnFunc(ctx, proposedName)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// SkillRepository_MatchSkill_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'MatchSkill'
+type SkillRepository_MatchSkill_Call struct {
+	*mock.Call
+}
+
+// MatchSkill is a helper method to define mock.On call
+//   - ctx context.Context
+//   - proposedName string
+func (_e *SkillRepository_Expecter) MatchSkill(ctx interface{}, proposedName interface{}) *SkillRepository_MatchSkill_Call {
+	return &SkillRepository_MatchSkill_Call{Call: _e.mock.On("MatchSkill", ctx, proposedName)}
+}
+
+func (_c *SkillRepository_MatchSkill_Call) Run(run func(ctx context.Context, proposedName string)) *SkillRepository_MatchSkill_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *SkillRepository_MatchSkill_Call) Return(skill *domain.Skill, err error) *SkillRepository_MatchSkill_Call {
+	_c.Call.Return(skill, err)
+	return _c
+}
+
+func (_c *SkillRepository_MatchSkill_Call) RunAndReturn(run func(ctx context.Context, proposedName string) (*domain.Skill, error)) *SkillRepository_MatchSkill_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // PendingRequests provides a mock function for the type SkillRepository
 func (_mock *SkillRepository) PendingRequests(ctx context.Context, status string) ([]port.SkillRequest, error) {
 	ret := _mock.Called(ctx, status)
@@ -553,6 +622,80 @@ func (_c *SkillRepository_RecomputeStanding_Call) Return(userSkill *domain.UserS
 }
 
 func (_c *SkillRepository_RecomputeStanding_Call) RunAndReturn(run func(ctx context.Context, tx port.Tx, id domain.UserID, skillID domain.SkillID) (*domain.UserSkill, error)) *SkillRepository_RecomputeStanding_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// RequestsSince provides a mock function for the type SkillRepository
+func (_mock *SkillRepository) RequestsSince(ctx context.Context, userID domain.UserID, since time.Time) ([]port.SkillRequest, error) {
+	ret := _mock.Called(ctx, userID, since)
+
+	if len(ret) == 0 {
+		panic("no return value specified for RequestsSince")
+	}
+
+	var r0 []port.SkillRequest
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.UserID, time.Time) ([]port.SkillRequest, error)); ok {
+		return returnFunc(ctx, userID, since)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.UserID, time.Time) []port.SkillRequest); ok {
+		r0 = returnFunc(ctx, userID, since)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]port.SkillRequest)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, domain.UserID, time.Time) error); ok {
+		r1 = returnFunc(ctx, userID, since)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// SkillRepository_RequestsSince_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RequestsSince'
+type SkillRepository_RequestsSince_Call struct {
+	*mock.Call
+}
+
+// RequestsSince is a helper method to define mock.On call
+//   - ctx context.Context
+//   - userID domain.UserID
+//   - since time.Time
+func (_e *SkillRepository_Expecter) RequestsSince(ctx interface{}, userID interface{}, since interface{}) *SkillRepository_RequestsSince_Call {
+	return &SkillRepository_RequestsSince_Call{Call: _e.mock.On("RequestsSince", ctx, userID, since)}
+}
+
+func (_c *SkillRepository_RequestsSince_Call) Run(run func(ctx context.Context, userID domain.UserID, since time.Time)) *SkillRepository_RequestsSince_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 domain.UserID
+		if args[1] != nil {
+			arg1 = args[1].(domain.UserID)
+		}
+		var arg2 time.Time
+		if args[2] != nil {
+			arg2 = args[2].(time.Time)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *SkillRepository_RequestsSince_Call) Return(skillRequests []port.SkillRequest, err error) *SkillRepository_RequestsSince_Call {
+	_c.Call.Return(skillRequests, err)
+	return _c
+}
+
+func (_c *SkillRepository_RequestsSince_Call) RunAndReturn(run func(ctx context.Context, userID domain.UserID, since time.Time) ([]port.SkillRequest, error)) *SkillRepository_RequestsSince_Call {
 	_c.Call.Return(run)
 	return _c
 }

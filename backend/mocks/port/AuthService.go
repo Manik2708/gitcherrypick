@@ -926,6 +926,74 @@ func (_c *AuthService_RegisterHirer_Call) RunAndReturn(run func(ctx context.Cont
 	return _c
 }
 
+// ResolvePrincipal provides a mock function for the type AuthService
+func (_mock *AuthService) ResolvePrincipal(ctx context.Context, claims port.AccessClaims) (*domain.Principal, error) {
+	ret := _mock.Called(ctx, claims)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ResolvePrincipal")
+	}
+
+	var r0 *domain.Principal
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, port.AccessClaims) (*domain.Principal, error)); ok {
+		return returnFunc(ctx, claims)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, port.AccessClaims) *domain.Principal); ok {
+		r0 = returnFunc(ctx, claims)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*domain.Principal)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, port.AccessClaims) error); ok {
+		r1 = returnFunc(ctx, claims)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// AuthService_ResolvePrincipal_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ResolvePrincipal'
+type AuthService_ResolvePrincipal_Call struct {
+	*mock.Call
+}
+
+// ResolvePrincipal is a helper method to define mock.On call
+//   - ctx context.Context
+//   - claims port.AccessClaims
+func (_e *AuthService_Expecter) ResolvePrincipal(ctx interface{}, claims interface{}) *AuthService_ResolvePrincipal_Call {
+	return &AuthService_ResolvePrincipal_Call{Call: _e.mock.On("ResolvePrincipal", ctx, claims)}
+}
+
+func (_c *AuthService_ResolvePrincipal_Call) Run(run func(ctx context.Context, claims port.AccessClaims)) *AuthService_ResolvePrincipal_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 port.AccessClaims
+		if args[1] != nil {
+			arg1 = args[1].(port.AccessClaims)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *AuthService_ResolvePrincipal_Call) Return(principal *domain.Principal, err error) *AuthService_ResolvePrincipal_Call {
+	_c.Call.Return(principal, err)
+	return _c
+}
+
+func (_c *AuthService_ResolvePrincipal_Call) RunAndReturn(run func(ctx context.Context, claims port.AccessClaims) (*domain.Principal, error)) *AuthService_ResolvePrincipal_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // RevokeShareLink provides a mock function for the type AuthService
 func (_mock *AuthService) RevokeShareLink(ctx context.Context, id domain.UserID, linkID domain.ShareLinkID) error {
 	ret := _mock.Called(ctx, id, linkID)

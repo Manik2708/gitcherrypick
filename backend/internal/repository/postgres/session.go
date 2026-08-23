@@ -170,3 +170,22 @@ func principalColumns(kind domain.PrincipalKind, id string) (user, hirer, admin 
 	}
 	return nil, nil, nil
 }
+
+// ActiveFamily returns the family a principal's live session belongs to.
+//
+// The most recent unrevoked, unexpired session. A principal signed in on
+// several devices has several families; logout revokes the one the request
+// arrived on, which is the newest this query can see without the token.
+func (r *SessionRepository) ActiveFamily(ctx context.Context, principalID string) (string, error) {
+	var familyID string
+	err := r.db.pool.QueryRow(ctx, `
+		SELECT family_id FROM sessions
+		WHERE coalesce(user_id, hirer_account_id, admin_account_id) = $1
+		  AND revoked_at IS NULL AND expires_at > now()
+		ORDER BY created_at DESC
+		LIMIT 1`, principalID).Scan(&familyID)
+	if err != nil {
+		return "", translate(err, fmt.Sprintf("reading the active family for %s", principalID))
+	}
+	return familyID, nil
+}

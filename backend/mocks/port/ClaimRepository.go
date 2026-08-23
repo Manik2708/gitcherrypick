@@ -545,6 +545,86 @@ func (_c *ClaimRepository_Replace_Call) RunAndReturn(run func(ctx context.Contex
 	return _c
 }
 
+// ReplaceEvidence provides a mock function for the type ClaimRepository
+func (_mock *ClaimRepository) ReplaceEvidence(ctx context.Context, tx port.Tx, id domain.ClaimID, c *domain.Claim) (*domain.Claim, error) {
+	ret := _mock.Called(ctx, tx, id, c)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ReplaceEvidence")
+	}
+
+	var r0 *domain.Claim
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, port.Tx, domain.ClaimID, *domain.Claim) (*domain.Claim, error)); ok {
+		return returnFunc(ctx, tx, id, c)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, port.Tx, domain.ClaimID, *domain.Claim) *domain.Claim); ok {
+		r0 = returnFunc(ctx, tx, id, c)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*domain.Claim)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, port.Tx, domain.ClaimID, *domain.Claim) error); ok {
+		r1 = returnFunc(ctx, tx, id, c)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// ClaimRepository_ReplaceEvidence_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ReplaceEvidence'
+type ClaimRepository_ReplaceEvidence_Call struct {
+	*mock.Call
+}
+
+// ReplaceEvidence is a helper method to define mock.On call
+//   - ctx context.Context
+//   - tx port.Tx
+//   - id domain.ClaimID
+//   - c *domain.Claim
+func (_e *ClaimRepository_Expecter) ReplaceEvidence(ctx interface{}, tx interface{}, id interface{}, c interface{}) *ClaimRepository_ReplaceEvidence_Call {
+	return &ClaimRepository_ReplaceEvidence_Call{Call: _e.mock.On("ReplaceEvidence", ctx, tx, id, c)}
+}
+
+func (_c *ClaimRepository_ReplaceEvidence_Call) Run(run func(ctx context.Context, tx port.Tx, id domain.ClaimID, c *domain.Claim)) *ClaimRepository_ReplaceEvidence_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 port.Tx
+		if args[1] != nil {
+			arg1 = args[1].(port.Tx)
+		}
+		var arg2 domain.ClaimID
+		if args[2] != nil {
+			arg2 = args[2].(domain.ClaimID)
+		}
+		var arg3 *domain.Claim
+		if args[3] != nil {
+			arg3 = args[3].(*domain.Claim)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *ClaimRepository_ReplaceEvidence_Call) Return(claim *domain.Claim, err error) *ClaimRepository_ReplaceEvidence_Call {
+	_c.Call.Return(claim, err)
+	return _c
+}
+
+func (_c *ClaimRepository_ReplaceEvidence_Call) RunAndReturn(run func(ctx context.Context, tx port.Tx, id domain.ClaimID, c *domain.Claim) (*domain.Claim, error)) *ClaimRepository_ReplaceEvidence_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // SetEvaluated provides a mock function for the type ClaimRepository
 func (_mock *ClaimRepository) SetEvaluated(ctx context.Context, tx port.Tx, id domain.ClaimID, at time.Time, lockedUntil time.Time) error {
 	ret := _mock.Called(ctx, tx, id, at, lockedUntil)

@@ -21,10 +21,29 @@ func (db *DB) Admins() *AdminRepository { return &AdminRepository{db: db} }
 
 var _ port.AdminRepository = (*AdminRepository)(nil)
 
+// ByID resolves an admin from an access token's subject.
+//
+// disabled_at is SELECTED rather than filtered on, unlike ByEmail: sign-in must
+// not reveal that a disabled account exists, but a caller already holding a
+// valid token for one is entitled to be told their access was withdrawn. The
+// service decides; this returns the fact.
+func (r *AdminRepository) ByID(ctx context.Context, id domain.AdminID) (*domain.Admin, error) {
+	var a domain.Admin
+	err := r.db.pool.QueryRow(ctx,
+		`SELECT id, display_name, email, disabled_at
+		 FROM admin_accounts WHERE id = $1::uuid`, string(id),
+	).Scan(&a.ID, &a.DisplayName, &a.Email, &a.DisabledAt)
+	if err != nil {
+		return nil, translate(err, fmt.Sprintf("admin %s", id))
+	}
+	return &a, nil
+}
+
 // ByEmail resolves an administrator for sign-in.
 //
-// A disabled account is not found. Returning it and leaving the caller to
-// check would make disablement a rule every call site has to remember.
+// A disabled account is NOT FOUND here, unlike in ByID. Sign-in must not reveal
+// that a disabled account exists, while a caller already holding a valid token
+// for one is entitled to learn their access was withdrawn.
 func (r *AdminRepository) ByEmail(ctx context.Context, email string) (*domain.Admin, error) {
 	var a domain.Admin
 	err := r.db.pool.QueryRow(ctx,

@@ -302,6 +302,80 @@ func (_c *OrganizationRepository_InvitationByTokenHash_Call) RunAndReturn(run fu
 	return _c
 }
 
+// VerificationFor provides a mock function for the type OrganizationRepository
+func (_mock *OrganizationRepository) VerificationFor(ctx context.Context, hirer domain.HirerID, org domain.OrganizationID) (*port.VerificationRequest, error) {
+	ret := _mock.Called(ctx, hirer, org)
+
+	if len(ret) == 0 {
+		panic("no return value specified for VerificationFor")
+	}
+
+	var r0 *port.VerificationRequest
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.HirerID, domain.OrganizationID) (*port.VerificationRequest, error)); ok {
+		return returnFunc(ctx, hirer, org)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.HirerID, domain.OrganizationID) *port.VerificationRequest); ok {
+		r0 = returnFunc(ctx, hirer, org)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*port.VerificationRequest)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, domain.HirerID, domain.OrganizationID) error); ok {
+		r1 = returnFunc(ctx, hirer, org)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// OrganizationRepository_VerificationFor_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'VerificationFor'
+type OrganizationRepository_VerificationFor_Call struct {
+	*mock.Call
+}
+
+// VerificationFor is a helper method to define mock.On call
+//   - ctx context.Context
+//   - hirer domain.HirerID
+//   - org domain.OrganizationID
+func (_e *OrganizationRepository_Expecter) VerificationFor(ctx interface{}, hirer interface{}, org interface{}) *OrganizationRepository_VerificationFor_Call {
+	return &OrganizationRepository_VerificationFor_Call{Call: _e.mock.On("VerificationFor", ctx, hirer, org)}
+}
+
+func (_c *OrganizationRepository_VerificationFor_Call) Run(run func(ctx context.Context, hirer domain.HirerID, org domain.OrganizationID)) *OrganizationRepository_VerificationFor_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 domain.HirerID
+		if args[1] != nil {
+			arg1 = args[1].(domain.HirerID)
+		}
+		var arg2 domain.OrganizationID
+		if args[2] != nil {
+			arg2 = args[2].(domain.OrganizationID)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *OrganizationRepository_VerificationFor_Call) Return(verificationRequest *port.VerificationRequest, err error) *OrganizationRepository_VerificationFor_Call {
+	_c.Call.Return(verificationRequest, err)
+	return _c
+}
+
+func (_c *OrganizationRepository_VerificationFor_Call) RunAndReturn(run func(ctx context.Context, hirer domain.HirerID, org domain.OrganizationID) (*port.VerificationRequest, error)) *OrganizationRepository_VerificationFor_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // VerifyOrganization provides a mock function for the type OrganizationRepository
 func (_mock *OrganizationRepository) VerifyOrganization(ctx context.Context, tx port.Tx, id domain.OrganizationID, by domain.AdminID, reason string) error {
 	ret := _mock.Called(ctx, tx, id, by, reason)

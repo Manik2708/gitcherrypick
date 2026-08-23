@@ -24,6 +24,34 @@ import (
 // returned. When the refresh-rotation fixture revokes a family, the session
 // this file established is the one that dies.
 
+// sessionCache signs each principal in once per case and reuses the token.
+// Re-authenticating per step would mint a new session family every time, which
+// would quietly defeat the fixture that asserts a replayed refresh token
+// revokes the whole family.
+type sessionCache struct {
+	principals Principals
+	sessions   map[string]*Session
+}
+
+// For returns the named principal's session, signing them in on first use.
+func (s *sessionCache) For(ctx context.Context, client *http.Client, as string) (*Session, error) {
+	if as == "" || as == "anonymous" {
+		return nil, nil
+	}
+	if s.sessions == nil {
+		s.sessions = map[string]*Session{}
+	}
+	if session, ok := s.sessions[as]; ok {
+		return session, nil
+	}
+	session, err := Authenticate(ctx, client, as, s.principals)
+	if err != nil {
+		return nil, fmt.Errorf("signing in as %s: %w", as, err)
+	}
+	s.sessions[as] = session
+	return session, nil
+}
+
 // Session is an authenticated principal's credentials for one case.
 type Session struct {
 	AccessToken  string
@@ -51,24 +79,23 @@ func Authenticate(ctx context.Context, client *http.Client, principal string, p 
 // primed with the principal's identity first, so the callback resolves to the
 // seeded user rather than minting a new one.
 func authenticateGitHub(ctx context.Context, client *http.Client, principal string, p Principals) (*Session, error) {
-	contributor, ok := p.Contributor(principal)
-	if !ok {
+	if _, ok := p.Contributor(principal); !ok {
 		return nil, fmt.Errorf("contributor %q is not seeded", principal)
 	}
 
-	var start struct {
-		State string `json:"state"`
-	}
+	var start startResponse
 	if err := call(ctx, client, "POST", "/auth/github/start", nil, "", &start); err != nil {
 		return nil, fmt.Errorf("github start: %w", err)
 	}
 
-	// The code is arbitrary — the fake adapter maps it to the identity the
-	// control endpoint was told about. A real GitHub never sees this.
-	code := "e2e-" + principal
-	if err := PrimeGitHubOAuth(ctx, client, code, contributor); err != nil {
-		return nil, fmt.Errorf("priming github oauth: %w", err)
-	}
+	// The code resolves to this principal's identity, which the fake server
+	// was given by LoadCase before the fixture's first step. A real GitHub
+	// never sees it.
+	//
+	// The state travels back on a cookie the client's jar carries, so this is
+	// the same round trip a browser makes — including the check that rejects a
+	// callback nobody started.
+	code := AuthCode(principal)
 
 	var session sessionResponse
 	path := fmt.Sprintf("/auth/github/callback?code=%s&state=%s", code, start.State)
@@ -87,16 +114,11 @@ func authenticateHirer(ctx context.Context, client *http.Client, principal strin
 	// A Google-provider hirer has no password, so signing them in with one
 	// would be testing a path that does not exist for them.
 	if hirer.AuthProvider == "google" {
-		var start struct {
-			State string `json:"state"`
-		}
+		var start startResponse
 		if err := call(ctx, client, "GET", "/auth/google/start", nil, "", &start); err != nil {
 			return nil, fmt.Errorf("google start: %w", err)
 		}
-		code := "e2e-" + principal
-		if err := PrimeGoogleOAuth(ctx, client, code, hirer.Email); err != nil {
-			return nil, fmt.Errorf("priming google oauth: %w", err)
-		}
+		code := AuthCode(principal)
 		var session sessionResponse
 		path := fmt.Sprintf("/auth/google/callback?code=%s&state=%s", code, start.State)
 		if err := call(ctx, client, "GET", path, nil, "", &session); err != nil {
@@ -124,6 +146,15 @@ func authenticateAdmin(ctx context.Context, client *http.Client, principal strin
 		return nil, fmt.Errorf("admin login: %w", err)
 	}
 	return session.session()
+}
+
+// startResponse is what an OAuth start endpoint returns.
+//
+// The state is echoed back on the callback and compared there. The suite
+// carries it rather than inventing one, because a state the server never issued
+// is exactly what the check exists to reject.
+type startResponse struct {
+	State string `json:"state"`
 }
 
 type sessionResponse struct {

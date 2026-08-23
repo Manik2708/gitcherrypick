@@ -93,7 +93,7 @@ func TestClaimRepositoryReplace(t *testing.T) {
 		user := mustCreateContributor(ctx, t, db, "Alice Okafor", 100001, "aliceok")
 		claim := mustCreateDraft(ctx, t, db, user.ID)
 
-		mustEvaluate(ctx, t, db, claim.ID, time.Now(), time.Now().Add(postgres.LockWindow))
+		mustEvaluate(ctx, t, db, claim.ID, time.Now(), time.Now().Add(domain.LockWindow))
 
 		err := db.InTx(ctx, func(ctx context.Context, tx port.Tx) error {
 			_, err := db.Claims().Replace(ctx, tx, claim.ID, 1, &domain.Claim{
@@ -133,7 +133,7 @@ func TestClaimRepositoryReplace(t *testing.T) {
 		user := mustCreateContributor(ctx, t, db, "Alice Okafor", 100001, "aliceok")
 
 		locked := mustCreateDraft(ctx, t, db, user.ID)
-		mustEvaluate(ctx, t, db, locked.ID, time.Now(), time.Now().Add(postgres.LockWindow))
+		mustEvaluate(ctx, t, db, locked.ID, time.Now(), time.Now().Add(domain.LockWindow))
 
 		other := mustCreateDraft(ctx, t, db, user.ID)
 		if _, err := db.Claims().ByID(ctx, other.ID); err != nil {
@@ -371,7 +371,7 @@ func TestClaimRepositoryLifecycle(t *testing.T) {
 		claim := mustCreateDraft(ctx, t, db, user.ID)
 
 		now := time.Now()
-		mustEvaluate(ctx, t, db, claim.ID, now, now.Add(postgres.LockWindow))
+		mustEvaluate(ctx, t, db, claim.ID, now, now.Add(domain.LockWindow))
 
 		got, err := db.Claims().ByID(ctx, claim.ID)
 		if err != nil {

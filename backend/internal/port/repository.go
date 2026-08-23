@@ -25,6 +25,15 @@ var (
 	ErrNotFound     = errors.New("not found")
 	ErrConflict     = errors.New("conflict")
 	ErrVersionStale = errors.New("version conflict")
+
+	// ErrUnavailable is a third party failing transiently — a 5xx, a rate
+	// limit, a timeout, a refused connection.
+	//
+	// Distinct from ErrNotFound because the two demand opposite handling: a PR
+	// that does not exist is a permanent fact about a claim, while GitHub being
+	// down is a fact about right now and must not be recorded as evidence
+	// against the contributor.
+	ErrUnavailable = errors.New("upstream unavailable")
 )
 
 // UserRepository owns contributors and their availability.
@@ -69,6 +78,15 @@ type SessionRepository interface {
 	RevokeFamily(ctx context.Context, tx Tx, familyID string) error
 
 	ActiveCount(ctx context.Context, principalID string) (int, error)
+
+	// ActiveFamily returns the family a principal's live session belongs to,
+	// so logout can revoke it.
+	//
+	// Keyed on the principal rather than on a token, because logout arrives
+	// with an access token and the refresh token it should kill is held by the
+	// client — which is exactly what makes revoking the family rather than the
+	// presented session the right move.
+	ActiveFamily(ctx context.Context, principalID string) (string, error)
 }
 
 // HirerRepository owns recruiter seats and their organizations.
@@ -104,6 +122,14 @@ type OrganizationRepository interface {
 	// VerifyOrganization lifts every seat at once. Verification is per
 	// organization, not per person (ADR-0002, ADR-0008 §3a).
 	VerifyOrganization(ctx context.Context, tx Tx, id domain.OrganizationID, by domain.AdminID, reason string) error
+
+	// VerificationFor reads a seat's own request, so a hirer can see where
+	// they stand without an admin telling them.
+	//
+	// Takes both subjects because a request names exactly one: registration
+	// raises it against the organization, while a later seat is verified in
+	// its own right (ADR-0002). Returns the most recent when both exist.
+	VerificationFor(ctx context.Context, hirer domain.HirerID, org domain.OrganizationID) (*VerificationRequest, error)
 }
 
 // Invitation is a pending seat grant.
@@ -117,6 +143,29 @@ type Invitation struct {
 	ExpiresAt      time.Time
 }
 
+// ShareLinkRepository owns a contributor's publishable scorecard link.
+//
+// The one thing a contributor may publish about themselves (ADR-0002). Only
+// the HASH is stored: the plaintext is shown once at minting, so a database
+// read cannot yield a working link and neither can a backup.
+//
+// uq_share_link_active permits one active link per contributor, so minting a
+// new one revokes any existing — a contributor who shared a link and then
+// minted another must not find the old one still live.
+type ShareLinkRepository interface {
+	// Mint revokes any active link and issues a new one, in one statement.
+	Mint(ctx context.Context, tx Tx, id domain.UserID, tokenHash []byte) (domain.ShareLinkID, error)
+
+	// Revoke withdraws a link. Revocation is immediate: a published link the
+	// contributor withdrew must stop resolving.
+	Revoke(ctx context.Context, id domain.UserID, linkID domain.ShareLinkID) error
+
+	// ResolveToken returns the contributor a live token belongs to, and counts
+	// the view. A revoked link resolves to ErrNotFound, indistinguishable from
+	// a token that never existed.
+	ResolveToken(ctx context.Context, tokenHash []byte) (domain.UserID, error)
+}
+
 // ClaimRepository owns claims and their evidence.
 type ClaimRepository interface {
 	ByID(ctx context.Context, id domain.ClaimID) (*domain.Claim, error)
@@ -128,6 +177,13 @@ type ClaimRepository interface {
 	// expected version and returns ErrVersionStale when it does not match, so
 	// two tabs editing one draft cannot silently clobber each other.
 	Replace(ctx context.Context, tx Tx, id domain.ClaimID, expectedVersion int, c *domain.Claim) (*domain.Claim, error)
+
+	// ReplaceEvidence writes a sub-resource without consuming the version.
+	//
+	// The version is the concurrency token for the whole-claim edit. Setting
+	// evidence is a different operation, and advancing it there would make a
+	// contributor's next PUT fail with a staleness they never caused.
+	ReplaceEvidence(ctx context.Context, tx Tx, id domain.ClaimID, c *domain.Claim) (*domain.Claim, error)
 
 	SetStatus(ctx context.Context, tx Tx, id domain.ClaimID, status domain.ClaimStatus) error
 	SetEvaluated(ctx context.Context, tx Tx, id domain.ClaimID, at time.Time, lockedUntil time.Time) error
@@ -168,8 +224,20 @@ type SkillRepository interface {
 	// so there is no SetStanding.
 	RecomputeStanding(ctx context.Context, tx Tx, id domain.UserID, skillID domain.SkillID) (*domain.UserSkill, error)
 
-	// CreateRequest is rate-limited and deduped BEFORE the queue; the
-	// implementation returns ErrConflict when a trigram match already exists.
+	// MatchSkill finds the catalogue entry a proposed name duplicates, by
+	// name, slug, alias or trigram similarity. ErrNotFound means the proposal
+	// is genuinely new.
+	//
+	// Asked as a question so the DEDUP DECISION stays in the service: whether
+	// a near-match blocks a request is a product rule, not a storage detail.
+	MatchSkill(ctx context.Context, proposedName string) (*domain.Skill, error)
+
+	// RequestsSince returns a contributor's requests within a window, oldest
+	// first, so the service can apply the rolling limit and say when it lifts.
+	RequestsSince(ctx context.Context, userID domain.UserID, since time.Time) ([]SkillRequest, error)
+
+	// CreateRequest inserts. It applies no policy: deduplication and rate
+	// limiting are business rules and live in the service (CLAUDE.md).
 	CreateRequest(ctx context.Context, userID domain.UserID, proposedName, rationale string) (domain.RequestID, error)
 	PendingRequests(ctx context.Context, status string) ([]SkillRequest, error)
 	DecideRequest(ctx context.Context, tx Tx, id domain.RequestID, by domain.AdminID, approve bool, reason string, created *domain.Skill) error
@@ -303,6 +371,10 @@ type SavedSearchRepository interface {
 
 // AdminRepository owns the verification queue.
 type AdminRepository interface {
+	// ByID resolves the subject of a verified access token. An admin decides
+	// hirer verification, so a disabled one must stop acting at once rather
+	// than when their token expires (ADR-0011).
+	ByID(ctx context.Context, id domain.AdminID) (*domain.Admin, error)
 	ByEmail(ctx context.Context, email string) (*domain.Admin, error)
 	PasswordHash(ctx context.Context, id domain.AdminID) ([]byte, error)
 
@@ -321,6 +393,10 @@ type VerificationRequest struct {
 	Status         string
 	CreatedAt      time.Time
 	ReviewedAt     *time.Time
+
+	// DecisionReason is what an admin wrote when refusing. Shown back to the
+	// hirer, because "rejected" with no reason gives them nothing to fix.
+	DecisionReason string
 }
 
 // ReevaluationRepository owns disputes and the escalating cooldown.

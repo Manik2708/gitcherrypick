@@ -39,6 +39,57 @@ func (_m *GitHubClient) EXPECT() *GitHubClient_Expecter {
 	return &GitHubClient_Expecter{mock: &_m.Mock}
 }
 
+// AuthorizeURL provides a mock function for the type GitHubClient
+func (_mock *GitHubClient) AuthorizeURL(state string) string {
+	ret := _mock.Called(state)
+
+	if len(ret) == 0 {
+		panic("no return value specified for AuthorizeURL")
+	}
+
+	var r0 string
+	if returnFunc, ok := ret.Get(0).(func(string) string); ok {
+		r0 = returnFunc(state)
+	} else {
+		r0 = ret.Get(0).(string)
+	}
+	return r0
+}
+
+// GitHubClient_AuthorizeURL_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'AuthorizeURL'
+type GitHubClient_AuthorizeURL_Call struct {
+	*mock.Call
+}
+
+// AuthorizeURL is a helper method to define mock.On call
+//   - state string
+func (_e *GitHubClient_Expecter) AuthorizeURL(state interface{}) *GitHubClient_AuthorizeURL_Call {
+	return &GitHubClient_AuthorizeURL_Call{Call: _e.mock.On("AuthorizeURL", state)}
+}
+
+func (_c *GitHubClient_AuthorizeURL_Call) Run(run func(state string)) *GitHubClient_AuthorizeURL_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 string
+		if args[0] != nil {
+			arg0 = args[0].(string)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *GitHubClient_AuthorizeURL_Call) Return(s string) *GitHubClient_AuthorizeURL_Call {
+	_c.Call.Return(s)
+	return _c
+}
+
+func (_c *GitHubClient_AuthorizeURL_Call) RunAndReturn(run func(state string) string) *GitHubClient_AuthorizeURL_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // ExchangeCode provides a mock function for the type GitHubClient
 func (_mock *GitHubClient) ExchangeCode(ctx context.Context, code string) (*port.GitHubIdentity, error) {
 	ret := _mock.Called(ctx, code)

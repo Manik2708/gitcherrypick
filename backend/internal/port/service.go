@@ -50,6 +50,14 @@ type AuthService interface {
 	LoginHirer(ctx context.Context, email, password string) (*domain.Hirer, *domain.TokenPair, error)
 	LoginAdmin(ctx context.Context, email, password string) (*domain.Admin, *domain.TokenPair, error)
 
+	// ResolvePrincipal turns a verified token's claims into the account acting.
+	//
+	// The token asserts identity and nothing else (ADR-0011), so the account is
+	// read on every authenticated request — which is what makes revocation
+	// immediate rather than delayed by the token's remaining lifetime. A
+	// disabled or deleted account resolves to an error, never to a principal.
+	ResolvePrincipal(ctx context.Context, claims AccessClaims) (*domain.Principal, error)
+
 	// Refresh rotates. Presenting a spent token revokes the whole family,
 	// including the successor currently in use.
 	Refresh(ctx context.Context, refreshToken string) (*domain.TokenPair, error)
@@ -82,6 +90,27 @@ type RegisterHirerRequest struct {
 type OrganizationService interface {
 	Invite(ctx context.Context, p domain.Principal, orgID domain.OrganizationID, email string, role domain.OrgRole) (*Invitation, string, error)
 	AcceptInvitation(ctx context.Context, token, displayName, password string) (*domain.Hirer, *domain.TokenPair, error)
+
+	// Verification tells a hirer where their own review stands.
+	//
+	// Its own method rather than a field on Me: a hirer checks this while
+	// waiting, and folding it into every profile read would cost a second
+	// query on requests that never look at it.
+	Verification(ctx context.Context, p domain.Principal) (*VerificationStatus, error)
+}
+
+// VerificationStatus is a hirer's view of their own review.
+//
+// HirerVerified and the organization's verification are reported separately
+// because they are separate gates, and a seat told only "not verified" cannot
+// tell whether to wait for their own review or their organization's.
+type VerificationStatus struct {
+	Status        string
+	HirerVerified bool
+	Organization  *domain.Organization
+	SubmittedAt   time.Time
+	ReviewedAt    *time.Time
+	Reason        string
 }
 
 // ClaimService owns the claim lifecycle and the validation pipeline.
