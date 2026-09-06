@@ -45,11 +45,13 @@ type seedPullRequest struct {
 
 	// Reviewers names who reviewed, for a pr-review claim. Absent means the
 	// review count is synthesized from anonymous reviewers instead.
-	Reviewers []int64 `json:"reviewers"`
+	Reviewers []int64 `json:"reviewed_by_github_user_ids"`
 
 	// NotFound makes GitHub answer 404 for this PR, so a fixture can assert
 	// what happens when evidence points at something unreachable.
-	NotFound bool `json:"not_found"`
+	// The seed states it as `"error": "not_found"`, which is what the fixture
+	// author writes when they mean "this one cannot be read".
+	Error string `json:"error"`
 }
 
 // repositoriesSeed is the file's shape.
@@ -66,6 +68,14 @@ type githubRepo struct {
 	StargazersCount int    `json:"stargazers_count"`
 	ForksCount      int    `json:"forks_count"`
 	Language        string `json:"language"`
+
+	// The three reach metrics GitHub's REST API does not expose. Carried
+	// because the seed states them and the reach term weights them — dropping
+	// them here would silently score every repository as though its dependency
+	// graph and download count did not exist.
+	Contributors int  `json:"contributors,omitempty"`
+	Dependents   *int `json:"dependents,omitempty"`
+	Downloads    *int `json:"downloads,omitempty"`
 }
 
 // githubBase is a pull request's target branch, which carries the repository.
@@ -123,6 +133,9 @@ func LoadRepositories(sets []string) (json.RawMessage, error) {
 			StargazersCount: r.Stars,
 			ForksCount:      r.Forks,
 			Language:        r.Language,
+			Contributors:    r.Contributors,
+			Dependents:      r.Dependents,
+			Downloads:       r.Downloads,
 		}
 	}
 
@@ -130,7 +143,7 @@ func LoadRepositories(sets []string) (json.RawMessage, error) {
 	reviews := map[string][]githubReview{}
 
 	for key, pr := range file.PullRequests {
-		if pr.NotFound {
+		if pr.Error != "" {
 			// Left undeclared entirely, so the fake answers with GitHub's real
 			// 404 rather than a payload flagged as missing.
 			continue

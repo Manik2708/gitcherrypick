@@ -22,6 +22,10 @@ import (
 // once and exports this rather than paying `go run`'s compile per step.
 const jobsBinaryEnv = "E2E_JOBS_BINARY"
 
+// evaluatorBinaryEnv names the cmd/evaluator binary. Built once by e2e.sh,
+// like the others.
+const evaluatorBinaryEnv = "E2E_EVALUATOR_BINARY"
+
 // databaseURLEnvForJobs is the connection string cmd/jobs is pointed at.
 const databaseURLEnvForJobs = "E2E_DATABASE_URL"
 
@@ -45,29 +49,43 @@ func runPseudo(
 	client *http.Client,
 	bindings map[string]string,
 	step Step,
+	schema string,
 ) error {
 	t.Helper()
 
 	switch step.Request.Method {
 	case MethodAdvanceClock:
-		return advanceClock(ctx, control, step)
+		if err := advanceClock(ctx, control, step); err != nil {
+			return err
+		}
+		// Access tokens live 15 minutes (ADR-0002). Every advance a fixture
+		// makes is measured in days, so the cached bearer tokens are now
+		// expired — correctly. Dropping them makes the next step sign in
+		// again, which is what a real client would do.
+		sessions.Reset()
+		return nil
 
 	case MethodRunOverdueSweep:
-		return runJob(ctx, "overdue-sweep")
+		return runJob(ctx, "overdue-sweep", schema)
 
 	case MethodRunEvaluator:
 		// Stage 5 (CLAUDE.md). Fixtures that judge evidence stay red until
 		// cmd/evaluator exists, which is the pipeline working rather than a
-		// gap in this harness.
-		return fmt.Errorf(
-			"RUN_EVALUATOR needs cmd/evaluator, which is stage 5 — this fixture " +
-				"cannot pass until that gate opens")
+		if err := control.ApplyFake(ctx, step.Fake); err != nil {
+			return err
+		}
+		return runEvaluator(ctx, t, schema)
 
 	case MethodRedeliverLastJob:
-		// Its assertion is about the evaluator recognising a redelivered
-		// message as already handled, so it belongs to the same gate.
-		return fmt.Errorf(
-			"REDELIVER_LAST_JOB asserts evaluator idempotency, which is stage 5")
+		// Delivery is at-least-once: a worker that died after processing but
+		// before acking sees the job again. Re-running the evaluator against a
+		// queue the previous pass emptied is that second delivery — and the
+		// fixture asserts it changes nothing, which is ADR-0004's idempotency
+		// requirement stated as an observation rather than a claim.
+		if err := control.ApplyFake(ctx, step.Fake); err != nil {
+			return err
+		}
+		return runEvaluator(ctx, t, schema)
 
 	case MethodRejectNReevals:
 		return rejectReevaluations(ctx, t, sessions, client, bindings, step)
@@ -103,7 +121,44 @@ func advanceClock(ctx context.Context, control *Control, step Step) error {
 //
 // A separate PROCESS against the same database, so no control listener has to
 // exist inside cmd/api (ADR-0012). It is also exactly how production runs it.
-func runJob(ctx context.Context, name string) error {
+// runEvaluator drains the queue once, exactly as a deployment's worker does.
+//
+// A separate PROCESS rather than an endpoint on cmd/api: the evaluator is its
+// own binary (CLAUDE.md), and a control route that ran it inside the API would
+// put test-only code in the shipping surface.
+func runEvaluator(ctx context.Context, t *testing.T, schema string) error {
+	t.Helper()
+
+	binary := os.Getenv(evaluatorBinaryEnv)
+	if binary == "" {
+		return fmt.Errorf(
+			"%s is not set: run the suite through backend/scripts/e2e.sh, which builds "+
+				"cmd/evaluator and points the harness at it", evaluatorBinaryEnv)
+	}
+
+	databaseURL, err := schemaScopedDSN(os.Getenv(databaseURLEnvForJobs), schema)
+	if err != nil {
+		return err
+	}
+
+	control := ControlURL()
+	out, err := exec.CommandContext(ctx, binary,
+		"--database-url="+databaseURL,
+		"--anthropic-api-url="+control+"/anthropic",
+		"--anthropic-api-key=e2e",
+		"--github-api-url="+control+"/github",
+		"--github-token=e2e",
+		"--clock-url="+control+"/_clock",
+		"--drain",
+	).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("running the evaluator: %w: %s", err, out)
+	}
+	t.Logf("evaluator: %s", out)
+	return nil
+}
+
+func runJob(ctx context.Context, name, schema string) error {
 	binary := os.Getenv(jobsBinaryEnv)
 	if binary == "" {
 		return fmt.Errorf(
@@ -111,9 +166,12 @@ func runJob(ctx context.Context, name string) error {
 				"cmd/jobs and points the harness at it", jobsBinaryEnv)
 	}
 
-	databaseURL := os.Getenv(databaseURLEnvForJobs)
-	if databaseURL == "" {
-		return fmt.Errorf("%s is not set", databaseURLEnvForJobs)
+	// Scoped to the fixture's schema, exactly as the API is. A job reading
+	// the default search_path would run against whatever tables happen to be
+	// there — which is none of them, since every case builds its own.
+	databaseURL, err := schemaScopedDSN(os.Getenv(databaseURLEnvForJobs), schema)
+	if err != nil {
+		return err
 	}
 
 	cmd := exec.CommandContext(ctx, binary, "run", name,
@@ -181,11 +239,14 @@ func rejectReevaluations(
 //
 // `as` when the step gives one, so a fixture with more than one admin can say
 // which; otherwise the seeded root.
+// `as: system` marks a step the HARNESS drives rather than a principal — it
+// names no seeded account, so a pseudo-step that still needs admin
+// credentials falls back to the seeded administrator.
 func adminPrincipalFor(step Step) string {
-	if step.As != "" {
+	if step.As != "" && step.As != "system" {
 		return step.As
 	}
-	return "root_admin"
+	return "root"
 }
 
 // openReevaluation raises a dispute as the named contributor and returns its id.

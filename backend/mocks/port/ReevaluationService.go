@@ -119,23 +119,23 @@ func (_c *ReevaluationService_Request_Call) RunAndReturn(run func(ctx context.Co
 }
 
 // Status provides a mock function for the type ReevaluationService
-func (_mock *ReevaluationService) Status(ctx context.Context, id domain.UserID) (*domain.Cooldown, error) {
+func (_mock *ReevaluationService) Status(ctx context.Context, id domain.UserID) (*domain.DisputeStanding, error) {
 	ret := _mock.Called(ctx, id)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Status")
 	}
 
-	var r0 *domain.Cooldown
+	var r0 *domain.DisputeStanding
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.UserID) (*domain.Cooldown, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.UserID) (*domain.DisputeStanding, error)); ok {
 		return returnFunc(ctx, id)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.UserID) *domain.Cooldown); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.UserID) *domain.DisputeStanding); ok {
 		r0 = returnFunc(ctx, id)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*domain.Cooldown)
+			r0 = ret.Get(0).(*domain.DisputeStanding)
 		}
 	}
 	if returnFunc, ok := ret.Get(1).(func(context.Context, domain.UserID) error); ok {
@@ -176,12 +176,12 @@ func (_c *ReevaluationService_Status_Call) Run(run func(ctx context.Context, id 
 	return _c
 }
 
-func (_c *ReevaluationService_Status_Call) Return(cooldown *domain.Cooldown, err error) *ReevaluationService_Status_Call {
-	_c.Call.Return(cooldown, err)
+func (_c *ReevaluationService_Status_Call) Return(disputeStanding *domain.DisputeStanding, err error) *ReevaluationService_Status_Call {
+	_c.Call.Return(disputeStanding, err)
 	return _c
 }
 
-func (_c *ReevaluationService_Status_Call) RunAndReturn(run func(ctx context.Context, id domain.UserID) (*domain.Cooldown, error)) *ReevaluationService_Status_Call {
+func (_c *ReevaluationService_Status_Call) RunAndReturn(run func(ctx context.Context, id domain.UserID) (*domain.DisputeStanding, error)) *ReevaluationService_Status_Call {
 	_c.Call.Return(run)
 	return _c
 }

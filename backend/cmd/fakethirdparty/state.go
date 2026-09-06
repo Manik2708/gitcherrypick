@@ -18,6 +18,21 @@ import (
 type State struct {
 	GitHub GitHubState `json:"github"`
 	Google GoogleState `json:"google"`
+
+	// AI is served verbatim. The shape is the fixture's `fake.ai` block, which
+	// is what the evaluator's adapter decodes — this server never looks inside.
+	AI AIState `json:"ai"`
+}
+
+// AIState is the model's half of a fixture.
+type AIState struct {
+	Judgements  json.RawMessage `json:"judgements,omitempty"`
+	Suggestions json.RawMessage `json:"suggested_skills,omitempty"`
+
+	// Refused mirrors a stop_reason of "refusal", which the real API delivers
+	// as an HTTP 200 — the case an evaluator checking only the status would
+	// score as an empty judgement.
+	Refused bool `json:"refused,omitempty"`
 }
 
 // GitHubState is the GitHub half of a fixture's third_party block.
@@ -81,6 +96,10 @@ type Store struct {
 	// here rather than in the API so that moving time is a request the harness
 	// makes, not a handler the API ships.
 	offset time.Duration
+
+	// origin is where the clock was pinned at startup. Kept separately so
+	// loading a fixture can reset the offset without un-pinning the run.
+	origin time.Duration
 }
 
 // NewStore returns an empty store. Every fixture calls Load before its first
@@ -105,7 +124,17 @@ func (s *Store) Load(state State) {
 
 	// Time resets with everything else. A fixture inheriting the previous
 	// one's advanced clock would see locks expire that it never waited out.
-	s.offset = 0
+	// Back to the PINNED origin, not to zero. /_load resets the data a fixture
+	// declares; where the clock starts is configuration for the whole run, and
+	// resetting it here would un-pin time on the first fixture.
+	s.offset = s.origin
+}
+
+// AI returns the model's half of the loaded fixture.
+func (s *Store) AI() AIState {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.state.AI
 }
 
 // Grant records that a token now speaks for a code.
@@ -188,6 +217,18 @@ func (s *Store) Offset() time.Duration {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.offset
+}
+
+// PinTo starts the clock at a fixed instant.
+//
+// Expressed as an offset from the host's clock because that is what the
+// adapter polls: the API adds it to its own time, so pinning here pins there
+// without either side needing to agree on an absolute.
+func (s *Store) PinTo(at time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.origin = time.Until(at)
+	s.offset = s.origin
 }
 
 // Record stores a sent email.

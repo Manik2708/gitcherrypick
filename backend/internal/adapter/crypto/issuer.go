@@ -197,6 +197,9 @@ func (t *TokenIssuer) Issue(ctx context.Context, c port.AccessClaims, ttl time.D
 		"iat":  now.Unix(),
 		"exp":  now.Add(ttl).Unix(),
 		"jti":  uuid.NewString(),
+		// The session family this token was issued against. Signing out
+		// closes the family, and that is what ends the token.
+		"fam": c.Family,
 	})
 	token.Header["kid"] = t.keys.signingKID
 
@@ -241,7 +244,9 @@ func (t *TokenIssuer) Verify(ctx context.Context, token string) (*port.AccessCla
 		return nil, fmt.Errorf("%w: kind %q", ErrInvalidToken, rawKind)
 	}
 
-	return &port.AccessClaims{Subject: subject, Kind: kind}, nil
+	family, _ := claims["fam"].(string)
+
+	return &port.AccessClaims{Subject: subject, Kind: kind, Family: family}, nil
 }
 
 // keyFor resolves the token's kid against the trusted set.

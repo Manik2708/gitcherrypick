@@ -3,9 +3,13 @@ package postgres
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"sort"
+	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/Manik2708/gitcherrypick/backend/internal/domain"
 	"github.com/Manik2708/gitcherrypick/backend/internal/port"
@@ -23,6 +27,61 @@ type EvaluationRepository struct{ db *DB }
 func (db *DB) Evaluations() *EvaluationRepository { return &EvaluationRepository{db: db} }
 
 var _ port.EvaluationRepository = (*EvaluationRepository)(nil)
+
+// Record opens an evaluation, or returns the one already open for this
+// (claim, version, evidence, rubric).
+//
+// ON CONFLICT DO NOTHING against uq_evaluation: a redelivered message must not
+// create a second run over the same evidence, and the unique index is what
+// makes that impossible rather than merely unlikely (ADR-0004).
+func (r *EvaluationRepository) Record(ctx context.Context, t port.Tx, e port.Evaluation) error {
+	if _, err := r.db.q(t).Exec(ctx, `
+		INSERT INTO evaluations
+		    (id, claim_id, claim_version, rubric_version, model, prompt_version,
+		     evidence_fingerprint, trigger, status, completed_at)
+		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7::evaluation_trigger,
+		        'succeeded', now())
+		ON CONFLICT DO NOTHING`,
+		string(e.ClaimID), e.ClaimVersion, e.RubricVersion, e.Model, e.PromptVersion,
+		e.Fingerprint, e.Trigger); err != nil {
+		return translate(err, fmt.Sprintf("recording the evaluation for claim %s", e.ClaimID))
+	}
+	return nil
+}
+
+// SkillPRScores reads the surviving per-PR scores for one (user, skill).
+//
+// Joined through the LINKS rather than through claims: a link records that
+// this PR still counts for this skill, and a withdrawn claim releases its
+// links — so a score whose evidence is gone drops out here without needing a
+// second rule to remember that (ADR-0007).
+func (r *EvaluationRepository) SkillPRScores(ctx context.Context, t port.Tx, id domain.UserID, skillID domain.SkillID) ([]float64, error) {
+	rows, err := r.db.q(t).Query(ctx, `
+		SELECT pss.score
+		FROM user_skill_pr_links l
+		JOIN claims c ON c.id = l.claim_id
+		JOIN evaluations e ON e.claim_id = c.id AND e.status = 'succeeded'
+		JOIN pr_skill_scores pss
+		  ON pss.evaluation_id = e.id AND pss.skill_id = l.skill_id
+		 AND pss.repo_owner = l.repo_owner AND pss.repo_name = l.repo_name
+		 AND pss.pr_number = l.pr_number
+		WHERE l.user_id = $1 AND l.skill_id = $2 AND l.status = 'scored'`,
+		string(id), string(skillID))
+	if err != nil {
+		return nil, translate(err, "reading surviving PR scores")
+	}
+	defer rows.Close()
+
+	var out []float64
+	for rows.Next() {
+		var score float64
+		if err := rows.Scan(&score); err != nil {
+			return nil, translate(err, "scanning a PR score")
+		}
+		out = append(out, score)
+	}
+	return out, translate(rows.Err(), "reading surviving PR scores")
+}
 
 // Persist writes the per-pair scores and the AI's skill suggestions.
 //
@@ -45,9 +104,16 @@ func (r *EvaluationRepository) Persist(ctx context.Context, t port.Tx, claimID d
 	}
 
 	for _, s := range scores {
+		// A dropped pair is NOT stored. ck_pr_skill_score_range enforces
+		// score > 0 because a zero-scoring skill is dropped rather than
+		// recorded as a zero (ADR-0003) — the verdict lives on the link's
+		// rejection_reason, which is what a claim read reports it from.
+		if s.Disqualified || s.Score <= 0 {
+			continue
+		}
+
 		// The dimension scores and their remarks travel with the number they
-		// justify. A disqualified pair has none, and an empty object is the
-		// honest encoding of that rather than a missing column.
+		// justify.
 		dims := s.Dimensions
 		if dims == nil {
 			dims = map[string]domain.Dimension{}
@@ -79,10 +145,12 @@ func (r *EvaluationRepository) Persist(ctx context.Context, t port.Tx, claimID d
 
 	for _, sg := range suggestions {
 		if _, err := q.Exec(ctx, `
-			INSERT INTO claim_skills (id, claim_id, skill_id, origin, is_nominated_primary)
-			VALUES (gen_random_uuid(), $1, (SELECT id FROM skills WHERE slug = $2), 'ai_suggested', false)
+			INSERT INTO claim_skills
+			    (id, claim_id, skill_id, origin, is_nominated_primary, rationale)
+			VALUES (gen_random_uuid(), $1, (SELECT id FROM skills WHERE slug = $2),
+			        'ai_suggested', false, NULLIF($3, ''))
 			ON CONFLICT (claim_id, skill_id) DO NOTHING`,
-			string(claimID), sg.Slug); err != nil {
+			string(claimID), sg.Slug, sg.Rationale); err != nil {
 			return translate(err, fmt.Sprintf("writing suggestion %q", sg.Slug))
 		}
 	}
@@ -154,13 +222,14 @@ func (r *EvaluationRepository) Snapshot(ctx context.Context, t port.Tx, s domain
 // The broker is at-least-once, so the same job WILL arrive twice and the
 // second delivery has to cost nothing (ADR-0004). Keyed on the version rather
 // than the claim, because an edited claim is a genuinely new judgement.
-func (r *EvaluationRepository) AlreadyEvaluated(ctx context.Context, claimID domain.ClaimID, version int) (bool, error) {
+func (r *EvaluationRepository) AlreadyEvaluated(ctx context.Context, claimID domain.ClaimID, version int, rubricVersion string) (bool, error) {
 	var done bool
 	err := r.db.pool.QueryRow(ctx, `
 		SELECT EXISTS (
 		    SELECT 1 FROM evaluations
-		    WHERE claim_id = $1 AND claim_version = $2 AND status = 'succeeded'
-		)`, string(claimID), version).Scan(&done)
+		    WHERE claim_id = $1 AND claim_version = $2 AND rubric_version = $3
+		      AND status = 'succeeded'
+		)`, string(claimID), version, rubricVersion).Scan(&done)
 	if err != nil {
 		return false, translate(err, "checking for a completed evaluation")
 	}
@@ -207,7 +276,7 @@ var _ port.NormsRepository = (*NormsRepository)(nil)
 func (r *NormsRepository) Current(ctx context.Context) (map[string]domain.GlobalNorms, error) {
 	rows, err := r.db.pool.Query(ctx, `
 		SELECT metric, generation, max_value, coalesce(max_source, ''),
-		       coalesce(observation_count, 0), last_recomputed_at
+		       coalesce(observation_count, 0), last_recomputed_at, quantiles
 		FROM global_norms
 		ORDER BY metric`)
 	if err != nil {
@@ -217,14 +286,47 @@ func (r *NormsRepository) Current(ctx context.Context) (map[string]domain.Global
 
 	out := map[string]domain.GlobalNorms{}
 	for rows.Next() {
-		var n domain.GlobalNorms
+		var (
+			n          domain.GlobalNorms
+			recomputed *time.Time
+			quantiles  []byte
+		)
+		// last_recomputed_at is NULL until the nightly job first runs, which is
+		// the state every fresh deployment starts in. Scanning it into a
+		// non-pointer made the first evaluation on a new database fail.
 		if err := rows.Scan(&n.Metric, &n.Generation, &n.MaxValue, &n.MaxSource,
-			&n.ObservationCount, &n.LastRecomputedAt); err != nil {
+			&n.ObservationCount, &recomputed, &quantiles); err != nil {
 			return nil, translate(err, "scanning global norm")
+		}
+		n.Quantiles = decodeQuantiles(quantiles)
+		if recomputed != nil {
+			n.LastRecomputedAt = *recomputed
 		}
 		out[n.Metric] = n
 	}
 	return out, translate(rows.Err(), "reading global norms")
+}
+
+// decodeQuantiles turns the stored {p10: …, p25: …} object into boundaries.
+//
+// Stored as a labelled object because that is how a statistician reads it, and
+// consumed as a sorted slice because that is what the percentile blend needs.
+// The labels carry no meaning beyond their order, so they are dropped here.
+func decodeQuantiles(raw []byte) []float64 {
+	if len(raw) == 0 {
+		return nil
+	}
+	var labelled map[string]float64
+	if err := json.Unmarshal(raw, &labelled); err != nil {
+		return nil
+	}
+
+	out := make([]float64, 0, len(labelled))
+	for _, v := range labelled {
+		out = append(out, v)
+	}
+	sort.Float64s(out)
+	return out
 }
 
 // Observe records one measurement.
@@ -261,4 +363,96 @@ func (r *NormsRepository) Recompute(ctx context.Context, generation int) error {
 		      observation_count = EXCLUDED.observation_count,
 		      last_recomputed_at = now()`, generation)
 	return translate(err, "recomputing global norms")
+}
+
+// --- rubric sweeps (RFC-0015) ------------------------------------------------
+
+// ActiveRubricVersion is the target of the most recent sweep.
+//
+// Falls back to the configured version when none has run, which is the state
+// of a fresh platform. Read on the search path, so it is one indexed row.
+func (r *EvaluationRepository) ActiveRubricVersion(ctx context.Context, fallback string) (string, error) {
+	var version string
+	err := r.db.pool.QueryRow(ctx, `
+		SELECT to_rubric_version FROM rubric_sweeps
+		ORDER BY created_at DESC
+		LIMIT 1`).Scan(&version)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return fallback, nil
+	}
+	if err != nil {
+		return "", translate(err, "reading the active rubric version")
+	}
+	return version, nil
+}
+
+// sweepColumns is the projection every sweep read shares.
+const sweepColumns = `id, from_rubric_version, to_rubric_version, reason,
+	requested_by, claims_enqueued, created_at, completed_at`
+
+// OpenSweep returns the sweep still draining, or nil.
+func (r *EvaluationRepository) OpenSweep(ctx context.Context) (*domain.RubricSweep, error) {
+	var s domain.RubricSweep
+	err := r.db.pool.QueryRow(ctx,
+		`SELECT `+sweepColumns+` FROM rubric_sweeps WHERE completed_at IS NULL`).
+		Scan(&s.ID, &s.From, &s.To, &s.Reason, &s.RequestedBy,
+			&s.ClaimsEnqueued, &s.CreatedAt, &s.CompletedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, translate(err, "reading the open sweep")
+	}
+	return &s, nil
+}
+
+// RecordSweep writes the sweep alongside the work it enqueued.
+func (r *EvaluationRepository) RecordSweep(ctx context.Context, t port.Tx, s *domain.RubricSweep) (*domain.RubricSweep, error) {
+	id := s.ID
+	if id == "" {
+		generated, err := uuid.NewV7()
+		if err != nil {
+			return nil, fmt.Errorf("generating sweep id: %w", err)
+		}
+		id = domain.RequestID(generated.String())
+	}
+
+	var created domain.RubricSweep
+	err := r.db.q(t).QueryRow(ctx, `
+		INSERT INTO rubric_sweeps
+		    (id, from_rubric_version, to_rubric_version, reason, requested_by,
+		     claims_enqueued, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		RETURNING `+sweepColumns,
+		string(id), s.From, s.To, s.Reason, string(s.RequestedBy),
+		s.ClaimsEnqueued, s.CreatedAt).
+		Scan(&created.ID, &created.From, &created.To, &created.Reason,
+			&created.RequestedBy, &created.ClaimsEnqueued,
+			&created.CreatedAt, &created.CompletedAt)
+	if err != nil {
+		return nil, translate(err, "recording the sweep")
+	}
+	return &created, nil
+}
+
+// CompleteSweep closes a sweep whose corpus has drained.
+func (r *EvaluationRepository) CompleteSweep(ctx context.Context, t port.Tx, id domain.RequestID, at time.Time) error {
+	_, err := r.db.q(t).Exec(ctx,
+		`UPDATE rubric_sweeps SET completed_at = $2 WHERE id = $1 AND completed_at IS NULL`,
+		string(id), at)
+	return translate(err, fmt.Sprintf("completing sweep %s", id))
+}
+
+// SweptClaimsRemaining counts what a sweep has left to judge.
+//
+// Counted from the QUEUE rather than from the sweep row: the row records what
+// was taken on, and what is left is a fact about the queue right now.
+func (r *EvaluationRepository) SweptClaimsRemaining(ctx context.Context, t port.Tx) (int, error) {
+	var remaining int
+	if err := r.db.q(t).QueryRow(ctx, `
+		SELECT count(*) FROM evaluation_jobs WHERE topic = 'claims.sweep'`).
+		Scan(&remaining); err != nil {
+		return 0, translate(err, "counting the sweep's remaining claims")
+	}
+	return remaining, nil
 }

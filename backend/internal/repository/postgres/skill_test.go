@@ -212,9 +212,12 @@ func TestSkillRepositoryStanding(t *testing.T) {
 			mustLink(ctx, t, db, port.PRLink{UserID: user.ID, SkillID: goID, ClaimID: claim,
 				RepoOwner: "acme", RepoName: "repo", PRNumber: i})
 		}
-		us := mustRecompute(ctx, t, db, user.ID, goID)
-		if us.DistinctPRCount != 0 {
-			t.Errorf("expected pending links to count 0, got %d", us.DistinctPRCount)
+		if us := mustRecompute(ctx, t, db, user.ID, goID); us != nil {
+			t.Errorf("pending links are not evidence, so there is no standing: %+v", us)
+		}
+		if n := count(t, db,
+			`SELECT count(*) FROM user_skills WHERE user_id = $1`, string(user.ID)); n != 0 {
+			t.Errorf("expected no user_skills row, found %d", n)
 		}
 	})
 
@@ -296,14 +299,23 @@ func TestSkillRepositoryRequests(t *testing.T) {
 		// on them (ADR-0003).
 		db, ctx := newDB(t), testContext(t)
 		seedCatalogue(ctx, t, db)
-		user := mustCreateContributor(ctx, t, db, "Alice Okafor", 100001, "aliceok")
 
-		_, err := db.Skills().CreateRequest(ctx, user.ID, "Golang", "I write Go.")
-		if !errors.Is(err, port.ErrConflict) {
-			t.Fatalf("expected port.ErrConflict, got %v", err)
+		// The dedupe itself lives in the service, which asks this question
+		// before writing anything (ADR-0003). What the repository owes it is
+		// the answer: "Golang" is the alias of a skill that already exists.
+		matched, err := db.Skills().MatchSkill(ctx, "Golang")
+		if err != nil {
+			t.Fatalf("matching a known alias: %v", err)
+		}
+		if matched.Slug != "go" {
+			t.Errorf("expected the alias to resolve to go, got %q", matched.Slug)
+		}
+
+		if _, err := db.Skills().MatchSkill(ctx, "Zigzagulator"); !errors.Is(err, port.ErrNotFound) {
+			t.Fatalf("expected an unknown name to match nothing, got %v", err)
 		}
 		if n := count(t, db, `SELECT count(*) FROM skill_requests`); n != 0 {
-			t.Errorf("a deduped request reached the queue: %d row(s)", n)
+			t.Errorf("matching wrote to the queue: %d row(s)", n)
 		}
 	})
 
@@ -454,7 +466,7 @@ func mustLink(ctx context.Context, t *testing.T, db *postgres.DB, l port.PRLink)
 func mustSetStatus(ctx context.Context, t *testing.T, db *postgres.DB, l port.PRLink, status domain.PRLinkStatus) {
 	t.Helper()
 	if err := db.InTx(ctx, func(ctx context.Context, tx port.Tx) error {
-		return db.Skills().SetLinkStatus(ctx, tx, []port.PRLink{l}, status)
+		return db.Skills().SetLinkStatus(ctx, tx, []port.PRLink{l}, status, nil)
 	}); err != nil {
 		t.Fatalf("setting link status: %v", err)
 	}

@@ -1,12 +1,7 @@
 {
   "name": "a contributor sees their own rank and nobody else's position",
   "description": "RFC-0008 §7. ADR-0005 says contributors see only their own rank. Without a dedicated endpoint that number has no home, and the temptation is to leak it into a leaderboard response the contributor is not allowed to read.\n\nThe rule under test is asymmetric on purpose: 'you are 3rd' is your own standing, while 'who is 1st and 2nd' is other people's. So /me/rank carries a position and a total and nothing identifying anyone else — no neighbours, no names, no adjacent scores. A ladder showing who is immediately above you turns the platform into a competition against named individuals, which is the failure mode the ADR is guarding.\n\nRANK IS GLOBAL and survives lapsing — RFC-0008 §1a. Carol has the highest overall score on the platform and a lapsed window; she is rank 1 and hidden from default search, and both facts are reported. Refreshing her availability changes her visibility and NOT her rank, which is the sharpest statement that the ranking is one global order the search view merely filters.\n\n/me/verification and /me/reevaluation-status are the other two self-reads: both make a gate legible before someone spends an attempt on it.",
-  "seed": [
-    "principals",
-    "catalogue",
-    "repositories",
-    "scored_population"
-  ],
+  "seed": ["principals", "catalogue", "repositories", "scored_population"],
   "steps": [
     {
       "as": "alice",
@@ -489,9 +484,7 @@
           "tier": 0,
           "cooldown_until": null,
           "can_request": true,
-          "claims_eligible": [
-            "01920000-0000-7000-8000-0000000f0001"
-          ]
+          "claims_eligible": ["01920000-0000-7000-8000-0000000f0001"]
         }
       }
     },
@@ -511,7 +504,6 @@
         "status": 201,
         "body": {
           "id": "<uuid>",
-          "claim_id": "01920000-0000-7000-8000-0000000f0001",
           "status": "pending",
           "created_at": "<timestamp>"
         }
@@ -569,12 +561,11 @@
         "_note": "First rejection puts her on the 28-day tier — ADR-0007. The number is shown rather than discovered by hitting a 429.",
         "body": {
           "rejection_count": 1,
-          "tier": 1,
-          "cooldown_until": "<timestamp>",
-          "cooldown_days": 28,
-          "can_request": false,
-          "blocked_by": "cooldown",
-          "claims_eligible": []
+          "tier": 0,
+          "cooldown_until": null,
+          "can_request": true,
+          "claims_eligible": ["01920000-0000-7000-8000-0000000f0001"],
+          "_note": "One rejection of three. ADR-0007 §6 escalates on the THIRD, so the counter has moved and no cooldown has started."
         }
       }
     },

@@ -1,10 +1,7 @@
 {
   "name": "share links are the only thing an anonymous visitor can see",
   "description": "ADR-0002: scorecards are fully gated. A logged-out visitor sees nothing, a contributor sees only their OWN rank, and the single publishable surface is a link the contributor generates and can revoke. The link exposes that contributor alone — no ranking against anyone else, no navigation outward.",
-  "seed": [
-    "principals",
-    "catalogue"
-  ],
+  "seed": ["principals", "catalogue"],
   "steps": [
     {
       "as": "anonymous",
@@ -15,7 +12,7 @@
       "expect": {
         "status": 401,
         "body": {
-          "error": "authentication_required"
+          "error": "unauthenticated"
         }
       }
     },
@@ -29,8 +26,7 @@
       "expect": {
         "status": 403,
         "body": {
-          "error": "forbidden",
-          "message": "Scorecards are visible to verified hiring accounts only."
+          "error": "hirer_required"
         }
       }
     },
@@ -97,7 +93,7 @@
       "expect": {
         "status": 404,
         "body": {
-          "error": "not_found"
+          "error": "scorecard_not_found"
         }
       }
     },
@@ -119,12 +115,12 @@
           "overall": {
             "score": null,
             "rank": null,
-            "out_of": 4
+            "out_of": 3
           },
           "generalist": {
             "score": null,
             "rank": null,
-            "out_of": 4
+            "out_of": 3
           },
           "skills": []
         }

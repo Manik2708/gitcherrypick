@@ -9,6 +9,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/Manik2708/gitcherrypick/backend/internal/repository/postgres"
 )
 
 // The suite runs against a real Postgres (ADR-0001: everything else is an
@@ -37,11 +39,35 @@ func BaseURL() string {
 	return "http://127.0.0.1:8080"
 }
 
+// Epoch is the instant every fixture runs at.
+//
+// Pinned rather than "now", because the seed and several fixtures carry
+// ABSOLUTE dates — alice_go_claim is evaluated 2026-08-10 and locked until
+// 2026-08-17, and claim_reads_are_owner_scoped asserts those strings
+// literally, so they cannot be made relative. Left on the host's clock the
+// suite's result depends on the calendar date: the lock expires, a promised
+// result date slides into the past, and evidence ages out of a recency filter.
+//
+// 2026-08-12 is the only window that satisfies every constraint at once —
+// after the claim was evaluated, before its lock lifts, and before the
+// earliest tentative_result_date a fixture expects to be accepted.
+const Epoch = "2026-08-12T09:00:00Z"
+
+// EpochTime is Epoch parsed. It panics on a malformed constant, which is a
+// harness bug rather than anything a run could recover from.
+func EpochTime() time.Time {
+	at, err := time.Parse(time.RFC3339, Epoch)
+	if err != nil {
+		panic("e2e: malformed Epoch constant: " + err.Error())
+	}
+	return at
+}
+
 // Connect opens a pool and verifies it answers, rather than trusting that a
 // lazy pool will work later. A connection problem discovered mid-suite looks
 // like a test failure; discovered here it looks like what it is.
 func Connect(ctx context.Context) (*pgxpool.Pool, error) {
-	config, err := pgxpool.ParseConfig(DatabaseURL())
+	config, err := postgres.PoolConfig(DatabaseURL())
 	if err != nil {
 		return nil, fmt.Errorf("parse E2E_DATABASE_URL: %w", err)
 	}

@@ -230,7 +230,7 @@ func TestReevaluationStatus(t *testing.T) {
 	h := newHarness(t)
 	h.signIn("alice-token", contributorPrincipal())
 	h.reeval.EXPECT().Status(mock.Anything, domain.UserID(aliceID)).
-		Return(&domain.Cooldown{RejectionCount: 0, Tier: 0}, nil)
+		Return(&domain.DisputeStanding{ClaimsEligible: []domain.ClaimID{}}, nil)
 
 	got := h.do(t, http.MethodGet, "/me/reevaluation-status", "alice-token", "")
 	require.Equal(t, http.StatusOK, got.Status)
@@ -248,9 +248,12 @@ func TestMySkills(t *testing.T) {
 	h := newHarness(t)
 	h.signIn("alice-token", contributorPrincipal())
 	h.skills.EXPECT().MySkills(mock.Anything, domain.UserID(aliceID)).
-		Return([]domain.UserSkill{{
-			Slug: "go", Standing: domain.Primary, DistinctPRCount: 5, Score: 79.3,
-		}}, nil)
+		Return(&port.SkillStanding{
+			Skills: []domain.UserSkill{{
+				Slug: "go", Standing: domain.Primary, DistinctPRCount: 5, Score: 79.3,
+			}},
+			RubricVersion: "2026-01",
+		}, nil)
 
 	got := h.do(t, http.MethodGet, "/me/skills", "alice-token", "")
 	require.Equal(t, http.StatusOK, got.Status)
@@ -301,13 +304,18 @@ func TestPRURLParsing(t *testing.T) {
 	}
 }
 
-func TestMalformedPRURLsAreRejectedBeforeTheService(t *testing.T) {
+func TestMalformedPRURLsAreRecordedRatherThanRefused(t *testing.T) {
+	// Accepting evidence does NOT validate it. A draft may hold anything and
+	// the checks run at submit, so a URL that will not parse is stored with
+	// the reason attached — which is what lets a contributor paste five and
+	// then fix the ones the platform marked (ADR-0003).
 	invalid := map[string]string{
 		"an issue not a PR": "https://github.com/acme/platform/issues/55",
 		"repo root":         "https://github.com/acme/platform",
 		"no number":         "https://github.com/acme/platform/pull/",
 		"not a url":         "acme/platform#55",
 		"empty":             "",
+		"number too wide":   "https://github.com/a/b/pull/999999999999999999999999",
 	}
 
 	for name, raw := range invalid {
@@ -315,14 +323,43 @@ func TestMalformedPRURLsAreRejectedBeforeTheService(t *testing.T) {
 			h := newHarness(t)
 			h.signIn("alice-token", contributorPrincipal())
 
+			malformed := domain.MalformedURL
+			h.claims.EXPECT().SetPREvidence(mock.Anything, mock.Anything, mock.Anything,
+				mock.MatchedBy(func(prs []domain.PREvidence) bool {
+					return len(prs) == 1 && prs[0].InvalidReason != nil &&
+						*prs[0].InvalidReason == domain.MalformedURL &&
+						prs[0].RepoOwner == "" && prs[0].RawURL == raw
+				})).Return(&domain.Claim{
+				PREvidence: []domain.PREvidence{{
+					Position: 1, Role: domain.RoleAuthor, InvalidReason: &malformed,
+				}},
+			}, nil)
+
 			got := h.do(t, http.MethodPost, "/claims/"+claimID+"/evidence/prs", "alice-token",
 				`{"prs":[{"position":1,"url":"`+raw+`"}]}`)
-			require.Equal(t, http.StatusUnprocessableEntity, got.Status)
-			require.Equal(t, service.CodeInvalidEvidence, got.errorCode(t))
-			h.claims.AssertNotCalled(t, "SetPREvidence",
-				mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+			require.Equal(t, http.StatusOK, got.Status)
+
+			var body prEvidenceListResponse
+			got.decode(t, &body)
+			require.Len(t, body.PRs, 1)
+			require.Equal(t, "malformed_url", body.PRs[0].InvalidReason)
+			require.Nil(t, body.PRs[0].RepoOwner, "an unparseable URL has no owner")
+			require.Nil(t, body.PRs[0].PRNumber)
 		})
 	}
+}
+
+// prEvidenceListResponse is what the PR-evidence write returns.
+type prEvidenceListResponse struct {
+	PRs []prEvidenceResponse `json:"prs"`
+}
+
+type prEvidenceResponse struct {
+	Position      int     `json:"position"`
+	RepoOwner     *string `json:"repo_owner"`
+	PRNumber      *int    `json:"pr_number"`
+	Role          string  `json:"role"`
+	InvalidReason string  `json:"invalid_reason"`
 }
 
 func TestReviewerRoleIsExplicit(t *testing.T) {
@@ -397,17 +434,17 @@ func TestSubmitReportsEveryValidationFailure(t *testing.T) {
 	require.Equal(t, http.StatusUnprocessableEntity, got.Status)
 
 	var body struct {
-		Error    string `json:"error"`
-		Failures []struct {
+		Error string `json:"error"`
+		Items []struct {
 			Position int    `json:"position"`
 			Reason   string `json:"reason"`
-		} `json:"failures"`
+		} `json:"items"`
 	}
 	got.decode(t, &body)
 	require.Equal(t, service.CodeInvalidEvidence, body.Error)
-	require.Len(t, body.Failures, 2)
-	require.Equal(t, 2, body.Failures[0].Position)
-	require.Equal(t, 4, body.Failures[1].Position)
+	require.Len(t, body.Items, 2)
+	require.Equal(t, 2, body.Items[0].Position)
+	require.Equal(t, 4, body.Items[1].Position)
 }
 
 func TestSuggestionDecisionKeepsItsOrigin(t *testing.T) {
@@ -422,7 +459,9 @@ func TestSuggestionDecisionKeepsItsOrigin(t *testing.T) {
 			h.signIn("alice-token", contributorPrincipal())
 			h.claims.EXPECT().DecideSuggestion(mock.Anything, domain.UserID(aliceID),
 				domain.ClaimID(claimID), skillID, accept).
-				Return(&domain.UserSkill{Slug: "kubernetes"}, nil)
+				Return(&domain.SuggestionDecision{
+					Skill: decidedSkill(accept),
+				}, nil)
 
 			got := h.do(t, http.MethodPost,
 				"/claims/"+claimID+"/suggestions/"+string(skillID)+"/"+path, "alice-token", "")
@@ -446,7 +485,7 @@ func TestWithdrawPreviewNamesTheDemotions(t *testing.T) {
 	h := newHarness(t)
 	h.signIn("alice-token", contributorPrincipal())
 	h.claims.EXPECT().WithdrawPreview(mock.Anything, mock.Anything, mock.Anything).
-		Return([]domain.UserSkill{{Slug: "go", DistinctPRCount: 0}}, nil)
+		Return([]port.Demotion{{Skill: domain.UserSkill{Slug: "go"}, DistinctPRCountAfter: 0}}, nil)
 
 	got := h.do(t, http.MethodGet, "/claims/"+claimID+"/withdraw-preview", "alice-token", "")
 	require.Equal(t, http.StatusOK, got.Status)
@@ -471,23 +510,15 @@ func TestListClaimsSummarises(t *testing.T) {
 	h := newHarness(t)
 	h.signIn("alice-token", contributorPrincipal())
 	h.claims.EXPECT().List(mock.Anything, domain.UserID(aliceID)).
-		Return([]domain.Claim{{
+		Return([]port.ClaimSummary{{
 			ID: claimID, Status: domain.ClaimStatus("evaluated"), Version: 1,
-			PREvidence: make([]domain.PREvidence, 5),
-			Skills:     []domain.ClaimSkill{{Slug: "go", IsNominatedPrimary: true}},
+			PRCount: 5, SkillCount: 1, NominatedPrimary: "go",
 		}}, nil)
 
 	got := h.do(t, http.MethodGet, "/claims", "alice-token", "")
 	require.Equal(t, http.StatusOK, got.Status)
 
-	var body struct {
-		Total  int `json:"total"`
-		Claims []struct {
-			PRCount          int    `json:"pr_count"`
-			SkillCount       int    `json:"skill_count"`
-			NominatedPrimary string `json:"nominated_primary"`
-		} `json:"claims"`
-	}
+	var body claimListResponse
 	got.decode(t, &body)
 	require.Equal(t, 1, body.Total)
 	require.Equal(t, 5, body.Claims[0].PRCount)
@@ -633,9 +664,14 @@ func TestLeaderboard(t *testing.T) {
 	got := h.do(t, http.MethodGet, "/leaderboard?kind=skill&skill=go", "hank-token", "")
 	require.Equal(t, http.StatusOK, got.Status)
 
+	// The skill is an OBJECT, not a slug: a board headed "go" would make a
+	// client look the display name up again.
 	var body struct {
-		Kind    string  `json:"kind"`
-		Skill   *string `json:"skill"`
+		Kind  string `json:"kind"`
+		Skill *struct {
+			Slug string `json:"slug"`
+			Name string `json:"name"`
+		} `json:"skill"`
 		Entries []struct {
 			Rank int `json:"rank"`
 		} `json:"entries"`
@@ -643,7 +679,8 @@ func TestLeaderboard(t *testing.T) {
 	got.decode(t, &body)
 	require.Equal(t, "skill", body.Kind)
 	require.NotNil(t, body.Skill)
-	require.Equal(t, "go", *body.Skill)
+	require.Equal(t, "go", body.Skill.Slug)
+	require.Equal(t, "Go", body.Skill.Name)
 	require.Len(t, body.Entries, 1)
 }
 
@@ -707,34 +744,24 @@ func TestShortlistConfirmReportsWhatItSent(t *testing.T) {
 
 func TestNotifiedEntryIsNotRemovable(t *testing.T) {
 	// Deleting it would destroy the record of a disclosure that happened
-	// (ADR-0008 §3a).
+	// (ADR-0008 §3a). The rule lives on the REMOVAL, not on the read: the
+	// round detail reports who is on the list and what they said, and a
+	// `removable` flag there would be a second place for the same rule to
+	// disagree with itself.
 	h := newHarness(t)
 	h.signIn("hank-token", hirerPrincipal(true))
 
 	shortlistID := domain.ShortlistID("01920000-0000-7000-8000-0000000c0001")
 	notified := fixedTime()
-	h.shortlists.EXPECT().Get(mock.Anything, mock.Anything, shortlistID).
-		Return(&domain.Shortlist{
-			ID: shortlistID,
-			Entries: []domain.ShortlistEntry{
-				{UserID: aliceID, NotifiedAt: &notified},
-				{UserID: domain.UserID("01920000-0000-7000-8000-00000000a002")},
-			},
-		}, nil)
+	h.shortlists.EXPECT().RemoveEntry(mock.Anything, mock.Anything, shortlistID, domain.UserID(aliceID)).
+		Return(service.Coded(service.ErrConflict, service.CodeEntryAlreadyNotified,
+			"this contributor has been told; the entry stays").
+			WithDetail(map[string]any{"notified_at": notified}))
 
-	got := h.do(t, http.MethodGet, "/shortlists/"+string(shortlistID), "hank-token", "")
-	require.Equal(t, http.StatusOK, got.Status)
-
-	var body struct {
-		Entries []struct {
-			Removable bool `json:"removable"`
-		} `json:"entries"`
-		EntryCount int `json:"entry_count"`
-	}
-	got.decode(t, &body)
-	require.Equal(t, 2, body.EntryCount)
-	require.False(t, body.Entries[0].Removable, "a notified entry is permanent")
-	require.True(t, body.Entries[1].Removable)
+	got := h.do(t, http.MethodDelete,
+		"/shortlists/"+string(shortlistID)+"/entries/"+aliceID, "hank-token", "")
+	require.Equal(t, http.StatusConflict, got.Status)
+	require.Equal(t, "entry_already_notified", got.errorCode(t))
 }
 
 func TestAnotherOrganizationsShortlistIsNotFound(t *testing.T) {
@@ -947,17 +974,40 @@ func TestSweepIsAccepted(t *testing.T) {
 	h := newHarness(t)
 	h.signIn("admin-token", adminPrincipal())
 	h.evaluation.EXPECT().Sweep(mock.Anything, mock.Anything, "v2", "weights changed").
-		Return(7, nil)
+		Return(&domain.RubricSweep{
+			ID: "01920000-0000-7000-8000-0000000fa001", From: "v1", To: "v2",
+			Reason: "weights changed", ClaimsEnqueued: 7,
+		}, nil)
 
 	got := h.do(t, http.MethodPost, "/admin/evaluations/sweep", "admin-token",
-		`{"to_version":"v2","reason":"weights changed"}`)
+		`{"rubric_version":"v2","reason":"weights changed"}`)
 	require.Equal(t, http.StatusAccepted, got.Status)
 
-	var body struct {
-		Enqueued int `json:"enqueued"`
-	}
+	var body sweptCorpus
 	got.decode(t, &body)
-	require.Equal(t, 7, body.Enqueued)
+	require.Equal(t, 7, body.ClaimsEnqueued)
+	require.Equal(t, "v1", body.From)
+	require.Equal(t, "v2", body.To)
+}
+
+// decidedSkill is the claim_skills row a decision writes: the stamp that
+// closed it, on whichever side the contributor chose.
+func decidedSkill(accept bool) domain.ClaimSkill {
+	at := time.Now().UTC()
+	skill := domain.ClaimSkill{Slug: "kubernetes", Origin: domain.AISuggested}
+	if accept {
+		skill.AcceptedAt = &at
+	} else {
+		skill.DismissedAt = &at
+	}
+	return skill
+}
+
+// sweptCorpus is the sweep response, as a client reads it.
+type sweptCorpus struct {
+	From           string `json:"from_rubric_version"`
+	To             string `json:"to_rubric_version"`
+	ClaimsEnqueued int    `json:"claims_enqueued"`
 }
 
 func TestAdminQueues(t *testing.T) {
@@ -980,7 +1030,7 @@ func TestAdminQueues(t *testing.T) {
 	skillRequests := h.do(t, http.MethodGet, "/admin/skill-requests", "admin-token", "")
 	require.Equal(t, http.StatusOK, skillRequests.Status)
 
-	h.admin.EXPECT().PendingReevaluations(mock.Anything, mock.Anything).
+	h.admin.EXPECT().Reevaluations(mock.Anything, mock.Anything, mock.Anything).
 		Return([]domain.ReevaluationRequest{{
 			ID: "01920000-0000-7000-8000-00000000ab01", ClaimID: claimID,
 			Status: domain.ReevaluationStatus("pending"), CreatedAt: fixedTime(),
@@ -1056,11 +1106,15 @@ func TestPublicScorecardOmitsIdentifiers(t *testing.T) {
 	got := h.do(t, http.MethodGet, "/public/scorecard/share-token", "", "")
 	require.Equal(t, http.StatusOK, got.Status)
 
-	var body map[string]any
+	var body struct {
+		User map[string]any `json:"user"`
+		Rest map[string]any `json:"-"`
+	}
 	got.decode(t, &body)
-	require.Equal(t, "Alice Okafor", body["display_name"])
-	require.NotContains(t, body, "user_id")
-	require.NotContains(t, body, "rank")
+	require.Equal(t, "Alice Okafor", body.User["display_name"])
+	require.Equal(t, "aliceok", body.User["github_login"])
+	require.NotContains(t, body.User, "id")
+	require.NotContains(t, body.User, "rank")
 }
 
 func TestRevokedShareLinkIsIndistinguishableFromOneThatNeverExisted(t *testing.T) {
@@ -1070,5 +1124,17 @@ func TestRevokedShareLinkIsIndistinguishableFromOneThatNeverExisted(t *testing.T
 
 	got := h.do(t, http.MethodGet, "/public/scorecard/revoked", "", "")
 	require.Equal(t, http.StatusNotFound, got.Status)
-	require.Equal(t, service.CodeNotFound, got.errorCode(t))
+	require.Equal(t, service.CodeScorecardNotFound, got.errorCode(t))
+}
+
+// claimListResponse is the list view: counts rather than the evidence itself.
+type claimListResponse struct {
+	Total  int                    `json:"total"`
+	Claims []claimSummaryResponse `json:"claims"`
+}
+
+type claimSummaryResponse struct {
+	PRCount          int    `json:"pr_count"`
+	SkillCount       int    `json:"skill_count"`
+	NominatedPrimary string `json:"nominated_primary"`
 }

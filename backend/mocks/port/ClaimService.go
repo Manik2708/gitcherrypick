@@ -108,23 +108,23 @@ func (_c *ClaimService_Create_Call) RunAndReturn(run func(ctx context.Context, i
 }
 
 // DecideSuggestion provides a mock function for the type ClaimService
-func (_mock *ClaimService) DecideSuggestion(ctx context.Context, id domain.UserID, claimID domain.ClaimID, skillID domain.SkillID, accept bool) (*domain.UserSkill, error) {
+func (_mock *ClaimService) DecideSuggestion(ctx context.Context, id domain.UserID, claimID domain.ClaimID, skillID domain.SkillID, accept bool) (*domain.SuggestionDecision, error) {
 	ret := _mock.Called(ctx, id, claimID, skillID, accept)
 
 	if len(ret) == 0 {
 		panic("no return value specified for DecideSuggestion")
 	}
 
-	var r0 *domain.UserSkill
+	var r0 *domain.SuggestionDecision
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.UserID, domain.ClaimID, domain.SkillID, bool) (*domain.UserSkill, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.UserID, domain.ClaimID, domain.SkillID, bool) (*domain.SuggestionDecision, error)); ok {
 		return returnFunc(ctx, id, claimID, skillID, accept)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.UserID, domain.ClaimID, domain.SkillID, bool) *domain.UserSkill); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.UserID, domain.ClaimID, domain.SkillID, bool) *domain.SuggestionDecision); ok {
 		r0 = returnFunc(ctx, id, claimID, skillID, accept)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*domain.UserSkill)
+			r0 = ret.Get(0).(*domain.SuggestionDecision)
 		}
 	}
 	if returnFunc, ok := ret.Get(1).(func(context.Context, domain.UserID, domain.ClaimID, domain.SkillID, bool) error); ok {
@@ -183,12 +183,12 @@ func (_c *ClaimService_DecideSuggestion_Call) Run(run func(ctx context.Context, 
 	return _c
 }
 
-func (_c *ClaimService_DecideSuggestion_Call) Return(userSkill *domain.UserSkill, err error) *ClaimService_DecideSuggestion_Call {
-	_c.Call.Return(userSkill, err)
+func (_c *ClaimService_DecideSuggestion_Call) Return(suggestionDecision *domain.SuggestionDecision, err error) *ClaimService_DecideSuggestion_Call {
+	_c.Call.Return(suggestionDecision, err)
 	return _c
 }
 
-func (_c *ClaimService_DecideSuggestion_Call) RunAndReturn(run func(ctx context.Context, id domain.UserID, claimID domain.ClaimID, skillID domain.SkillID, accept bool) (*domain.UserSkill, error)) *ClaimService_DecideSuggestion_Call {
+func (_c *ClaimService_DecideSuggestion_Call) RunAndReturn(run func(ctx context.Context, id domain.UserID, claimID domain.ClaimID, skillID domain.SkillID, accept bool) (*domain.SuggestionDecision, error)) *ClaimService_DecideSuggestion_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -268,23 +268,23 @@ func (_c *ClaimService_Get_Call) RunAndReturn(run func(ctx context.Context, id d
 }
 
 // List provides a mock function for the type ClaimService
-func (_mock *ClaimService) List(ctx context.Context, id domain.UserID) ([]domain.Claim, error) {
+func (_mock *ClaimService) List(ctx context.Context, id domain.UserID) ([]port.ClaimSummary, error) {
 	ret := _mock.Called(ctx, id)
 
 	if len(ret) == 0 {
 		panic("no return value specified for List")
 	}
 
-	var r0 []domain.Claim
+	var r0 []port.ClaimSummary
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.UserID) ([]domain.Claim, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.UserID) ([]port.ClaimSummary, error)); ok {
 		return returnFunc(ctx, id)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.UserID) []domain.Claim); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.UserID) []port.ClaimSummary); ok {
 		r0 = returnFunc(ctx, id)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]domain.Claim)
+			r0 = ret.Get(0).([]port.ClaimSummary)
 		}
 	}
 	if returnFunc, ok := ret.Get(1).(func(context.Context, domain.UserID) error); ok {
@@ -325,12 +325,12 @@ func (_c *ClaimService_List_Call) Run(run func(ctx context.Context, id domain.Us
 	return _c
 }
 
-func (_c *ClaimService_List_Call) Return(claims []domain.Claim, err error) *ClaimService_List_Call {
-	_c.Call.Return(claims, err)
+func (_c *ClaimService_List_Call) Return(claimSummarys []port.ClaimSummary, err error) *ClaimService_List_Call {
+	_c.Call.Return(claimSummarys, err)
 	return _c
 }
 
-func (_c *ClaimService_List_Call) RunAndReturn(run func(ctx context.Context, id domain.UserID) ([]domain.Claim, error)) *ClaimService_List_Call {
+func (_c *ClaimService_List_Call) RunAndReturn(run func(ctx context.Context, id domain.UserID) ([]port.ClaimSummary, error)) *ClaimService_List_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -824,23 +824,23 @@ func (_c *ClaimService_Withdraw_Call) RunAndReturn(run func(ctx context.Context,
 }
 
 // WithdrawPreview provides a mock function for the type ClaimService
-func (_mock *ClaimService) WithdrawPreview(ctx context.Context, id domain.UserID, claimID domain.ClaimID) ([]domain.UserSkill, error) {
+func (_mock *ClaimService) WithdrawPreview(ctx context.Context, id domain.UserID, claimID domain.ClaimID) ([]port.Demotion, error) {
 	ret := _mock.Called(ctx, id, claimID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for WithdrawPreview")
 	}
 
-	var r0 []domain.UserSkill
+	var r0 []port.Demotion
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.UserID, domain.ClaimID) ([]domain.UserSkill, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.UserID, domain.ClaimID) ([]port.Demotion, error)); ok {
 		return returnFunc(ctx, id, claimID)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.UserID, domain.ClaimID) []domain.UserSkill); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.UserID, domain.ClaimID) []port.Demotion); ok {
 		r0 = returnFunc(ctx, id, claimID)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]domain.UserSkill)
+			r0 = ret.Get(0).([]port.Demotion)
 		}
 	}
 	if returnFunc, ok := ret.Get(1).(func(context.Context, domain.UserID, domain.ClaimID) error); ok {
@@ -887,12 +887,12 @@ func (_c *ClaimService_WithdrawPreview_Call) Run(run func(ctx context.Context, i
 	return _c
 }
 
-func (_c *ClaimService_WithdrawPreview_Call) Return(userSkills []domain.UserSkill, err error) *ClaimService_WithdrawPreview_Call {
-	_c.Call.Return(userSkills, err)
+func (_c *ClaimService_WithdrawPreview_Call) Return(demotions []port.Demotion, err error) *ClaimService_WithdrawPreview_Call {
+	_c.Call.Return(demotions, err)
 	return _c
 }
 
-func (_c *ClaimService_WithdrawPreview_Call) RunAndReturn(run func(ctx context.Context, id domain.UserID, claimID domain.ClaimID) ([]domain.UserSkill, error)) *ClaimService_WithdrawPreview_Call {
+func (_c *ClaimService_WithdrawPreview_Call) RunAndReturn(run func(ctx context.Context, id domain.UserID, claimID domain.ClaimID) ([]port.Demotion, error)) *ClaimService_WithdrawPreview_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -161,6 +161,14 @@ type AccessClaims struct {
 	// depends on Kind, because the three account types share no table.
 	Subject string
 	Kind    domain.PrincipalKind
+
+	// Family ties the token to the session that issued it.
+	//
+	// Without it, logging out revokes the refresh chain and leaves the access
+	// token working for up to fifteen minutes — which is not logging out. It
+	// is the family rather than the session because rotation replaces the
+	// session row and must not invalidate a token already in flight.
+	Family string
 }
 
 // TokenIssuer mints and verifies access tokens.

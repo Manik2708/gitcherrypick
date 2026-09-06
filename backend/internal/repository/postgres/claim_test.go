@@ -242,7 +242,8 @@ func TestClaimRepositorySuggestions(t *testing.T) {
 
 		decide := func(accept bool) error {
 			return db.InTx(ctx, func(ctx context.Context, tx port.Tx) error {
-				return db.Claims().DecideSuggestion(ctx, tx, claim.ID, k8s, accept)
+				_, err := db.Claims().DecideSuggestion(ctx, tx, claim.ID, k8s, accept)
+				return err
 			})
 		}
 		if err := decide(true); err != nil {
@@ -268,7 +269,8 @@ func TestClaimRepositorySuggestions(t *testing.T) {
 		goID := skillID(ctx, t, db, "go")
 
 		err := db.InTx(ctx, func(ctx context.Context, tx port.Tx) error {
-			return db.Claims().DecideSuggestion(ctx, tx, claim.ID, goID, true)
+			_, err := db.Claims().DecideSuggestion(ctx, tx, claim.ID, goID, true)
+			return err
 		})
 		if !errors.Is(err, port.ErrConflict) {
 			t.Fatalf("expected a declared skill to be unreachable through this path, got %v", err)

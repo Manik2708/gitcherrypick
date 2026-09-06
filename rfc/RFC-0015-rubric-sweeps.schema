@@ -1,0 +1,55 @@
+-- RFC-0015 — a rubric sweep is a record, not an event
+--
+-- Amends RFC-0007.
+--
+-- ADR-0007 §Endpoints defines `POST /admin/evaluations/sweep` and ADR-0008 §1
+-- gates search on `rubric_version = $active`. Between them they require two
+-- facts nothing currently stores:
+--
+--   1. WHICH version is active. The evaluator stamps a version onto every
+--      score and search compares against "the active one" — but that value
+--      lived only in a CLI flag, so bumping it meant a redeploy and no record
+--      of when it happened or why.
+--
+--   2. WHETHER a sweep is running. The corpus falls out of search the moment
+--      the active version moves and drains back in as the queue empties. An
+--      admin who double-clicks must be told a sweep is already in flight and
+--      how much of it is left, not silently enqueue the corpus twice.
+--
+-- No settings table. The active version is the target of the most recent
+-- sweep, falling back to the configured default when none has run — one fact,
+-- one place, and a full history of how it got there.
+
+CREATE TABLE rubric_sweeps (
+    id                  uuid PRIMARY KEY,
+
+    from_rubric_version text        NOT NULL,
+    to_rubric_version   text        NOT NULL,
+
+    -- Free text, and required. A sweep invalidates every score on the
+    -- platform; "why" is the only thing that makes that reviewable later.
+    reason              text        NOT NULL,
+
+    requested_by        uuid        NOT NULL REFERENCES admin_accounts(id) ON DELETE RESTRICT,
+
+    -- How much corpus this sweep took on. Recorded at enqueue rather than
+    -- counted later, because claims submitted AFTER the sweep started are
+    -- judged on the new version already and were never part of it.
+    claims_enqueued     integer     NOT NULL,
+
+    created_at          timestamptz NOT NULL DEFAULT now(),
+
+    -- NULL while draining. Stamped when the last swept claim is judged.
+    completed_at        timestamptz,
+
+    CONSTRAINT ck_rubric_sweep_moves CHECK (from_rubric_version <> to_rubric_version)
+);
+
+-- One sweep in flight at a time. Two overlapping sweeps would leave the corpus
+-- split across three versions with no order in which it converges.
+CREATE UNIQUE INDEX uq_rubric_sweep_in_flight
+    ON rubric_sweeps ((completed_at IS NULL))
+    WHERE completed_at IS NULL;
+
+-- The active-version read is on the hot path: every search, every leaderboard.
+CREATE INDEX idx_rubric_sweeps_recent ON rubric_sweeps (created_at DESC);

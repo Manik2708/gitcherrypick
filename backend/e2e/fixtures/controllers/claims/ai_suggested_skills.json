@@ -1,11 +1,7 @@
 {
   "name": "AI-suggested skills are inert until the contributor accepts them",
   "description": "ADR-0003 §10 and RFC-0003. While judging, the model may attach skills the contributor did not declare. They are stored with origin='ai_suggested' and are invisible, unscored and excluded from every total until accepted — the model suggests, only the contributor promotes.\n\nThe property that matters is that a suggestion contributes NOTHING before acceptance: not to user_skills, not to distinct_pr_count, not to overall or generalist. Accepting is what converts it into an ordinary claim skill; dismissing closes it permanently. A suggestion is also not a way around the catalogue — the model can only suggest skills that already exist.",
-  "seed": [
-    "principals",
-    "catalogue",
-    "repositories"
-  ],
+  "seed": ["principals", "catalogue", "repositories"],
   "steps": [
     {
       "as": "alice",
@@ -173,6 +169,62 @@
                   "remark": "Split between Go and Kubernetes concerns."
                 }
               }
+            },
+            {
+              "pr_number": 55,
+              "skill_slug": "kubernetes",
+              "disqualified": false,
+              "relative_share": 0.9,
+              "dimensions": {
+                "substance": {
+                  "score": 78,
+                  "remark": "A new operator is mostly cluster work."
+                },
+                "complexity": {
+                  "score": 70,
+                  "remark": "Reconciliation and lease semantics."
+                },
+                "conversation_quality": {
+                  "score": 62,
+                  "remark": "Reviewed thoroughly, revised twice."
+                },
+                "craft": {
+                  "score": 70,
+                  "remark": "Readable; some duplication in the reconciler."
+                },
+                "skill_specificity": {
+                  "score": 88,
+                  "remark": "Squarely operator work against the cluster API."
+                }
+              }
+            },
+            {
+              "pr_number": 56,
+              "skill_slug": "kubernetes",
+              "disqualified": false,
+              "relative_share": 0.7,
+              "dimensions": {
+                "substance": {
+                  "score": 58,
+                  "remark": "Lease reconciliation on restart."
+                },
+                "complexity": {
+                  "score": 60,
+                  "remark": "Restart semantics needed care."
+                },
+                "conversation_quality": {
+                  "score": 48,
+                  "remark": "Brief review, one substantive comment."
+                },
+                "craft": {
+                  "score": 64,
+                  "remark": "Adequate tests."
+                },
+                "skill_specificity": {
+                  "score": 72,
+                  "remark": "Lease handling is a cluster concern."
+                }
+              }
             }
           ],
           "suggested_skills": [
@@ -233,8 +285,7 @@
       },
       "capture": {
         "kubernetes_skill_id": "$.suggestions[0].skill_id",
-        "postgres_skill_id": "$.suggestions[1].skill_id",
-        "go_skill_id": "$.skills[0].skill_id"
+        "postgres_skill_id": "$.suggestions[1].skill_id"
       },
       "expect": {
         "status": 200,
@@ -243,13 +294,77 @@
           "status": "evaluated",
           "version": 1,
           "nominated_primary": "go",
+          "prs": [
+            {
+              "position": 1,
+              "pr_number": 55,
+              "scores": [
+                {
+                  "skill": "go",
+                  "score": 63.09
+                }
+              ],
+              "dimensions": {
+                "substance": {
+                  "score": 72,
+                  "remark": "New operator; substantial surface."
+                },
+                "complexity": {
+                  "score": 65,
+                  "remark": "Follows an established controller pattern."
+                },
+                "conversation_quality": {
+                  "score": 62,
+                  "remark": "Reviewed thoroughly, revised twice."
+                },
+                "craft": {
+                  "score": 70,
+                  "remark": "Readable; some duplication in the reconciler."
+                },
+                "skill_specificity": {
+                  "score": 45,
+                  "remark": "Mostly Kubernetes work expressed in Go."
+                }
+              }
+            },
+            {
+              "position": 2,
+              "pr_number": 56,
+              "scores": [
+                {
+                  "skill": "go",
+                  "score": 55.52
+                }
+              ],
+              "dimensions": {
+                "substance": {
+                  "score": 58,
+                  "remark": "Lease reconciliation on restart."
+                },
+                "complexity": {
+                  "score": 60,
+                  "remark": "Restart semantics needed care."
+                },
+                "conversation_quality": {
+                  "score": 48,
+                  "remark": "Brief review, one substantive comment."
+                },
+                "craft": {
+                  "score": 64,
+                  "remark": "Adequate tests."
+                },
+                "skill_specificity": {
+                  "score": 50,
+                  "remark": "Split between Go and Kubernetes concerns."
+                }
+              }
+            }
+          ],
           "skills": [
             {
-              "skill_id": "<uuid>",
               "slug": "go",
-              "origin": "user_declared",
-              "nominated_primary": true,
-              "score": 39.4
+              "standing": "secondary",
+              "distinct_pr_count": 2
             }
           ],
           "suggestions": [
@@ -271,7 +386,9 @@
               "dismissed_at": null
             }
           ],
-          "evaluated_at": "<timestamp>"
+          "evaluated_at": "<timestamp>",
+          "submitted_at": "<timestamp>",
+          "locked_until": "<timestamp>"
         }
       }
     },
@@ -290,7 +407,7 @@
               "slug": "go",
               "standing": "secondary",
               "distinct_pr_count": 2,
-              "score": 39.4,
+              "score": 20.16,
               "rubric_version": "v1",
               "stale": false
             }
@@ -318,7 +435,7 @@
           "accepted_at": "<timestamp>",
           "standing": "secondary",
           "distinct_pr_count": 2,
-          "score": 41.7
+          "score": 16.26
         },
         "db": {
           "user_skills": {
@@ -415,7 +532,7 @@
       "as": "alice",
       "request": {
         "method": "POST",
-        "path": "/claims/{{claim_id}}/suggestions/{{go_skill_id}}/accept",
+        "path": "/claims/{{claim_id}}/suggestions/{{go.skill_id}}/accept",
         "body": {}
       },
       "expect": {
@@ -438,18 +555,18 @@
         "body": {
           "skills": [
             {
-              "slug": "kubernetes",
+              "slug": "go",
               "standing": "secondary",
               "distinct_pr_count": 2,
-              "score": 41.7,
+              "score": 20.16,
               "rubric_version": "v1",
               "stale": false
             },
             {
-              "slug": "go",
+              "slug": "kubernetes",
               "standing": "secondary",
               "distinct_pr_count": 2,
-              "score": 39.4,
+              "score": 16.26,
               "rubric_version": "v1",
               "stale": false
             }

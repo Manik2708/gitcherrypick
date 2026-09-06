@@ -87,6 +87,13 @@ type PRSkillScore struct {
 	// against different maxima is not comparable to this one.
 	NormsGeneration int
 	RubricVersion   string
+
+	// Inert marks a score the model produced for a skill nobody declared.
+	//
+	// It is stored, because that judgement is exactly what makes accepting the
+	// suggestion instant later — but it attaches to no standing until the
+	// contributor accepts (ADR-0003 §10).
+	Inert bool
 }
 
 // ScoreKind names the three snapshot families.
@@ -122,6 +129,52 @@ type GlobalNorms struct {
 	LastRecomputedAt time.Time
 }
 
+// RubricSweep is one global re-run, recorded (RFC-0015).
+//
+// The corpus falls out of search the moment the active version moves and
+// drains back in as the queue empties (ADR-0008 §1). That interval is a state
+// the platform is IN, not an event that happened, so it is a row with an open
+// end rather than a log line.
+type RubricSweep struct {
+	ID          RequestID
+	From        string
+	To          string
+	Reason      string
+	RequestedBy AdminID
+
+	// ClaimsEnqueued is the corpus this sweep took on, counted at enqueue.
+	// Claims submitted afterwards are judged on the new version already and
+	// were never part of it.
+	ClaimsEnqueued int
+
+	CreatedAt   time.Time
+	CompletedAt *time.Time
+}
+
+// InFlight reports whether the sweep is still draining.
+func (s *RubricSweep) InFlight() bool { return s != nil && s.CompletedAt == nil }
+
+// KnownRubricVersions are the rubric revisions this build implements.
+//
+// A sweep to an unknown version would stamp scores nothing can compute and
+// gate search on a value no evaluation will ever carry — so the corpus would
+// leave search and never return. Checked before anything is enqueued.
+var KnownRubricVersions = []string{"v1", "v2"}
+
+// BaselineRubricVersion is the first rubric: what a score with no recorded
+// evaluation behind it was produced under.
+const BaselineRubricVersion = "v1"
+
+// KnownRubricVersion reports whether a version is one this build implements.
+func KnownRubricVersion(v string) bool {
+	for _, known := range KnownRubricVersions {
+		if known == v {
+			return true
+		}
+	}
+	return false
+}
+
 // --- re-evaluation -----------------------------------------------------------
 
 // ReevaluationStatus tracks a dispute.
@@ -134,6 +187,18 @@ const (
 	ReevalRejected ReevaluationStatus = "rejected"
 )
 
+// ValidReevaluationStatus reports whether a filter names a real state.
+//
+// Checked before the query so an unknown filter is refused by name rather
+// than coming back as an enum cast failure from Postgres.
+func ValidReevaluationStatus(s string) bool {
+	switch ReevaluationStatus(s) {
+	case ReevalPending, ReevalAccepted, ReevalRejected:
+		return true
+	}
+	return false
+}
+
 // ReevaluationRequest is a contributor disputing a judgement.
 //
 // An ACCEPTED request neither resets nor increments the cooldown counter: a
@@ -142,9 +207,14 @@ const (
 // human-ranked disagreement on real evidence, which is the labelled set
 // calibration said could not exist before launch.
 type ReevaluationRequest struct {
-	ID         RequestID
-	ClaimID    ClaimID
-	UserID     UserID
+	ID      RequestID
+	ClaimID ClaimID
+	UserID  UserID
+
+	// Resolved for the admin queue. Deciding a dispute means reading an
+	// argument somebody made; a uuid does not say who made it.
+	DisplayName string
+
 	Reason     string
 	Status     ReevaluationStatus
 	ReviewedBy *AdminID
@@ -165,9 +235,65 @@ type Cooldown struct {
 	CooldownUntil  *time.Time
 }
 
+// DisputeStanding is what a contributor is shown BEFORE they spend a request
+// on a refusal (ADR-0007 §6).
+//
+// It answers three questions in one read: may I dispute, which claims, and if
+// not then why and for how long. A client that had to infer the blocker from a
+// null cooldown and an empty list would get it wrong.
+type DisputeStanding struct {
+	Cooldown Cooldown
+
+	// ClaimsEligible is every judged claim with no dispute already open.
+	// Empty while blocked, because nothing is eligible when nothing may be
+	// requested.
+	ClaimsEligible []ClaimID
+
+	// PendingRequestID is the dispute already open, when one is.
+	PendingRequestID *RequestID
+
+	// Blocker is why no dispute may be raised, resolved against the clock by
+	// the service. Carried rather than recomputed, so the answer cannot
+	// change between deciding what to list and reporting why it was empty.
+	Blocker ReevaluationBlocker
+}
+
+// ReevaluationBlocker names why a dispute cannot be raised.
+type ReevaluationBlocker string
+
+// The two reasons, and the absence of one.
+const (
+	NotBlocked        ReevaluationBlocker = ""
+	BlockedByPending  ReevaluationBlocker = "pending_request"
+	BlockedByCooldown ReevaluationBlocker = "cooldown"
+)
+
+// BlockedBy reports which of the two refusals applies, if either.
+//
+// A cooldown outranks an open request: it is the longer wait, and telling a
+// contributor to wait for their pending dispute when they must then wait
+// another 28 days would be true and useless.
+func (s DisputeStanding) BlockedBy(now time.Time) ReevaluationBlocker {
+	switch {
+	case !s.Cooldown.CanRequest(now):
+		return BlockedByCooldown
+	case s.PendingRequestID != nil:
+		return BlockedByPending
+	}
+	return NotBlocked
+}
+
 // CanRequest reports whether a new dispute is permitted right now.
 func (c *Cooldown) CanRequest(now time.Time) bool {
 	return c == nil || c.CooldownUntil == nil || !c.CooldownUntil.After(now)
+}
+
+// CooldownDays is the current tier's wait, in whole days.
+func (c *Cooldown) CooldownDays() int {
+	if c == nil || c.Tier <= 0 {
+		return 0
+	}
+	return int(CooldownFor(c.Tier).Hours() / 24)
 }
 
 // RejectionsBeforeCooldown is how many rejected disputes trigger the next

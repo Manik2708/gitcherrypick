@@ -5,23 +5,49 @@
   "steps": [
     {
       "as": "alice",
-      "request": { "method": "POST", "path": "/auth/refresh" },
-      "capture": { "refresh_a": "$.refresh_token" },
-      "expect": { "status": 200, "body": { "access_token": "<token>", "refresh_token": "<token>", "expires_in": 900 } }
+      "request": {
+        "method": "POST",
+        "path": "/auth/refresh"
+      },
+      "capture": {
+        "refresh_a": "$.refresh_token"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "access_token": "<token>",
+          "refresh_token": "<token>",
+          "expires_in": 900
+        }
+      }
     },
     {
       "_step": "Rotate once. The token from step 1 is now spent.",
       "as": "alice",
-      "request": { "method": "POST", "path": "/auth/refresh", "body": { "refresh_token": "{{refresh_a}}" } },
-      "capture": { "refresh_b": "$.refresh_token" },
+      "request": {
+        "method": "POST",
+        "path": "/auth/refresh",
+        "body": {
+          "refresh_token": "{{refresh_a}}"
+        }
+      },
+      "capture": {
+        "refresh_b": "$.refresh_token"
+      },
       "expect": {
         "status": 200,
-        "body": { "access_token": "<token>", "refresh_token": "<token>", "expires_in": 900 },
+        "body": {
+          "access_token": "<token>",
+          "refresh_token": "<token>",
+          "expires_in": 900
+        },
         "db": {
           "sessions": {
-            "_note": "Two rows, one family. The first is marked used, the successor is live.",
-            "where": { "user_id": "{{alice.id}}" },
-            "count": 2,
+            "_note": "Three rows, one family: the sign-in that opened it and the two rotations. The spent ones are marked used, the newest is live.",
+            "where": {
+              "user_id": "{{alice.id}}"
+            },
+            "count": 3,
             "same_value": ["family_id"]
           }
         }
@@ -30,16 +56,28 @@
     {
       "_step": "Replay the spent token — this is the leak signal.",
       "as": "anonymous",
-      "request": { "method": "POST", "path": "/auth/refresh", "body": { "refresh_token": "{{refresh_a}}" } },
+      "request": {
+        "method": "POST",
+        "path": "/auth/refresh",
+        "body": {
+          "refresh_token": "{{refresh_a}}"
+        }
+      },
       "expect": {
         "status": 401,
-        "body": { "error": "token_reuse_detected" },
+        "body": {
+          "error": "token_reuse_detected"
+        },
         "db": {
           "sessions": {
             "_note": "EVERY row in the family is revoked, including the one nobody misused.",
-            "where": { "user_id": "{{alice.id}}" },
-            "count": 2,
-            "none_match": { "revoked_at": null }
+            "where": {
+              "user_id": "{{alice.id}}"
+            },
+            "count": 3,
+            "none_match": {
+              "revoked_at": null
+            }
           }
         }
       }
@@ -47,8 +85,19 @@
     {
       "_step": "The legitimate holder of the current token is logged out as collateral. Deliberate — we cannot distinguish them from the thief.",
       "as": "anonymous",
-      "request": { "method": "POST", "path": "/auth/refresh", "body": { "refresh_token": "{{refresh_b}}" } },
-      "expect": { "status": 401, "body": { "error": "session_revoked" } }
+      "request": {
+        "method": "POST",
+        "path": "/auth/refresh",
+        "body": {
+          "refresh_token": "{{refresh_b}}"
+        }
+      },
+      "expect": {
+        "status": 401,
+        "body": {
+          "error": "session_revoked"
+        }
+      }
     }
   ]
 }

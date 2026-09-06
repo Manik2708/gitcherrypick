@@ -114,7 +114,7 @@ func (s *ShortlistService) Update(ctx context.Context, p domain.Principal, id do
 	updated, err := s.shortlists.Update(ctx, id, name, description, date)
 	if err != nil {
 		if errors.Is(err, port.ErrNotFound) {
-			return nil, fmt.Errorf("a closed round cannot be edited: %w", ErrConflict)
+			return nil, Coded(ErrConflict, CodeShortlistClosed, "a closed round cannot be edited")
 		}
 		return nil, fmt.Errorf("updating the round: %w", err)
 	}
@@ -134,7 +134,7 @@ func (s *ShortlistService) Close(ctx context.Context, p domain.Principal, id dom
 	closed, err := s.shortlists.Close(ctx, id)
 	if err != nil {
 		if errors.Is(err, port.ErrNotFound) {
-			return nil, fmt.Errorf("this round is already closed: %w", ErrConflict)
+			return nil, Coded(ErrConflict, CodeShortlistClosed, "this round is already closed")
 		}
 		return nil, fmt.Errorf("closing the round: %w", err)
 	}
@@ -163,9 +163,11 @@ func (s *ShortlistService) AddEntry(ctx context.Context, p domain.Principal, id 
 	if err != nil {
 		switch {
 		case errors.Is(err, port.ErrConflict):
-			return nil, fmt.Errorf("this contributor is already on the round: %w", ErrConflict)
+			return nil, Coded(ErrConflict, CodeAlreadyShortlisted,
+				"this contributor is already on the round")
 		case errors.Is(err, port.ErrNotFound):
-			return nil, fmt.Errorf("a closed round takes no new entries: %w", ErrConflict)
+			return nil, Coded(ErrConflict, CodeShortlistClosed,
+				"a closed round takes no new entries")
 		}
 		return nil, fmt.Errorf("staging the entry: %w", err)
 	}
@@ -187,6 +189,14 @@ func (s *ShortlistService) RemoveEntry(ctx context.Context, p domain.Principal, 
 
 	if err := s.shortlists.RemoveEntry(ctx, id, target); err != nil {
 		switch {
+		case errors.Is(err, port.ErrEntryNotified):
+			refusal := Coded(ErrConflict, CodeEntryAlreadyNotified,
+				"this contributor has been told; the entry stays")
+			var notified *port.NotifiedEntryError
+			if errors.As(err, &notified) {
+				return refusal.WithDetail(map[string]any{"notified_at": notified.NotifiedAt})
+			}
+			return refusal
 		case errors.Is(err, port.ErrConflict):
 			return fmt.Errorf("this contributor has been told; the entry stays: %w", ErrConflict)
 		case errors.Is(err, port.ErrNotFound):
@@ -227,7 +237,7 @@ func (s *ShortlistService) Confirm(ctx context.Context, p domain.Principal, id d
 	})
 	if err != nil {
 		if errors.Is(err, port.ErrConflict) {
-			return nil, fmt.Errorf("this round is closed: %w", ErrConflict)
+			return nil, Coded(ErrConflict, CodeShortlistClosed, "this round is closed")
 		}
 		return nil, fmt.Errorf("confirming: %w", err)
 	}

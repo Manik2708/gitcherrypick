@@ -32,22 +32,29 @@ const InvitationWindow = 14 * 24 * time.Hour
 // Only the HASH is stored. The plaintext is shown once, at creation, and
 // delivered by email — so a database read cannot yield a usable invitation,
 // and neither can a backup.
-func (r *OrganizationRepository) CreateInvitation(ctx context.Context, t port.Tx, orgID domain.OrganizationID, email string, role domain.OrgRole, invitedBy domain.HirerID, tokenHash []byte, expiresAt time.Time) (domain.RequestID, error) {
+func (r *OrganizationRepository) CreateInvitation(ctx context.Context, t port.Tx, orgID domain.OrganizationID, email string, role domain.OrgRole, invitedBy domain.HirerID, tokenHash []byte, expiresAt time.Time) (*port.Invitation, error) {
 	id, err := uuid.NewV7()
 	if err != nil {
-		return "", fmt.Errorf("generating invitation id: %w", err)
+		return nil, fmt.Errorf("generating invitation id: %w", err)
 	}
 	if role == "" {
 		role = domain.RoleMember
 	}
-	if _, err := r.db.q(t).Exec(ctx, `
+
+	inv := port.Invitation{
+		OrganizationID: orgID, Email: email, Role: role,
+		InvitedBy: invitedBy, ExpiresAt: expiresAt,
+	}
+	if err := r.db.q(t).QueryRow(ctx, `
 		INSERT INTO organization_invitations
 		    (id, organization_id, email, role, invited_by, token_hash, expires_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-		id.String(), string(orgID), email, string(role), string(invitedBy), tokenHash, expiresAt); err != nil {
-		return "", translate(err, fmt.Sprintf("inviting %q", email))
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		RETURNING id, created_at`,
+		id.String(), string(orgID), email, string(role), string(invitedBy), tokenHash, expiresAt,
+	).Scan(&inv.ID, &inv.CreatedAt); err != nil {
+		return nil, translate(err, fmt.Sprintf("inviting %q", email))
 	}
-	return domain.RequestID(id.String()), nil
+	return &inv, nil
 }
 
 // InvitationByTokenHash resolves a presented token.
@@ -79,7 +86,7 @@ func (r *OrganizationRepository) InvitationByTokenHash(ctx context.Context, t po
 // The seat inherits the organization's verification rather than earning its
 // own, which is the point of verifying an org rather than a person. Nothing
 // here writes verified_at: capability is read through the organization.
-func (r *OrganizationRepository) AcceptInvitation(ctx context.Context, t port.Tx, id domain.RequestID, h *domain.Hirer, passwordHash []byte) (*domain.Hirer, error) {
+func (r *OrganizationRepository) AcceptInvitation(ctx context.Context, t port.Tx, id domain.RequestID, h *domain.Hirer, passwordHash []byte, now time.Time) (*domain.Hirer, error) {
 	q := r.db.q(t)
 
 	// Single-use, enforced by the UPDATE rather than by the read above: the
@@ -92,11 +99,17 @@ func (r *OrganizationRepository) AcceptInvitation(ctx context.Context, t port.Tx
 	)
 	err := q.QueryRow(ctx, `
 		UPDATE organization_invitations
-		SET accepted_at = now()
-		WHERE id = $1 AND accepted_at IS NULL AND expires_at > now()
-		RETURNING organization_id, role, email`, string(id),
+		SET accepted_at = $2
+		WHERE id = $1 AND accepted_at IS NULL AND expires_at > $2
+		RETURNING organization_id, role, email`, string(id), now,
 	).Scan(&orgID, &role, &email)
 	if err != nil {
+		if isNotFound(err) {
+			// The UPDATE matched nothing, which the predicate makes ambiguous:
+			// consumed, lapsed, or never there. The holder's remedy differs
+			// for each, so the row is read to say which.
+			return nil, r.explainRefusedInvitation(ctx, q, id, now)
+		}
 		return nil, translate(err, fmt.Sprintf("accepting invitation %s", id))
 	}
 
@@ -131,7 +144,38 @@ func (r *OrganizationRepository) AcceptInvitation(ctx context.Context, t port.Tx
 	created.OrganizationID = domain.OrganizationID(orgID)
 	created.OrgRole = domain.OrgRole(role)
 	created.Email = email
+
+	// The organization travels with the seat. Capability is a property of the
+	// org, not the person (ADR-0002), so a seat reported without it cannot say
+	// whether it may hire — which is the first thing the new member asks.
+	org, err := r.db.Hirers().Organization(ctx, created.OrganizationID)
+	if err != nil {
+		return nil, err
+	}
+	created.Organization = org
 	return &created, nil
+}
+
+// explainRefusedInvitation says WHY an acceptance did not match.
+func (r *OrganizationRepository) explainRefusedInvitation(ctx context.Context, q querier, id domain.RequestID, now time.Time) error {
+	var (
+		acceptedAt *time.Time
+		expiresAt  time.Time
+	)
+	if err := q.QueryRow(ctx,
+		`SELECT accepted_at, expires_at FROM organization_invitations WHERE id = $1`,
+		string(id)).Scan(&acceptedAt, &expiresAt); err != nil {
+		return translate(err, fmt.Sprintf("invitation %s", id))
+	}
+
+	if acceptedAt != nil {
+		return fmt.Errorf("invitation %s was already accepted: %w", id, port.ErrInvitationAccepted)
+	}
+	if !expiresAt.After(now) {
+		return fmt.Errorf("invitation %s expired at %s: %w",
+			id, expiresAt.Format(time.RFC3339), port.ErrInvitationExpired)
+	}
+	return fmt.Errorf("invitation %s: %w", id, port.ErrNotFound)
 }
 
 // VerificationFor reads a seat's own verification request.
@@ -141,20 +185,28 @@ func (r *OrganizationRepository) AcceptInvitation(ctx context.Context, t port.Tx
 // means the current attempt, not the one that was refused last year.
 func (r *OrganizationRepository) VerificationFor(ctx context.Context, hirer domain.HirerID, org domain.OrganizationID) (*port.VerificationRequest, error) {
 	var v port.VerificationRequest
-	var reason *string
+	var reason, hirerID, orgID *string
 
+	// No join here, unlike the admin queue: the caller already knows who they
+	// are and is asking only where their request stands.
 	err := r.db.pool.QueryRow(ctx, `
 		SELECT id, hirer_account_id, organization_id, status, created_at, reviewed_at, decision_reason
 		FROM verification_requests
 		WHERE hirer_account_id = $1::uuid OR organization_id = $2::uuid
 		ORDER BY created_at DESC
 		LIMIT 1`, string(hirer), string(org),
-	).Scan(&v.ID, &v.HirerID, &v.OrganizationID, &v.Status, &v.CreatedAt, &v.ReviewedAt, &reason)
+	).Scan(&v.ID, &hirerID, &orgID, &v.Status, &v.CreatedAt, &v.ReviewedAt, &reason)
 	if err != nil {
 		return nil, translate(err, fmt.Sprintf("verification for hirer %s", hirer))
 	}
 	if reason != nil {
 		v.DecisionReason = *reason
+	}
+	if hirerID != nil {
+		v.Hirer = &port.VerificationHirer{ID: domain.HirerID(*hirerID)}
+	}
+	if orgID != nil {
+		v.Organization = &port.VerificationOrganization{ID: domain.OrganizationID(*orgID)}
 	}
 	return &v, nil
 }

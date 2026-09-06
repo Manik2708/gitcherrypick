@@ -1,12 +1,7 @@
 {
   "name": "a contributor reads only their own claims, and a stranger gets 404",
   "description": "RFC-0008 §6. ADR-0003 specifies every claim write and the withdraw-preview, but no plain read — so listing and reading a claim had no URL. Both are contributor-scoped.\n\n404 rather than 403 for someone else's claim. A 403 confirms the id exists, and a claim id is otherwise unguessable; the pair (403 on real, 404 on fake) turns the endpoint into an existence oracle over other people's evidence. The list is ordered newest first and never spans users, so there is no pagination parameter that could widen it.",
-  "seed": [
-    "principals",
-    "catalogue",
-    "repositories",
-    "alice_go_primary"
-  ],
+  "seed": ["principals", "catalogue", "repositories", "alice_go_primary"],
   "steps": [
     {
       "as": "alice",
@@ -52,10 +47,7 @@
           "prs": [
             {
               "position": 1,
-              "repo_owner": "acme",
-              "repo_name": "bigrepo",
               "pr_number": 101,
-              "role": "author",
               "scores": [
                 {
                   "skill": "go",
@@ -65,10 +57,7 @@
             },
             {
               "position": 2,
-              "repo_owner": "acme",
-              "repo_name": "bigrepo",
               "pr_number": 102,
-              "role": "author",
               "scores": [
                 {
                   "skill": "go",
@@ -78,10 +67,7 @@
             },
             {
               "position": 3,
-              "repo_owner": "acme",
-              "repo_name": "platform",
               "pr_number": 55,
-              "role": "author",
               "scores": [
                 {
                   "skill": "go",
@@ -91,10 +77,7 @@
             },
             {
               "position": 4,
-              "repo_owner": "acme",
-              "repo_name": "platform",
               "pr_number": 56,
-              "role": "author",
               "scores": [
                 {
                   "skill": "go",
@@ -104,10 +87,7 @@
             },
             {
               "position": 5,
-              "repo_owner": "indie",
-              "repo_name": "smalllib",
               "pr_number": 12,
-              "role": "author",
               "scores": [
                 {
                   "skill": "go",
@@ -119,10 +99,8 @@
           "skills": [
             {
               "slug": "go",
-              "origin": "user_declared",
-              "nominated_primary": true,
-              "score": 64.2,
-              "standing": "primary"
+              "standing": "primary",
+              "distinct_pr_count": 5
             }
           ],
           "submitted_at": "<timestamp>",

@@ -107,6 +107,74 @@ func (_c *HirerRepository_ByEmail_Call) RunAndReturn(run func(ctx context.Contex
 	return _c
 }
 
+// ByGitHubUserID provides a mock function for the type HirerRepository
+func (_mock *HirerRepository) ByGitHubUserID(ctx context.Context, githubUserID int64) (*domain.Hirer, error) {
+	ret := _mock.Called(ctx, githubUserID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ByGitHubUserID")
+	}
+
+	var r0 *domain.Hirer
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, int64) (*domain.Hirer, error)); ok {
+		return returnFunc(ctx, githubUserID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, int64) *domain.Hirer); ok {
+		r0 = returnFunc(ctx, githubUserID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*domain.Hirer)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, int64) error); ok {
+		r1 = returnFunc(ctx, githubUserID)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// HirerRepository_ByGitHubUserID_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ByGitHubUserID'
+type HirerRepository_ByGitHubUserID_Call struct {
+	*mock.Call
+}
+
+// ByGitHubUserID is a helper method to define mock.On call
+//   - ctx context.Context
+//   - githubUserID int64
+func (_e *HirerRepository_Expecter) ByGitHubUserID(ctx interface{}, githubUserID interface{}) *HirerRepository_ByGitHubUserID_Call {
+	return &HirerRepository_ByGitHubUserID_Call{Call: _e.mock.On("ByGitHubUserID", ctx, githubUserID)}
+}
+
+func (_c *HirerRepository_ByGitHubUserID_Call) Run(run func(ctx context.Context, githubUserID int64)) *HirerRepository_ByGitHubUserID_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 int64
+		if args[1] != nil {
+			arg1 = args[1].(int64)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *HirerRepository_ByGitHubUserID_Call) Return(hirer *domain.Hirer, err error) *HirerRepository_ByGitHubUserID_Call {
+	_c.Call.Return(hirer, err)
+	return _c
+}
+
+func (_c *HirerRepository_ByGitHubUserID_Call) RunAndReturn(run func(ctx context.Context, githubUserID int64) (*domain.Hirer, error)) *HirerRepository_ByGitHubUserID_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // ByID provides a mock function for the type HirerRepository
 func (_mock *HirerRepository) ByID(ctx context.Context, id domain.HirerID) (*domain.Hirer, error) {
 	ret := _mock.Called(ctx, id)
@@ -380,27 +448,27 @@ func (_c *HirerRepository_PasswordHash_Call) RunAndReturn(run func(ctx context.C
 }
 
 // Register provides a mock function for the type HirerRepository
-func (_mock *HirerRepository) Register(ctx context.Context, tx port.Tx, h *domain.Hirer, org *domain.Organization, passwordHash []byte) (*domain.Hirer, error) {
-	ret := _mock.Called(ctx, tx, h, org, passwordHash)
+func (_mock *HirerRepository) Register(ctx context.Context, tx port.Tx, in port.NewHirerAccount) (*port.HirerRegistration, error) {
+	ret := _mock.Called(ctx, tx, in)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Register")
 	}
 
-	var r0 *domain.Hirer
+	var r0 *port.HirerRegistration
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, port.Tx, *domain.Hirer, *domain.Organization, []byte) (*domain.Hirer, error)); ok {
-		return returnFunc(ctx, tx, h, org, passwordHash)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, port.Tx, port.NewHirerAccount) (*port.HirerRegistration, error)); ok {
+		return returnFunc(ctx, tx, in)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, port.Tx, *domain.Hirer, *domain.Organization, []byte) *domain.Hirer); ok {
-		r0 = returnFunc(ctx, tx, h, org, passwordHash)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, port.Tx, port.NewHirerAccount) *port.HirerRegistration); ok {
+		r0 = returnFunc(ctx, tx, in)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*domain.Hirer)
+			r0 = ret.Get(0).(*port.HirerRegistration)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, port.Tx, *domain.Hirer, *domain.Organization, []byte) error); ok {
-		r1 = returnFunc(ctx, tx, h, org, passwordHash)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, port.Tx, port.NewHirerAccount) error); ok {
+		r1 = returnFunc(ctx, tx, in)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -415,14 +483,12 @@ type HirerRepository_Register_Call struct {
 // Register is a helper method to define mock.On call
 //   - ctx context.Context
 //   - tx port.Tx
-//   - h *domain.Hirer
-//   - org *domain.Organization
-//   - passwordHash []byte
-func (_e *HirerRepository_Expecter) Register(ctx interface{}, tx interface{}, h interface{}, org interface{}, passwordHash interface{}) *HirerRepository_Register_Call {
-	return &HirerRepository_Register_Call{Call: _e.mock.On("Register", ctx, tx, h, org, passwordHash)}
+//   - in port.NewHirerAccount
+func (_e *HirerRepository_Expecter) Register(ctx interface{}, tx interface{}, in interface{}) *HirerRepository_Register_Call {
+	return &HirerRepository_Register_Call{Call: _e.mock.On("Register", ctx, tx, in)}
 }
 
-func (_c *HirerRepository_Register_Call) Run(run func(ctx context.Context, tx port.Tx, h *domain.Hirer, org *domain.Organization, passwordHash []byte)) *HirerRepository_Register_Call {
+func (_c *HirerRepository_Register_Call) Run(run func(ctx context.Context, tx port.Tx, in port.NewHirerAccount)) *HirerRepository_Register_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -432,35 +498,25 @@ func (_c *HirerRepository_Register_Call) Run(run func(ctx context.Context, tx po
 		if args[1] != nil {
 			arg1 = args[1].(port.Tx)
 		}
-		var arg2 *domain.Hirer
+		var arg2 port.NewHirerAccount
 		if args[2] != nil {
-			arg2 = args[2].(*domain.Hirer)
-		}
-		var arg3 *domain.Organization
-		if args[3] != nil {
-			arg3 = args[3].(*domain.Organization)
-		}
-		var arg4 []byte
-		if args[4] != nil {
-			arg4 = args[4].([]byte)
+			arg2 = args[2].(port.NewHirerAccount)
 		}
 		run(
 			arg0,
 			arg1,
 			arg2,
-			arg3,
-			arg4,
 		)
 	})
 	return _c
 }
 
-func (_c *HirerRepository_Register_Call) Return(hirer *domain.Hirer, err error) *HirerRepository_Register_Call {
-	_c.Call.Return(hirer, err)
+func (_c *HirerRepository_Register_Call) Return(hirerRegistration *port.HirerRegistration, err error) *HirerRepository_Register_Call {
+	_c.Call.Return(hirerRegistration, err)
 	return _c
 }
 
-func (_c *HirerRepository_Register_Call) RunAndReturn(run func(ctx context.Context, tx port.Tx, h *domain.Hirer, org *domain.Organization, passwordHash []byte) (*domain.Hirer, error)) *HirerRepository_Register_Call {
+func (_c *HirerRepository_Register_Call) RunAndReturn(run func(ctx context.Context, tx port.Tx, in port.NewHirerAccount) (*port.HirerRegistration, error)) *HirerRepository_Register_Call {
 	_c.Call.Return(run)
 	return _c
 }

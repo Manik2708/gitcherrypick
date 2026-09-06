@@ -124,7 +124,7 @@ func TestEvaluationRepositoryIdempotency(t *testing.T) {
 		db, ctx := newDB(t), testContext(t)
 		fx := newEvaluationFixture(ctx, t, db)
 
-		done, err := db.Evaluations().AlreadyEvaluated(ctx, fx.claim, 1)
+		done, err := db.Evaluations().AlreadyEvaluated(ctx, fx.claim, 1, "v1")
 		if err != nil {
 			t.Fatalf("checking: %v", err)
 		}
@@ -137,7 +137,7 @@ func TestEvaluationRepositoryIdempotency(t *testing.T) {
 			t.Fatalf("completing: %v", err)
 		}
 
-		done, err = db.Evaluations().AlreadyEvaluated(ctx, fx.claim, 1)
+		done, err = db.Evaluations().AlreadyEvaluated(ctx, fx.claim, 1, "v1")
 		if err != nil {
 			t.Fatalf("checking: %v", err)
 		}
@@ -156,7 +156,7 @@ func TestEvaluationRepositoryIdempotency(t *testing.T) {
 			t.Fatalf("completing: %v", err)
 		}
 
-		done, err := db.Evaluations().AlreadyEvaluated(ctx, fx.claim, 2)
+		done, err := db.Evaluations().AlreadyEvaluated(ctx, fx.claim, 2, "v1")
 		if err != nil {
 			t.Fatalf("checking: %v", err)
 		}

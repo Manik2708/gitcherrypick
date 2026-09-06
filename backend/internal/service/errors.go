@@ -147,6 +147,7 @@ const (
 	CodeInvitationAccepted = "invitation_already_accepted"
 
 	// Unprocessable (422).
+	CodeInvalidRegistration    = "invalid_registration"
 	CodeInvalidClaim           = "invalid_claim"
 	CodeInvalidEvidence        = "invalid_evidence"
 	CodeInvalidShortlist       = "invalid_shortlist"
@@ -168,3 +169,17 @@ const (
 	CodeRateLimited          = "rate_limited"
 	CodeReevaluationCooldown = "reevaluation_cooldown"
 )
+
+// FilterProblem names one filter a search was refused for.
+//
+// A machine-readable sibling of the message: a client highlighting the field
+// the recruiter typed wrong needs the field, not a sentence containing it.
+type FilterProblem struct {
+	Field  string `json:"field"`
+	Value  string `json:"value,omitempty"`
+	Reason string `json:"reason"`
+	Max    *int   `json:"max,omitempty"`
+}
+
+// intPtr is the address of a literal, for the optional bounds above.
+func intPtr(v int) *int { return &v }

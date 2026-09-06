@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"errors"
 	"net/http"
 	"time"
 
@@ -69,38 +70,107 @@ type addEntryRequest struct {
 	Note   string        `json:"note"`
 }
 
-type shortlistEntryBody struct {
-	UserID     domain.UserID `json:"user_id"`
-	Note       string        `json:"note"`
-	NotifiedAt *time.Time    `json:"notified_at"`
-	AddedAt    time.Time     `json:"added_at"`
-
-	// Removable is derived rather than stored: an entry stops being removable
-	// the moment its contributor is told, because deleting it afterwards would
-	// destroy the record of a disclosure that happened (ADR-0008 §3a).
-	Removable bool `json:"removable"`
+// entryContributorBody is the person an entry stages.
+//
+// Named rather than referenced: a hirer reading a shortlist is looking at
+// people, and a column of uuids would send them to fetch each one.
+type entryContributorBody struct {
+	ID          domain.UserID `json:"id"`
+	DisplayName string        `json:"display_name"`
+	GitHubLogin string        `json:"github_login"`
 }
 
+// shortlistEntryBody is one staged contributor.
+//
+// No address anywhere. An entry is staged, not disclosed: notified_at stays
+// null until the round is confirmed, and releasing an address is what accepting
+// a CONTACT REQUEST does, not what being shortlisted does (ADR-0008 §3a).
+type shortlistEntryBody struct {
+	ShortlistID domain.ShortlistID   `json:"shortlist_id"`
+	User        entryContributorBody `json:"user"`
+
+	// Null when the hirer left none, rather than "": an absent note and an
+	// empty one are the same thing, and null is the one that says so.
+	Note *string `json:"note"`
+
+	AddedBy    domain.HirerID `json:"added_by"`
+	NotifiedAt *time.Time     `json:"notified_at"`
+	AddedAt    time.Time      `json:"added_at"`
+}
+
+// shortlistBody is a round as a hirer sees it.
+//
+// Deliberately small on create: a round that was just made has no entries, no
+// confirmations and an organization the caller already knows, because they are
+// the one who owns it. The fuller picture — entries and their notification
+// state — is what GET /shortlists/{id} is for.
 type shortlistBody struct {
+	ID                  domain.ShortlistID `json:"id"`
+	Name                string             `json:"name"`
+	Status              string             `json:"status"`
+	TentativeResultDate Date               `json:"tentative_result_date"`
+
+	// Counts rather than the entries themselves on a LIST. Loading every
+	// staged contributor for every round would be several joins per row to
+	// produce two integers, and the round the hirer opens is the only one
+	// whose entries they wanted.
+	EntryCount      *int `json:"entry_count,omitempty"`
+	UnnotifiedCount *int `json:"unnotified_count,omitempty"`
+
+	Entries   []shortlistEntryBody `json:"entries,omitempty"`
+	CreatedBy domain.HirerID       `json:"created_by,omitempty"`
+	ClosedAt  *time.Time           `json:"closed_at,omitempty"`
+	CreatedAt time.Time            `json:"created_at"`
+}
+
+// patchedShortlistBody is a round as an EDIT returns it.
+//
+// Fuller than either the create or the list: an edit is where a hirer confirms
+// what the round now says, so it restates the description they may have just
+// changed, the organization that owns it, and the counts that decide whether
+// confirming would disclose anything.
+type patchedShortlistBody struct {
 	ID                  domain.ShortlistID `json:"id"`
 	Name                string             `json:"name"`
 	Description         string             `json:"description"`
 	Status              string             `json:"status"`
 	TentativeResultDate Date               `json:"tentative_result_date"`
 	Organization        *orgRef            `json:"organization,omitempty"`
-	CreatedBy           domain.HirerID     `json:"created_by,omitempty"`
+	CreatedBy           domain.HirerID     `json:"created_by"`
+	EntryCount          int                `json:"entry_count"`
+	UnnotifiedCount     int                `json:"unnotified_count"`
+	FirstConfirmedAt    *time.Time         `json:"first_confirmed_at"`
 
-	EntryCount int `json:"entry_count"`
+	// Exactly one of these is set. An EDIT reports when it landed, because
+	// that is the value the caller needs to detect their own write; a READ
+	// reports when the round was opened, which is what dates it.
+	UpdatedAt *time.Time `json:"updated_at,omitempty"`
+	CreatedAt *time.Time `json:"created_at,omitempty"`
+}
 
-	// UnnotifiedCount is how many entries confirm would still tell. It is the
-	// number that matters before an irreversible step: a hirer about to
-	// confirm needs to know how many people are about to hear from them
-	// (ADR-0008 §3a).
-	UnnotifiedCount int `json:"unnotified_count"`
+// patchedShortlistBodyOf renders the response to an edit.
+func patchedShortlistBodyOf(p domain.Principal, s *domain.Shortlist) patchedShortlistBody {
+	if s == nil {
+		return patchedShortlistBody{}
+	}
 
-	FirstConfirmedAt *time.Time           `json:"first_confirmed_at"`
-	ClosedAt         *time.Time           `json:"closed_at,omitempty"`
-	Entries          []shortlistEntryBody `json:"entries,omitempty"`
+	unnotified := 0
+	for _, e := range s.Entries {
+		if e.Removable() {
+			unnotified++
+		}
+	}
+	return patchedShortlistBody{
+		ID: s.ID, Name: s.Name, Description: s.Description,
+		Status:              string(s.Status),
+		TentativeResultDate: Date{Time: s.TentativeResultDate},
+		Organization:        orgRefOf(p),
+		CreatedBy:           s.CreatedBy,
+		EntryCount:          len(s.Entries),
+		UnnotifiedCount:     unnotified,
+		FirstConfirmedAt:    s.FirstConfirmedAt,
+		UpdatedAt:           &s.UpdatedAt,
+	}
 }
 
 // confirmResultBody reports what one confirm actually sent.
@@ -108,10 +178,71 @@ type shortlistBody struct {
 // AlreadyNotified is present so a second confirm can be SEEN to have sent
 // nothing — the operation is idempotent, and a bare success would leave a hirer
 // wondering whether they had just emailed everyone twice.
+// notifiedEntryBody is one contributor who has now been told.
+//
+// Carries the contact request the disclosure created: that request is the
+// thing the contributor will answer, and it is what makes the notification
+// auditable afterwards.
+type notifiedEntryBody struct {
+	UserID           domain.UserID    `json:"user_id"`
+	DisplayName      string           `json:"display_name"`
+	ContactRequestID domain.ContactID `json:"contact_request_id"`
+	NotifiedAt       *time.Time       `json:"notified_at"`
+}
+
+// confirmResultBody reports what one confirm actually sent.
+//
+// irreversible is stated rather than implied: this is the moment staging
+// becomes disclosure, and a hirer who has just crossed it should be told so by
+// the response rather than by discovering that remove no longer works.
 type confirmResultBody struct {
-	Shortlist       shortlistBody `json:"shortlist"`
-	Notified        int           `json:"notified"`
-	AlreadyNotified int           `json:"already_notified"`
+	ID               domain.ShortlistID  `json:"id"`
+	Status           string              `json:"status"`
+	Notified         int                 `json:"notified"`
+	AlreadyNotified  int                 `json:"already_notified"`
+	Irreversible     bool                `json:"irreversible"`
+	FirstConfirmedAt *time.Time          `json:"first_confirmed_at"`
+	Entries          []notifiedEntryBody `json:"entries"`
+}
+
+// confirmResultBodyOf pairs each notified entry with the request it raised.
+func confirmResultBodyOf(result *port.ConfirmResult) confirmResultBody {
+	out := confirmResultBody{
+		Notified:        result.Notified,
+		AlreadyNotified: result.AlreadyNotified,
+		Irreversible:    true,
+		Entries:         []notifiedEntryBody{},
+	}
+	if result.Shortlist != nil {
+		out.ID = result.Shortlist.ID
+		out.Status = string(result.Shortlist.Status)
+		out.FirstConfirmedAt = result.Shortlist.FirstConfirmedAt
+	}
+
+	// Keyed by contributor: one confirm raises at most one request each, so
+	// the pairing is exact rather than positional.
+	requests := make(map[domain.UserID]domain.ContactID, len(result.Requests))
+	for _, req := range result.Requests {
+		requests[req.UserID] = req.ID
+	}
+	if result.Shortlist == nil {
+		return out
+	}
+	// Only what THIS confirm sent. A second confirm notifies nobody, and
+	// listing everyone told by the first would read as having told them twice
+	// — which for an irreversible disclosure is the worst thing to be unclear
+	// about.
+	for _, e := range result.Shortlist.Entries {
+		id, notified := requests[e.UserID]
+		if !notified || e.NotifiedAt == nil {
+			continue
+		}
+		out.Entries = append(out.Entries, notifiedEntryBody{
+			UserID: e.UserID, DisplayName: e.DisplayName,
+			ContactRequestID: id, NotifiedAt: e.NotifiedAt,
+		})
+	}
+	return out
 }
 
 // --- handlers ----------------------------------------------------------------
@@ -128,9 +259,23 @@ func (c *ShortlistController) create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The date is what a contributor is told and what the overdue ratio is
+	// measured against (ADR-0005), so a round without one promises nothing and
+	// a round already past its date is born overdue.
+	if body.TentativeResultDate.IsZero() {
+		writeFieldErrors(w, http.StatusUnprocessableEntity, service.CodeInvalidShortlist,
+			[]fieldError{{Field: "tentative_result_date", Reason: "required"}})
+		return
+	}
+
 	shortlist, err := c.shortlists.Create(r.Context(), p,
 		body.Name, body.Description, body.TentativeResultDate.Time)
 	if err != nil {
+		if service.CodeOf(err) == "" && errors.Is(err, service.ErrInvalid) {
+			writeFieldErrors(w, http.StatusUnprocessableEntity, service.CodeInvalidShortlist,
+				[]fieldError{{Field: "tentative_result_date", Reason: "must_be_future"}})
+			return
+		}
 		c.writeShortlistError(w, p, err)
 		return
 	}
@@ -157,7 +302,7 @@ func (c *ShortlistController) list(w http.ResponseWriter, r *http.Request) {
 
 	out := make([]shortlistBody, 0, len(shortlists))
 	for i := range shortlists {
-		out = append(out, shortlistBodyOf(p, &shortlists[i]))
+		out = append(out, listedShortlistBodyOf(p, &shortlists[i]))
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"total": len(out), "shortlists": out})
 }
@@ -173,7 +318,7 @@ func (c *ShortlistController) get(w http.ResponseWriter, r *http.Request) {
 		c.writeShortlistError(w, p, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, shortlistBodyOf(p, shortlist))
+	writeJSON(w, http.StatusOK, roundDetailBodyOf(shortlist))
 }
 
 func (c *ShortlistController) update(w http.ResponseWriter, r *http.Request) {
@@ -200,7 +345,7 @@ func (c *ShortlistController) update(w http.ResponseWriter, r *http.Request) {
 		c.writeShortlistError(w, p, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, shortlistBodyOf(p, shortlist))
+	writeJSON(w, http.StatusOK, patchedShortlistBodyOf(p, shortlist))
 }
 
 func (c *ShortlistController) close(w http.ResponseWriter, r *http.Request) {
@@ -214,7 +359,10 @@ func (c *ShortlistController) close(w http.ResponseWriter, r *http.Request) {
 		c.writeShortlistError(w, p, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, shortlistBodyOf(p, shortlist))
+	writeJSON(w, http.StatusOK, closedShortlistBody{
+		ID: shortlist.ID, Name: shortlist.Name, Status: string(shortlist.Status),
+		EntryCount: len(shortlist.Entries), ClosedAt: shortlist.ClosedAt,
+	})
 }
 
 // addEntry stages a candidate and discloses NOTHING.
@@ -280,11 +428,7 @@ func (c *ShortlistController) confirm(w http.ResponseWriter, r *http.Request) {
 		c.writeShortlistError(w, p, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, confirmResultBody{
-		Shortlist:       shortlistBodyOf(p, result.Shortlist),
-		Notified:        result.Notified,
-		AlreadyNotified: result.AlreadyNotified,
-	})
+	writeJSON(w, http.StatusOK, confirmResultBodyOf(result))
 }
 
 func (c *ShortlistController) contactRequests(w http.ResponseWriter, r *http.Request) {
@@ -298,9 +442,95 @@ func (c *ShortlistController) contactRequests(w http.ResponseWriter, r *http.Req
 		c.writeShortlistError(w, p, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"total": len(requests), "requests": contactBodies(requests),
-	})
+	out := make([]hirerContactBody, 0, len(requests))
+	for _, req := range requests {
+		body := hirerContactBody{
+			ID: req.ID,
+			User: entryContributorBody{
+				ID: req.UserID, DisplayName: req.DisplayName, GitHubLogin: req.GitHubLogin,
+			},
+			Status:      string(req.Status),
+			RespondedAt: req.RespondedAt,
+		}
+		if req.Email != "" {
+			email := req.Email
+			body.Email = &email
+		}
+		out = append(out, body)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"total": len(out), "requests": out})
+}
+
+// roundEntryBody is one contributor on a round, as the round detail shows them.
+//
+// contact_status and email are the two facts a hirer is waiting on, and both
+// stay null until the contributor acts: staging discloses nothing, and the
+// address is released only by an acceptance (ADR-0005).
+type roundEntryBody struct {
+	UserID        domain.UserID `json:"user_id"`
+	DisplayName   string        `json:"display_name"`
+	ContactStatus *string       `json:"contact_status"`
+	Email         *string       `json:"email"`
+}
+
+// roundDetailBody is a single round: who is on it, and where each stands.
+type roundDetailBody struct {
+	ID                  domain.ShortlistID `json:"id"`
+	Name                string             `json:"name"`
+	Status              string             `json:"status"`
+	TentativeResultDate Date               `json:"tentative_result_date"`
+	Entries             []roundEntryBody   `json:"entries"`
+}
+
+func roundDetailBodyOf(s *domain.Shortlist) roundDetailBody {
+	if s == nil {
+		return roundDetailBody{Entries: []roundEntryBody{}}
+	}
+	out := roundDetailBody{
+		ID: s.ID, Name: s.Name, Status: string(s.Status),
+		TentativeResultDate: Date{Time: s.TentativeResultDate},
+		Entries:             make([]roundEntryBody, 0, len(s.Entries)),
+	}
+	for _, e := range s.Entries {
+		row := roundEntryBody{UserID: e.UserID, DisplayName: e.DisplayName}
+		if e.ContactStatus != "" {
+			status := e.ContactStatus
+			row.ContactStatus = &status
+		}
+		if e.Email != "" {
+			email := e.Email
+			row.Email = &email
+		}
+		out.Entries = append(out.Entries, row)
+	}
+	return out
+}
+
+// closedShortlistBody is a round that has just ended.
+//
+// Deliberately terse: closing settles a question, so what it reports is that
+// the round is closed, when, and how many people it reached. The promised date
+// is gone because there is no longer a decision pending against it.
+type closedShortlistBody struct {
+	ID         domain.ShortlistID `json:"id"`
+	Name       string             `json:"name"`
+	Status     string             `json:"status"`
+	EntryCount int                `json:"entry_count"`
+	ClosedAt   *time.Time         `json:"closed_at"`
+}
+
+// hirerContactBody is a contact request as the ASKING side sees it.
+//
+// The mirror of contactRequestBody, and deliberately asymmetric: a contributor
+// sees the company and the disclosure, a hirer sees a person and a status. The
+// address appears only once it has been released, which is the moment the
+// contributor consented to it (ADR-0005).
+type hirerContactBody struct {
+	ID          domain.ContactID     `json:"id"`
+	User        entryContributorBody `json:"user"`
+	Status      string               `json:"status"`
+	Email       *string              `json:"email"`
+	RespondedAt *time.Time           `json:"responded_at"`
 }
 
 // --- helpers -----------------------------------------------------------------
@@ -367,11 +597,9 @@ func shortlistBodyOf(p domain.Principal, s *domain.Shortlist) shortlistBody {
 	}
 
 	out := shortlistBody{
-		ID: s.ID, Name: s.Name, Description: s.Description,
+		ID: s.ID, Name: s.Name,
 		Status: string(s.Status), TentativeResultDate: Date{Time: s.TentativeResultDate},
-		Organization: orgRefOf(p), CreatedBy: s.CreatedBy,
-		EntryCount: len(entries), UnnotifiedCount: unnotified,
-		FirstConfirmedAt: s.FirstConfirmedAt, ClosedAt: s.ClosedAt,
+		ClosedAt: s.ClosedAt, CreatedAt: s.CreatedAt,
 	}
 	if len(entries) > 0 {
 		out.Entries = entries
@@ -379,9 +607,37 @@ func shortlistBodyOf(p domain.Principal, s *domain.Shortlist) shortlistBody {
 	return out
 }
 
-func entryBody(e domain.ShortlistEntry) shortlistEntryBody {
-	return shortlistEntryBody{
-		UserID: e.UserID, Note: e.Note, NotifiedAt: e.NotifiedAt,
-		AddedAt: e.AddedAt, Removable: e.Removable(),
+// listedShortlistBodyOf renders a round in the LIST, where counts stand in for
+// the entries and the owner is named so a colleague can see whose round it is.
+func listedShortlistBodyOf(p domain.Principal, s *domain.Shortlist) shortlistBody {
+	out := shortlistBodyOf(p, s)
+	if s == nil {
+		return out
 	}
+
+	entryCount, unnotified := len(s.Entries), 0
+	for _, e := range s.Entries {
+		if e.Removable() {
+			unnotified++
+		}
+	}
+
+	out.Entries = nil
+	out.EntryCount, out.UnnotifiedCount = &entryCount, &unnotified
+	out.CreatedBy = s.CreatedBy
+	return out
+}
+
+func entryBody(e domain.ShortlistEntry) shortlistEntryBody {
+	out := shortlistEntryBody{
+		ShortlistID: e.ShortlistID,
+		User: entryContributorBody{
+			ID: e.UserID, DisplayName: e.DisplayName, GitHubLogin: e.GitHubLogin,
+		},
+		AddedBy: e.AddedBy, NotifiedAt: e.NotifiedAt, AddedAt: e.AddedAt,
+	}
+	if e.Note != "" {
+		out.Note = &e.Note
+	}
+	return out
 }

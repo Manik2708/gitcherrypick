@@ -281,7 +281,10 @@ func TestAuthLogout(t *testing.T) {
 		// afterwards.
 		f := newAuthFixture(t)
 		f.sessions.EXPECT().ActiveFamily(mock.Anything, string(userID)).Return("family-1", nil)
-		f.sessions.EXPECT().RevokeFamily(mock.Anything, mock.Anything, "family-1").Return(nil)
+		// CloseFamily, not RevokeFamily: signing out SPENDS the tokens as well
+		// as revoking them, which is what lets a later refresh say "you signed
+		// out" rather than "your session was revoked" (ADR-0002).
+		f.sessions.EXPECT().CloseFamily(mock.Anything, mock.Anything, "family-1").Return(nil)
 
 		if err := f.svc.Logout(ctx(t), contributorPrincipal()); err != nil {
 			t.Fatalf("logging out: %v", err)
@@ -338,9 +341,10 @@ func TestAuthPublicScorecard(t *testing.T) {
 		if card.User.Rank != 0 {
 			t.Errorf("rank leaked: %d", card.User.Rank)
 		}
-		if card.User.GeneralistScore != nil {
-			t.Error("the generalist score leaked")
-		}
+		// The scores are NOT stripped. A published scorecard exists to show
+		// them — what it must not carry is a position in the pool or a way to
+		// contact the person (ADR-0002), which is what the checks around this
+		// one cover.
 		if card.Email != nil {
 			t.Error("the email leaked")
 		}
@@ -396,6 +400,12 @@ func newAuthFixture(t *testing.T) *authFixture {
 		now:   time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC),
 	}
 	f.clock.EXPECT().Now().Return(f.now).Maybe()
+
+	// Signing in refreshes the handle GitHub reports, so every callback test
+	// would otherwise have to declare it.
+	f.users.EXPECT().RefreshGitHubLogin(mock.Anything, mock.Anything, mock.Anything).
+		Return(nil).Maybe()
+
 	f.tx.EXPECT().InTx(mock.Anything, mock.Anything).
 		RunAndReturn(func(c context.Context, fn func(context.Context, port.Tx) error) error {
 			err := fn(c, stubTx{})
@@ -404,7 +414,7 @@ func newAuthFixture(t *testing.T) *authFixture {
 		}).Maybe()
 
 	f.svc = service.NewAuthService(f.users, f.hirers, f.admins, f.sessions,
-		f.github, f.google, f.tokens, f.minter, f.hasher, f.shareLinks, f.search, f.tx, f.clock)
+		f.github, f.google, f.tokens, f.minter, f.hasher, f.shareLinks, f.search, f.tx, f.clock, "v1")
 	return f
 }
 

@@ -1,12 +1,7 @@
 {
   "name": "shortlisting raises a request; the email is released only on acceptance",
   "description": "ADR-0005, and the deliberate inversion of how sourcing tools normally work. Adding someone to a shortlist does NOT disclose their email — it creates a contact request the contributor must accept. Releasing contact details on the strength of one side's interest is what makes those tools feel extractive, and the whole consent model would be hollow if a shortlist click bypassed it.\n\nThe request also discloses what we know about the hirer: sam_studio's organization was verified on identity but never on payment, so the contributor is told before deciding.\n\nUpdated for RFC-0008 §3a: adding an entry stages it privately and discloses nothing. The contact request — and therefore the disclosure this case is about — is created by confirm. That moves WHEN consent is sought without changing the rule that it must be sought.",
-  "seed": [
-    "principals",
-    "catalogue",
-    "repositories",
-    "scored_population"
-  ],
+  "seed": ["principals", "catalogue", "repositories", "scored_population"],
   "steps": [
     {
       "as": "sam_studio",
@@ -53,7 +48,7 @@
             "display_name": "Alice Okafor",
             "github_login": "<string>"
           },
-          "note": null,
+          "note": "Strong retry-semantics work.",
           "added_by": "<uuid>",
           "notified_at": null,
           "added_at": "<timestamp>"
@@ -124,14 +119,50 @@
           "skills": [
             {
               "slug": "go",
+              "name": "Go",
               "standing": "primary",
               "distinct_pr_count": 5,
-              "score": 64.2
+              "score": 64.2,
+              "rank": 1,
+              "evidence": [
+                {
+                  "repo": "acme/bigrepo",
+                  "pr_number": 101,
+                  "merged_at": "<timestamp>",
+                  "score": 79.3
+                },
+                {
+                  "repo": "indie/smalllib",
+                  "pr_number": 12,
+                  "merged_at": "<timestamp>",
+                  "score": 64.4
+                },
+                {
+                  "repo": "acme/bigrepo",
+                  "pr_number": 102,
+                  "merged_at": "<timestamp>",
+                  "score": 62.1
+                },
+                {
+                  "repo": "acme/platform",
+                  "pr_number": 55,
+                  "merged_at": "<timestamp>",
+                  "score": 60.4
+                },
+                {
+                  "repo": "acme/platform",
+                  "pr_number": 56,
+                  "merged_at": "<timestamp>",
+                  "score": 54.8
+                }
+              ]
             }
           ],
           "user": {
+            "id": "01920000-0000-7000-8000-00000000a001",
             "display_name": "Alice Okafor",
-            "github_login": "aliceok"
+            "github_login": "aliceok",
+            "availability": "looking_for_job"
           },
           "rubric_version": "v1"
         }
@@ -159,7 +190,8 @@
               "status": "pending",
               "expires_at": "<timestamp>",
               "disclosure": "This organization is hiring for the first time and has not verified payment capability.",
-              "_note": "Not a warning against them — a fact. The contributor carries the risk of an unpaid engagement, so the contributor gets the fact and the choice."
+              "_note": "Not a warning against them — a fact. The contributor carries the risk of an unpaid engagement, so the contributor gets the fact and the choice.",
+              "created_at": "<timestamp>"
             }
           ],
           "total": 1
@@ -271,7 +303,8 @@
           "contact_requests": {
             "_note": "Zero. Staging is private — RFC-0008 §3a.",
             "where": {
-              "user_id": "01920000-0000-7000-8000-00000000a001"
+              "user_id": "01920000-0000-7000-8000-00000000a001",
+              "shortlist_id": "{{acme_shortlist}}"
             },
             "count": 0
           }
@@ -307,7 +340,8 @@
         "db": {
           "contact_requests": {
             "where": {
-              "user_id": "01920000-0000-7000-8000-00000000a001"
+              "user_id": "01920000-0000-7000-8000-00000000a001",
+              "shortlist_id": "{{acme_shortlist}}"
             },
             "count": 1,
             "all_match": {
@@ -337,7 +371,8 @@
               "tentative_result_date": "2026-10-15",
               "status": "pending",
               "expires_at": "<timestamp>",
-              "disclosure": null
+              "disclosure": null,
+              "created_at": "<timestamp>"
             }
           ],
           "total": 1
@@ -356,7 +391,9 @@
         "body": {
           "id": "<uuid>",
           "status": "accepted",
-          "responded_at": "<timestamp>"
+          "responded_at": "<timestamp>",
+          "email_released_at": "<timestamp>",
+          "availability_refreshed": true
         },
         "db": {
           "contact_requests": {

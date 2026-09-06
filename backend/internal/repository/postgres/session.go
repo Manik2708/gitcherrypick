@@ -140,6 +140,35 @@ func (r *SessionRepository) RevokeFamily(ctx context.Context, t port.Tx, familyI
 	return translate(err, fmt.Sprintf("revoking family %s", familyID))
 }
 
+// CloseFamily retires every session in a family the holder signed out of.
+//
+// Spent as well as revoked. A signed-out token is not collateral damage from
+// someone else's replay — it was retired by the person holding it, and
+// stamping used_at is what records the difference.
+func (r *SessionRepository) CloseFamily(ctx context.Context, t port.Tx, familyID string) error {
+	_, err := r.db.q(t).Exec(ctx, `
+		UPDATE sessions
+		SET revoked_at = coalesce(revoked_at, $2), used_at = coalesce(used_at, $2)
+		WHERE family_id = $1`, familyID, r.db.now())
+	return translate(err, fmt.Sprintf("closing family %s", familyID))
+}
+
+// FamilyLive reports whether a family still has an unrevoked session.
+//
+// Read on every authenticated request, because an access token that outlived
+// its own sign-out is not a session (ADR-0002).
+func (r *SessionRepository) FamilyLive(ctx context.Context, familyID string) (bool, error) {
+	var live bool
+	if err := r.db.pool.QueryRow(ctx, `
+		SELECT EXISTS (
+		    SELECT 1 FROM sessions
+		    WHERE family_id = $1 AND revoked_at IS NULL AND expires_at > $2
+		)`, familyID, r.db.now()).Scan(&live); err != nil {
+		return false, translate(err, fmt.Sprintf("checking family %s", familyID))
+	}
+	return live, nil
+}
+
 // ActiveCount reports how many sessions a principal can still use.
 //
 // Unrevoked, unexpired, and unspent: a rotated predecessor is none of the

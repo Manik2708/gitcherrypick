@@ -245,6 +245,69 @@ func (_c *SessionRepository_ByRefreshTokenHash_Call) RunAndReturn(run func(ctx c
 	return _c
 }
 
+// CloseFamily provides a mock function for the type SessionRepository
+func (_mock *SessionRepository) CloseFamily(ctx context.Context, tx port.Tx, familyID string) error {
+	ret := _mock.Called(ctx, tx, familyID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CloseFamily")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, port.Tx, string) error); ok {
+		r0 = returnFunc(ctx, tx, familyID)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// SessionRepository_CloseFamily_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CloseFamily'
+type SessionRepository_CloseFamily_Call struct {
+	*mock.Call
+}
+
+// CloseFamily is a helper method to define mock.On call
+//   - ctx context.Context
+//   - tx port.Tx
+//   - familyID string
+func (_e *SessionRepository_Expecter) CloseFamily(ctx interface{}, tx interface{}, familyID interface{}) *SessionRepository_CloseFamily_Call {
+	return &SessionRepository_CloseFamily_Call{Call: _e.mock.On("CloseFamily", ctx, tx, familyID)}
+}
+
+func (_c *SessionRepository_CloseFamily_Call) Run(run func(ctx context.Context, tx port.Tx, familyID string)) *SessionRepository_CloseFamily_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 port.Tx
+		if args[1] != nil {
+			arg1 = args[1].(port.Tx)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *SessionRepository_CloseFamily_Call) Return(err error) *SessionRepository_CloseFamily_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *SessionRepository_CloseFamily_Call) RunAndReturn(run func(ctx context.Context, tx port.Tx, familyID string) error) *SessionRepository_CloseFamily_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Create provides a mock function for the type SessionRepository
 func (_mock *SessionRepository) Create(ctx context.Context, tx port.Tx, s *domain.Session, refreshTokenHash []byte) error {
 	ret := _mock.Called(ctx, tx, s, refreshTokenHash)
@@ -310,6 +373,72 @@ func (_c *SessionRepository_Create_Call) Return(err error) *SessionRepository_Cr
 }
 
 func (_c *SessionRepository_Create_Call) RunAndReturn(run func(ctx context.Context, tx port.Tx, s *domain.Session, refreshTokenHash []byte) error) *SessionRepository_Create_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// FamilyLive provides a mock function for the type SessionRepository
+func (_mock *SessionRepository) FamilyLive(ctx context.Context, familyID string) (bool, error) {
+	ret := _mock.Called(ctx, familyID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for FamilyLive")
+	}
+
+	var r0 bool
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (bool, error)); ok {
+		return returnFunc(ctx, familyID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) bool); ok {
+		r0 = returnFunc(ctx, familyID)
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = returnFunc(ctx, familyID)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// SessionRepository_FamilyLive_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'FamilyLive'
+type SessionRepository_FamilyLive_Call struct {
+	*mock.Call
+}
+
+// FamilyLive is a helper method to define mock.On call
+//   - ctx context.Context
+//   - familyID string
+func (_e *SessionRepository_Expecter) FamilyLive(ctx interface{}, familyID interface{}) *SessionRepository_FamilyLive_Call {
+	return &SessionRepository_FamilyLive_Call{Call: _e.mock.On("FamilyLive", ctx, familyID)}
+}
+
+func (_c *SessionRepository_FamilyLive_Call) Run(run func(ctx context.Context, familyID string)) *SessionRepository_FamilyLive_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *SessionRepository_FamilyLive_Call) Return(b bool, err error) *SessionRepository_FamilyLive_Call {
+	_c.Call.Return(b, err)
+	return _c
+}
+
+func (_c *SessionRepository_FamilyLive_Call) RunAndReturn(run func(ctx context.Context, familyID string) (bool, error)) *SessionRepository_FamilyLive_Call {
 	_c.Call.Return(run)
 	return _c
 }

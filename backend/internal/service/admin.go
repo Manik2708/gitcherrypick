@@ -54,19 +54,19 @@ func (s *AdminService) PendingVerifications(ctx context.Context, p domain.Princi
 }
 
 // DecideVerification approves or rejects a hirer or organization.
-func (s *AdminService) DecideVerification(ctx context.Context, p domain.Principal, id domain.RequestID, approve bool, reason string) error {
+func (s *AdminService) DecideVerification(ctx context.Context, p domain.Principal, id domain.RequestID, d domain.VerificationDecision) error {
 	admin, err := requireAdmin(p)
 	if err != nil {
 		return err
 	}
 	// A rejection the applicant cannot read produces a resubmission of the
 	// same thing.
-	if !approve && reason == "" {
+	if !d.Approve && d.Reason == "" {
 		return fmt.Errorf("a rejection must carry a reason: %w", ErrInvalid)
 	}
 
 	err = s.tx.InTx(ctx, func(ctx context.Context, tx port.Tx) error {
-		return s.admins.DecideVerification(ctx, tx, id, admin, approve, reason)
+		return s.admins.DecideVerification(ctx, tx, id, admin, d)
 	})
 	if err != nil {
 		if errors.Is(err, port.ErrConflict) {
@@ -103,10 +103,24 @@ func (s *AdminService) DecideSkillRequest(ctx context.Context, p domain.Principa
 		return nil, err
 	}
 	if !approve && reason == "" {
-		return nil, fmt.Errorf("a rejection must carry a reason: %w", ErrInvalid)
+		return nil, Coded(ErrInvalid, CodeReasonRequired, "a rejection must carry a reason")
 	}
 	if approve && skill == nil {
 		return nil, fmt.Errorf("approving requires the skill to create: %w", ErrInvalid)
+	}
+
+	// Checked BEFORE the write, so the refusal can name the entry that was hit.
+	// The unique constraints would catch the same collisions, but a constraint
+	// violation cannot say which existing skill owns the term — and "slug
+	// taken" without naming the owner leaves an admin guessing.
+	if approve {
+		collision, cerr := s.skills.CollidesWith(ctx, skill.Slug, skill.Aliases)
+		if cerr != nil {
+			return nil, fmt.Errorf("checking the catalogue: %w", cerr)
+		}
+		if collision != nil {
+			return nil, catalogueCollision(collision)
+		}
 	}
 
 	var created *domain.Skill
@@ -122,22 +136,70 @@ func (s *AdminService) DecideSkillRequest(ctx context.Context, p domain.Principa
 	})
 	if err != nil {
 		if errors.Is(err, port.ErrConflict) {
-			// Either the slug or an alias collides with an existing skill, or
-			// the request was already decided. Both are conflicts the admin
-			// must see rather than a 500.
-			return nil, fmt.Errorf("%w: %w", err, ErrConflict)
+			// The catalogue collisions were ruled out above, so a conflict
+			// here is a request somebody already decided. Re-deciding is
+			// refused rather than overwritten: the catalogue is not edited
+			// through this queue (ADR-0003).
+			return nil, alreadyDecided(ctx, s, id)
 		}
 		return nil, fmt.Errorf("deciding skill request: %w", err)
 	}
 	return created, nil
 }
 
-// PendingReevaluations drains the dispute queue.
-func (s *AdminService) PendingReevaluations(ctx context.Context, p domain.Principal) ([]domain.ReevaluationRequest, error) {
+// alreadyDecided refuses a second decision, naming the first.
+//
+// The standing decision is reported because that is the only thing the admin
+// needs to know: whether the outcome they wanted is already the outcome.
+func alreadyDecided(ctx context.Context, s *AdminService, id domain.RequestID) error {
+	err := Coded(ErrConflict, CodeRequestAlreadyDecided, "this request has already been decided")
+
+	decided, lookupErr := s.skills.RequestByID(ctx, id)
+	if lookupErr != nil {
+		return err
+	}
+	return err.WithDetail(map[string]any{"status": decided.Status})
+}
+
+// catalogueCollision turns a clash into the refusal an admin can act on.
+//
+// slug_taken and alias_taken are different problems with different fixes:
+// one means rename the entry, the other means drop an alias. conflicting_alias
+// names the term whenever an alias was involved on either side.
+func catalogueCollision(c *port.SkillCollision) error {
+	detail := map[string]any{
+		"existing_skill": port.SkillRef{Slug: c.Skill.Slug, Name: c.Skill.Name},
+	}
+	if c.TermIsAlias || c.MatchedAlias {
+		detail["conflicting_alias"] = c.Term
+	}
+
+	code := CodeSlugTaken
+	if c.TermIsAlias {
+		code = CodeAliasTaken
+	}
+	return Coded(ErrConflict, code, "%q is already in the catalogue", c.Term).
+		WithDetail(detail)
+}
+
+// Reevaluations drains the dispute queue for one status.
+//
+// Defaults to pending: an admin opening the queue is there to work it, and
+// the decided history is what they ask for explicitly.
+func (s *AdminService) Reevaluations(ctx context.Context, p domain.Principal, status string) ([]domain.ReevaluationRequest, error) {
 	if _, err := requireAdmin(p); err != nil {
 		return nil, err
 	}
-	out, err := s.reevals.Pending(ctx)
+	if status == "" {
+		status = string(domain.ReevalPending)
+	}
+	if !domain.ValidReevaluationStatus(status) {
+		return nil, Coded(ErrInvalid, CodeUnknownFilter,
+			"%q is not a dispute status", status).
+			WithDetail(map[string]any{"filter": "status"})
+	}
+
+	out, err := s.reevals.ByStatus(ctx, status)
 	if err != nil {
 		return nil, fmt.Errorf("listing re-evaluations: %w", err)
 	}

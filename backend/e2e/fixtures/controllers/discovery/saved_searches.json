@@ -236,16 +236,22 @@
               "display_name": "Bob Nakamura",
               "github_login": "bobn",
               "active": true,
+              "availability": {
+                "status": "looking_for_freelance",
+                "expires_at": "<timestamp>"
+              },
               "skills": [
                 {
                   "slug": "go",
                   "standing": "primary",
-                  "score": 55.0
+                  "score": 55.0,
+                  "rank": 2
                 },
                 {
                   "slug": "kubernetes",
                   "standing": "primary",
-                  "score": 52.0
+                  "score": 52.0,
+                  "rank": 2
                 }
               ],
               "overall_score": 60.4,
@@ -277,16 +283,22 @@
               "display_name": "Bob Nakamura",
               "github_login": "bobn",
               "active": true,
+              "availability": {
+                "status": "looking_for_freelance",
+                "expires_at": "<timestamp>"
+              },
               "skills": [
                 {
                   "slug": "go",
                   "standing": "primary",
-                  "score": 55.0
+                  "score": 55.0,
+                  "rank": 2
                 },
                 {
                   "slug": "kubernetes",
                   "standing": "primary",
-                  "score": 52.0
+                  "score": 52.0,
+                  "rank": 2
                 }
               ],
               "overall_score": 60.4,
@@ -317,21 +329,28 @@
               "display_name": "Bob Nakamura",
               "github_login": "bobn",
               "active": true,
+              "availability": {
+                "status": "looking_for_freelance",
+                "expires_at": "<timestamp>"
+              },
               "skills": [
                 {
                   "slug": "go",
                   "standing": "primary",
-                  "score": 55.0
+                  "score": 55.0,
+                  "rank": 2
                 },
                 {
                   "slug": "kubernetes",
                   "standing": "primary",
-                  "score": 52.0
+                  "score": 52.0,
+                  "rank": 2
                 },
                 {
                   "slug": "postgres",
                   "standing": "primary",
-                  "score": 48.0
+                  "score": 48.0,
+                  "rank": 2
                 }
               ],
               "overall_score": 60.4,
@@ -400,16 +419,22 @@
               "display_name": "Bob Nakamura",
               "github_login": "bobn",
               "active": true,
+              "availability": {
+                "status": "looking_for_freelance",
+                "expires_at": "<timestamp>"
+              },
               "skills": [
                 {
                   "slug": "go",
                   "standing": "primary",
-                  "score": 55.0
+                  "score": 55.0,
+                  "rank": 2
                 },
                 {
                   "slug": "kubernetes",
                   "standing": "primary",
-                  "score": 52.0
+                  "score": 52.0,
+                  "rank": 2
                 }
               ],
               "overall_score": 60.4,

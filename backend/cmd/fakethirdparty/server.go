@@ -50,6 +50,14 @@ func (s *Server) Handler() http.Handler {
 		r.Get("/userinfo", s.googleUserInfo)
 	})
 
+	// The Batch API (ADR-0006). Mounted under /anthropic so one server can
+	// stand in for every provider at distinct paths.
+	r.Route("/anthropic/v1/messages/batches", func(r chi.Router) {
+		r.Post("/", s.anthropicCreateBatch)
+		r.Get("/{batchID}", s.anthropicBatchStatus)
+		r.Get("/{batchID}/results", s.anthropicBatchResults)
+	})
+
 	r.Post("/resend/emails", s.resendSend)
 
 	// The control plane. Reachable only from the harness: cmd/api is an HTTP

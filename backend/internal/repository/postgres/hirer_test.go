@@ -59,10 +59,11 @@ func TestHirerRepositoryRegister(t *testing.T) {
 		mustRegister(ctx, t, db, "pat@unknown.example", "Pat", "First Ltd", "first-ltd")
 
 		err := db.InTx(ctx, func(ctx context.Context, tx port.Tx) error {
-			_, err := db.Hirers().Register(ctx, tx,
-				&domain.Hirer{Email: "pat@unknown.example", DisplayName: "Impostor", AuthProvider: domain.ProviderEmail},
-				&domain.Organization{Name: "Second Ltd", Slug: "second-ltd"},
-				[]byte("hash"))
+			_, err := db.Hirers().Register(ctx, tx, port.NewHirerAccount{
+				Hirer:        &domain.Hirer{Email: "pat@unknown.example", DisplayName: "Impostor", AuthProvider: domain.ProviderEmail},
+				Organization: &domain.Organization{Name: "Second Ltd", Slug: "second-ltd"},
+				PasswordHash: []byte("hash"),
+			})
 			return err
 		})
 		if !errors.Is(err, port.ErrConflict) {
@@ -80,12 +81,16 @@ func TestHirerRepositoryRegister(t *testing.T) {
 
 		var h *domain.Hirer
 		err := db.InTx(ctx, func(ctx context.Context, tx port.Tx) error {
-			var err error
-			h, err = db.Hirers().Register(ctx, tx,
-				&domain.Hirer{Email: "hank@acme.com", DisplayName: "Hank", AuthProvider: domain.ProviderGoogle},
-				&domain.Organization{Name: "Acme Corp", Slug: "acme"},
-				[]byte("this must be ignored"))
-			return err
+			registered, err := db.Hirers().Register(ctx, tx, port.NewHirerAccount{
+				Hirer:        &domain.Hirer{Email: "hank@acme.com", DisplayName: "Hank", AuthProvider: domain.ProviderGoogle},
+				Organization: &domain.Organization{Name: "Acme Corp", Slug: "acme"},
+				PasswordHash: []byte("this must be ignored"),
+			})
+			if err != nil {
+				return err
+			}
+			h = registered.Hirer
+			return nil
 		})
 		if err != nil {
 			t.Fatalf("registering a google seat: %v", err)
@@ -125,11 +130,15 @@ func TestHirerRepositoryReads(t *testing.T) {
 		db, ctx := newDB(t), testContext(t)
 		var h *domain.Hirer
 		_ = db.InTx(ctx, func(ctx context.Context, tx port.Tx) error {
-			var err error
-			h, err = db.Hirers().Register(ctx, tx,
-				&domain.Hirer{Email: "hank@acme.com", DisplayName: "Hank", AuthProvider: domain.ProviderGoogle},
-				&domain.Organization{Name: "Acme", Slug: "acme"}, nil)
-			return err
+			registered, err := db.Hirers().Register(ctx, tx, port.NewHirerAccount{
+				Hirer:        &domain.Hirer{Email: "hank@acme.com", DisplayName: "Hank", AuthProvider: domain.ProviderGoogle},
+				Organization: &domain.Organization{Name: "Acme", Slug: "acme"},
+			})
+			if err != nil {
+				return err
+			}
+			h = registered.Hirer
+			return nil
 		})
 		if _, err := db.Hirers().PasswordHash(ctx, h.ID); !errors.Is(err, port.ErrNotFound) {
 			t.Fatalf("expected no password path for an oauth seat, got %v", err)
@@ -193,7 +202,7 @@ func TestOrganizationRepositoryInvitations(t *testing.T) {
 		err := db.InTx(ctx, func(ctx context.Context, tx port.Tx) error {
 			var err error
 			invited, err = db.Organizations().AcceptInvitation(ctx, tx, id,
-				&domain.Hirer{DisplayName: "Rita Sandoval", AuthProvider: domain.ProviderEmail}, []byte("hash"))
+				&domain.Hirer{DisplayName: "Rita Sandoval", AuthProvider: domain.ProviderEmail}, []byte("hash"), time.Now())
 			return err
 		})
 		if err != nil {
@@ -222,14 +231,14 @@ func TestOrganizationRepositoryInvitations(t *testing.T) {
 		accept := func(name string) error {
 			return db.InTx(ctx, func(ctx context.Context, tx port.Tx) error {
 				_, err := db.Organizations().AcceptInvitation(ctx, tx, id,
-					&domain.Hirer{DisplayName: name, AuthProvider: domain.ProviderEmail}, []byte("hash"))
+					&domain.Hirer{DisplayName: name, AuthProvider: domain.ProviderEmail}, []byte("hash"), time.Now())
 				return err
 			})
 		}
 		if err := accept("Rita Sandoval"); err != nil {
 			t.Fatalf("first acceptance: %v", err)
 		}
-		if err := accept("Someone Else"); !errors.Is(err, port.ErrNotFound) {
+		if err := accept("Someone Else"); !errors.Is(err, port.ErrInvitationAccepted) {
 			t.Fatalf("expected a replayed token to be refused, got %v", err)
 		}
 		if n := count(t, db, `SELECT count(*) FROM hirer_accounts WHERE display_name = 'Someone Else'`); n != 0 {
@@ -257,10 +266,12 @@ func TestOrganizationRepositoryInvitations(t *testing.T) {
 
 		err = db.InTx(ctx, func(ctx context.Context, tx port.Tx) error {
 			_, err := db.Organizations().AcceptInvitation(ctx, tx, id,
-				&domain.Hirer{DisplayName: "Slow Coach", AuthProvider: domain.ProviderEmail}, []byte("hash"))
+				&domain.Hirer{DisplayName: "Slow Coach", AuthProvider: domain.ProviderEmail}, []byte("hash"), time.Now())
 			return err
 		})
-		if !errors.Is(err, port.ErrNotFound) {
+		// Expired, not absent. The holder's remedy is a fresh invitation, and a
+		// 404 would tell them it never existed (ADR-0009).
+		if !errors.Is(err, port.ErrInvitationExpired) {
 			t.Fatalf("expected an expired invitation to be refused, got %v", err)
 		}
 	})
@@ -276,7 +287,7 @@ func TestOrganizationRepositoryVerify(t *testing.T) {
 		id := mustInvite(ctx, t, db, owner, "colleague@unknown.example", hash)
 		err := db.InTx(ctx, func(ctx context.Context, tx port.Tx) error {
 			_, err := db.Organizations().AcceptInvitation(ctx, tx, id,
-				&domain.Hirer{DisplayName: "Colleague Chen", AuthProvider: domain.ProviderEmail}, []byte("hash"))
+				&domain.Hirer{DisplayName: "Colleague Chen", AuthProvider: domain.ProviderEmail}, []byte("hash"), time.Now())
 			return err
 		})
 		if err != nil {
@@ -353,11 +364,16 @@ func mustRegister(ctx context.Context, t *testing.T, db *postgres.DB, email, nam
 	var h *domain.Hirer
 	err := db.InTx(ctx, func(ctx context.Context, tx port.Tx) error {
 		var err error
-		h, err = db.Hirers().Register(ctx, tx,
-			&domain.Hirer{Email: email, DisplayName: name, AuthProvider: domain.ProviderEmail},
-			&domain.Organization{Name: orgName, Slug: orgSlug},
-			[]byte("argon2id-hash"))
-		return err
+		registered, err := db.Hirers().Register(ctx, tx, port.NewHirerAccount{
+			Hirer:        &domain.Hirer{Email: email, DisplayName: name, AuthProvider: domain.ProviderEmail},
+			Organization: &domain.Organization{Name: orgName, Slug: orgSlug},
+			PasswordHash: []byte("argon2id-hash"),
+		})
+		if err != nil {
+			return err
+		}
+		h = registered.Hirer
+		return nil
 	})
 	if err != nil {
 		t.Fatalf("registering %s: %v", email, err)
@@ -370,9 +386,13 @@ func mustInvite(ctx context.Context, t *testing.T, db *postgres.DB, owner *domai
 	var id domain.RequestID
 	err := db.InTx(ctx, func(ctx context.Context, tx port.Tx) error {
 		var err error
-		id, err = db.Organizations().CreateInvitation(ctx, tx, owner.OrganizationID,
+		invitation, err := db.Organizations().CreateInvitation(ctx, tx, owner.OrganizationID,
 			email, domain.RoleMember, owner.ID, hash, time.Now().Add(postgres.InvitationWindow))
-		return err
+		if err != nil {
+			return err
+		}
+		id = invitation.ID
+		return nil
 	})
 	if err != nil {
 		t.Fatalf("inviting %s: %v", email, err)

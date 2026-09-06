@@ -1,10 +1,7 @@
 {
   "name": "aliases resolve, and skill requests are deduped before a human sees them",
   "description": "ADR-0003. Skills are a curated catalogue, never free text — otherwise the population claiming 'Go' ranks separately from the population claiming 'Golang', and anyone can mint a skill in which they are trivially top-ranked. Aliases exist for lookup only and are never claimable, so the claiming population cannot fragment across spellings.\n\nRequests are bounded on two sides: 3 per contributor per rolling week, and trigram dedupe against names and aliases BEFORE the queue. Most noise is spelling variants and no admin should spend attention on them.",
-  "seed": [
-    "principals",
-    "catalogue"
-  ],
+  "seed": ["principals", "catalogue"],
   "steps": [
     {
       "as": "alice",
@@ -235,9 +232,7 @@
           "slug": "opentelemetry",
           "name": "OpenTelemetry",
           "category": "observability",
-          "aliases": [
-            "otel"
-          ]
+          "aliases": ["otel"]
         }
       },
       "expect": {
@@ -246,8 +241,10 @@
           "id": "<uuid>",
           "status": "approved",
           "created_skill": {
+            "id": "<uuid>",
             "slug": "opentelemetry",
-            "name": "OpenTelemetry"
+            "name": "OpenTelemetry",
+            "category": "observability"
           },
           "reviewed_at": "<timestamp>",
           "reviewed_by": "01920000-0000-7000-8000-00000000d001"

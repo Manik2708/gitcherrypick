@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/Manik2708/gitcherrypick/backend/internal/domain"
 	"github.com/Manik2708/gitcherrypick/backend/internal/port"
+	"github.com/Manik2708/gitcherrypick/backend/internal/scoring"
 )
 
 // ClaimService owns the claim lifecycle and the validation pipeline.
@@ -23,6 +25,7 @@ import (
 type ClaimService struct {
 	claims port.ClaimRepository
 	skills port.SkillRepository
+	evals  port.EvaluationRepository
 	users  port.UserRepository
 	github port.GitHubClient
 	broker port.Broker
@@ -34,13 +37,14 @@ type ClaimService struct {
 func NewClaimService(
 	claims port.ClaimRepository,
 	skills port.SkillRepository,
+	evals port.EvaluationRepository,
 	users port.UserRepository,
 	github port.GitHubClient,
 	broker port.Broker,
 	tx port.TxManager,
 	clock port.Clock,
 ) *ClaimService {
-	return &ClaimService{claims: claims, skills: skills, users: users,
+	return &ClaimService{claims: claims, skills: skills, evals: evals, users: users,
 		github: github, broker: broker, tx: tx, clock: clock}
 }
 
@@ -80,7 +84,7 @@ func (s *ClaimService) Get(ctx context.Context, id domain.UserID, claimID domain
 }
 
 // List reads the caller's claims, newest first.
-func (s *ClaimService) List(ctx context.Context, id domain.UserID) ([]domain.Claim, error) {
+func (s *ClaimService) List(ctx context.Context, id domain.UserID) ([]port.ClaimSummary, error) {
 	out, err := s.claims.ListByUser(ctx, id)
 	if err != nil {
 		return nil, fmt.Errorf("listing claims: %w", err)
@@ -94,26 +98,51 @@ func (s *ClaimService) List(ctx context.Context, id domain.UserID) ([]domain.Cla
 // valid never reaches the database — and a rejected replace leaves the version
 // untouched, which is what makes the optimistic-concurrency check meaningful.
 func (s *ClaimService) Replace(ctx context.Context, id domain.UserID, claimID domain.ClaimID, version int, c *domain.Claim) (*domain.Claim, error) {
-	if _, err := s.Get(ctx, id, claimID); err != nil {
+	// Read before writing, so a refusal can say what the current state IS.
+	// "your version is stale" without the live version leaves the caller to
+	// guess or re-fetch; ADR-0003 wants the writer that lost told enough to
+	// merge.
+	current, err := s.Get(ctx, id, claimID)
+	if err != nil {
 		return nil, err
 	}
+
+	// The lock and the version are checked BEFORE the structure, because both
+	// are facts about the claim rather than about the request. A stale writer
+	// is stale whatever they sent, and telling them their body is malformed
+	// would send them to fix the wrong thing.
+	if current.IsLocked(s.clock.Now()) {
+		return nil, lockedClaim(current)
+	}
+	if current.Version != version {
+		return nil, Coded(ErrConflict, CodeVersionConflict,
+			"the claim changed since you loaded it").
+			WithDetail(map[string]any{
+				"expected_version": current.Version,
+				"provided_version": version,
+			})
+	}
+
+	// Structural validation runs before the write, so a claim that could never
+	// be valid never reaches the database — and a rejected replace leaves the
+	// version untouched, which is what makes the concurrency check meaningful.
 	if failures := validateStructure(c); len(failures) > 0 {
 		return nil, fmt.Errorf("%s: %w", failures[0].Message, ErrInvalid)
 	}
 
 	var out *domain.Claim
-	err := s.tx.InTx(ctx, func(ctx context.Context, tx port.Tx) error {
+	err = s.tx.InTx(ctx, func(ctx context.Context, tx port.Tx) error {
 		var err error
 		out, err = s.claims.Replace(ctx, tx, claimID, version, c)
 		return err
 	})
 	switch {
 	case errors.Is(err, port.ErrVersionStale):
-		return nil, fmt.Errorf("the claim changed since you loaded it: %w", ErrConflict)
+		// Lost a race between the read above and the write. Rare, and the
+		// caller's remedy is the same: re-read and retry.
+		return nil, Coded(ErrConflict, CodeVersionConflict,
+			"the claim changed since you loaded it")
 	case errors.Is(err, port.ErrConflict):
-		// The seven-day lock. Surfaced with the repository's message, which
-		// carries the expiry — ADR-0003 wants the contributor told WHEN, not
-		// merely that.
 		return nil, fmt.Errorf("%w: %w", err, ErrConflict)
 	case err != nil:
 		return nil, fmt.Errorf("replacing claim: %w", err)
@@ -127,7 +156,24 @@ func (s *ClaimService) SetPREvidence(ctx context.Context, id domain.UserID, clai
 }
 
 // SetProjectEvidence replaces the supporting projects.
+//
+// Refused outright on a judged_only claim. That mode is scored on the model's
+// reading alone, with no PR-level arithmetic and so no reach term for a project
+// to feed (ADR-0007) — accepting the evidence would let a contributor spend
+// effort assembling something that could not move the number.
 func (s *ClaimService) SetProjectEvidence(ctx context.Context, id domain.UserID, claimID domain.ClaimID, projects []domain.ProjectEvidence) (*domain.Claim, error) {
+	if len(projects) > 0 {
+		current, err := s.Get(ctx, id, claimID)
+		if err != nil {
+			return nil, err
+		}
+		for _, skill := range current.Skills {
+			if skill.ScoringMode == domain.ScoringJudgedOnly {
+				return nil, Coded(ErrInvalid, CodeProjectsNotAccepted,
+					"a %s claim is scored on judgement alone", skill.Slug)
+			}
+		}
+	}
 	return s.patch(ctx, id, claimID, func(c *domain.Claim) { c.ProjectEvidence = projects })
 }
 
@@ -160,6 +206,7 @@ func (s *ClaimService) resolveSkills(ctx context.Context, skills []domain.ClaimS
 		skill, err := s.skills.BySlug(ctx, declared.Slug)
 		if err == nil {
 			declared.SkillID = skill.ID
+			declared.ScoringMode = skill.ScoringMode
 			out = append(out, declared)
 			continue
 		}
@@ -207,13 +254,27 @@ func (s *ClaimService) patch(ctx context.Context, id domain.UserID, claimID doma
 	if err != nil {
 		return nil, err
 	}
+	// The lock closes the sub-resource writes too. Enforcing it only on the
+	// whole-claim PUT would leave the anti-reroll rule bypassable by editing
+	// through /evidence/prs instead (ADR-0003).
+	if current.IsLocked(s.clock.Now()) {
+		return nil, lockedClaim(current)
+	}
 	apply(current)
+
+	// Editing a SCORED claim is a material change: it resets the judgement,
+	// so the version moves and any client holding the old one has to re-read.
+	// Editing a draft does not — a sub-resource write must not consume the
+	// version a client is holding for its next whole-claim edit.
+	versioned := current.EvaluatedAt != nil
 
 	var out *domain.Claim
 	err = s.tx.InTx(ctx, func(ctx context.Context, tx port.Tx) error {
 		var err error
-		// Deliberately NOT Replace: a sub-resource write must not consume the
-		// version a client is holding for its next whole-claim edit.
+		if versioned {
+			out, err = s.claims.Replace(ctx, tx, claimID, current.Version, current)
+			return err
+		}
 		out, err = s.claims.ReplaceEvidence(ctx, tx, claimID, current)
 		return err
 	})
@@ -241,8 +302,7 @@ func (s *ClaimService) Submit(ctx context.Context, id domain.UserID, claimID dom
 		return nil, nil, err
 	}
 	if claim.IsLocked(s.clock.Now()) {
-		return nil, nil, fmt.Errorf("claim %s is locked until %s: %w",
-			claimID, claim.LockedUntil.Format(time.RFC3339), ErrConflict)
+		return nil, nil, lockedClaim(claim)
 	}
 
 	contributor, err := s.users.ByID(ctx, id)
@@ -250,13 +310,29 @@ func (s *ClaimService) Submit(ctx context.Context, id domain.UserID, claimID dom
 		return nil, nil, fmt.Errorf("reading contributor: %w", err)
 	}
 
+	// 0: unchanged evidence. Checked FIRST, because a claim resubmitted
+	// untouched would otherwise fail the pair check as a duplicate of its own
+	// links — which is true, and tells the contributor nothing about why
+	// (ADR-0003).
+	if err := s.refuseUnchangedEvidence(ctx, claimID); err != nil {
+		return nil, nil, err
+	}
+
 	// 1-3: structural, parse, local dedupe. All local, all before any API call.
 	failures := validateStructure(claim)
 	failures = append(failures, validateNoDuplicates(claim)...)
 
-	// 4: the pair check. Also local, and it is the cheapest way to reject a
-	// resubmission of evidence already spent on this skill.
+	// 4: the pair check. One query rather than an API call, and it is the
+	// cheapest way to reject a resubmission of evidence already spent on this
+	// skill — so it runs before GitHub is touched.
 	links := buildLinks(id, claim)
+	if len(failures) == 0 {
+		conflicts, err := s.skills.ConflictingPairs(ctx, links)
+		if err != nil {
+			return nil, nil, fmt.Errorf("checking evidence pairs: %w", err)
+		}
+		failures = append(failures, pairFailures(claim, conflicts)...)
+	}
 
 	// 5: GitHub. Reached only when everything cheaper has passed.
 	if len(failures) == 0 {
@@ -303,18 +379,42 @@ func (s *ClaimService) Submit(ctx context.Context, id domain.UserID, claimID dom
 	return submitted, nil, nil
 }
 
+// refuseUnchangedEvidence stops a resubmission that would buy nothing.
+//
+// The fingerprint is over the evidence SET, so reordering five PRs is
+// unchanged and adding a sixth is not.
+func (s *ClaimService) refuseUnchangedEvidence(ctx context.Context, claimID domain.ClaimID) error {
+	judged, err := s.claims.EvaluatedFingerprint(ctx, claimID)
+	if err != nil {
+		return fmt.Errorf("reading the judged fingerprint: %w", err)
+	}
+	if judged == "" {
+		return nil
+	}
+
+	current, err := s.claims.Fingerprint(ctx, claimID)
+	if err != nil {
+		return fmt.Errorf("fingerprinting the evidence: %w", err)
+	}
+	if current != judged {
+		return nil
+	}
+	return Coded(ErrConflict, CodeEvidenceUnchanged,
+		"This claim has already been evaluated with identical evidence.")
+}
+
 // WithdrawPreview names the skills that would demote.
 //
 // Withdrawal warns before it costs something (ADR-0003): a contributor who
 // does not know a withdrawal drops them from primary to secondary has not been
 // given the choice.
-func (s *ClaimService) WithdrawPreview(ctx context.Context, id domain.UserID, claimID domain.ClaimID) ([]domain.UserSkill, error) {
+func (s *ClaimService) WithdrawPreview(ctx context.Context, id domain.UserID, claimID domain.ClaimID) ([]port.Demotion, error) {
 	claim, err := s.Get(ctx, id, claimID)
 	if err != nil {
 		return nil, err
 	}
 
-	standings, err := s.skills.UserSkills(ctx, id)
+	standings, err := s.skills.UserSkills(ctx, nil, id)
 	if err != nil {
 		return nil, fmt.Errorf("reading standings: %w", err)
 	}
@@ -328,14 +428,14 @@ func (s *ClaimService) WithdrawPreview(ctx context.Context, id domain.UserID, cl
 		contributed[cs.SkillID] = len(claim.PREvidence)
 	}
 
-	var demoting []domain.UserSkill
+	var demoting []port.Demotion
 	for _, us := range standings {
 		n, ok := contributed[us.SkillID]
 		if !ok || us.Standing != domain.Primary {
 			continue
 		}
-		if us.DistinctPRCount-n < domain.PrimaryThreshold {
-			demoting = append(demoting, us)
+		if after := us.DistinctPRCount - n; after < domain.PrimaryThreshold {
+			demoting = append(demoting, port.Demotion{Skill: us, DistinctPRCountAfter: after})
 		}
 	}
 	return demoting, nil
@@ -346,28 +446,52 @@ func (s *ClaimService) WithdrawPreview(ctx context.Context, id domain.UserID, cl
 // confirmDemotion is required when the preview is non-empty. The warning is
 // worth nothing if it can be skipped by not asking for it.
 func (s *ClaimService) Withdraw(ctx context.Context, id domain.UserID, claimID domain.ClaimID, confirmDemotion bool) (*domain.Claim, error) {
+	claim, err := s.Get(ctx, id, claimID)
+	if err != nil {
+		return nil, err
+	}
+
 	demoting, err := s.WithdrawPreview(ctx, id, claimID)
 	if err != nil {
 		return nil, err
 	}
 	if len(demoting) > 0 && !confirmDemotion {
-		return nil, fmt.Errorf(
-			"withdrawing demotes %d skill(s); confirm to proceed: %w", len(demoting), ErrConflict)
+		// The warning names the skills. "Confirm to proceed" without saying
+		// what is lost is not a warning, and the confirmation it collects is
+		// not informed (ADR-0003).
+		return nil, Coded(ErrConflict, CodeConfirmationRequired,
+			"withdrawing demotes %d skill(s); confirm to proceed", len(demoting)).
+			WithDetail(map[string]any{"demotions": demotionsOf(demoting)})
 	}
 
 	err = s.tx.InTx(ctx, func(ctx context.Context, tx port.Tx) error {
 		if err := s.claims.SetStatus(ctx, tx, claimID, domain.ClaimWithdrawn); err != nil {
 			return err
 		}
-		// Standing is recomputed for every affected skill, not only the
-		// demoting ones: a claim's links are gone either way, and a count left
-		// stale is a count that will disagree with the links table.
-		for _, us := range demoting {
-			if _, err := s.skills.RecomputeStanding(ctx, tx, id, us.SkillID); err != nil {
+		// The links go first. Standing is recomputed from what survives, so
+		// releasing the evidence after the recompute would count PRs the
+		// claim no longer holds.
+		if err := s.skills.UnlinkClaim(ctx, tx, claimID); err != nil {
+			return err
+		}
+		// Every skill the claim touched, not only the demoting ones: the links
+		// are gone either way, and a count left stale is a count that will
+		// disagree with the links table.
+		for _, cs := range claim.Skills {
+			if cs.IsInert() {
+				continue
+			}
+			if _, err := s.skills.RecomputeStanding(ctx, tx, id, cs.SkillID); err != nil {
 				return err
 			}
 		}
-		return nil
+
+		// The user-level numbers are derived from primary standings, so they
+		// have to follow. A contributor whose last primary skill just went
+		// unevidenced has not been measured — and null is what says that,
+		// where a stale 64.2 would keep them on a leaderboard they no longer
+		// qualify for (ADR-0007).
+		return s.recomputeUserScores(ctx, tx, id)
 	})
 	if err != nil {
 		return nil, fmt.Errorf("withdrawing claim: %w", err)
@@ -379,30 +503,98 @@ func (s *ClaimService) Withdraw(ctx context.Context, id domain.UserID, claimID d
 //
 // Accepting recomputes standing in the same transaction: the PRs were already
 // judged, so the skill's count changes the moment the contributor says yes.
-func (s *ClaimService) DecideSuggestion(ctx context.Context, id domain.UserID, claimID domain.ClaimID, skillID domain.SkillID, accept bool) (*domain.UserSkill, error) {
+func (s *ClaimService) DecideSuggestion(ctx context.Context, id domain.UserID, claimID domain.ClaimID, skillID domain.SkillID, accept bool) (*domain.SuggestionDecision, error) {
 	if _, err := s.Get(ctx, id, claimID); err != nil {
 		return nil, err
 	}
 
-	var out *domain.UserSkill
+	var out domain.SuggestionDecision
+	var existing *domain.ClaimSkill
+
 	err := s.tx.InTx(ctx, func(ctx context.Context, tx port.Tx) error {
-		if err := s.claims.DecideSuggestion(ctx, tx, claimID, skillID, accept); err != nil {
+		decided, err := s.claims.DecideSuggestion(ctx, tx, claimID, skillID, accept)
+		if err != nil {
+			existing = decided
 			return err
 		}
+		out.Skill = *decided
 		if !accept {
 			return nil
 		}
-		var err error
-		out, err = s.skills.RecomputeStanding(ctx, tx, id, skillID)
-		return err
+		// Accepting is what makes an inert suggestion count. Its PRs were
+		// already judged, so standing follows immediately rather than waiting
+		// for another evaluation (ADR-0003 §10).
+		if err := s.skills.LinkJudgedEvidence(ctx, tx, id, claimID, skillID); err != nil {
+			return err
+		}
+		out.Standing, err = s.skills.RecomputeStanding(ctx, tx, id, skillID)
+		if err != nil || out.Standing == nil {
+			return err
+		}
+		return s.rescore(ctx, tx, id, skillID, out.Standing)
 	})
 	if err != nil {
-		if errors.Is(err, port.ErrConflict) {
-			return nil, fmt.Errorf("this suggestion has already been decided: %w", ErrConflict)
-		}
-		return nil, fmt.Errorf("deciding suggestion: %w", err)
+		return nil, decisionRefusal(err, existing)
 	}
-	return out, nil
+	return &out, nil
+}
+
+// rescore recomputes one skill's score from every PR that survives against it.
+//
+// The same arithmetic the evaluator applies, reached from the other
+// direction: acceptance changes which evidence counts, and a standing whose
+// score still reflected the evidence before it would be stale the moment it
+// was written (ADR-0005).
+func (s *ClaimService) rescore(ctx context.Context, tx port.Tx, id domain.UserID,
+	skillID domain.SkillID, standing *domain.UserSkill) error {
+
+	surviving, err := s.evals.SkillPRScores(ctx, tx, id, skillID)
+	if err != nil {
+		return err
+	}
+	prComponent := scoring.PRComponent(surviving)
+	score := scoring.SkillScore(prComponent, 0, domain.ScoringStandard)
+	if err := s.skills.SetSkillScore(ctx, tx, id, skillID, score, prComponent, 0); err != nil {
+		return err
+	}
+
+	// Rounded to the scale the column stores, so the value returned to the
+	// caller is the value a later read reports. An unrounded copy would make
+	// the response and the next GET disagree in the last digits.
+	standing.Score, standing.PRComponent = math.Round(score*100)/100, prComponent
+	return nil
+}
+
+// decisionRefusal says WHICH of the three refusals happened.
+//
+// "This is not an undecided suggestion" is true of a declared skill and of one
+// already accepted, and the contributor needs a different answer for each: one
+// is a mistake they can correct, the other is a decision they already made.
+func decisionRefusal(err error, existing *domain.ClaimSkill) error {
+	if !errors.Is(err, port.ErrConflict) {
+		if errors.Is(err, port.ErrNotFound) {
+			return ErrNotFound
+		}
+		return fmt.Errorf("deciding suggestion: %w", err)
+	}
+
+	if existing != nil && existing.Origin != domain.AISuggested {
+		return Coded(ErrInvalid, CodeNotASuggestion,
+			"%s was declared, not suggested", existing.Slug).
+			WithDetail(map[string]any{"origin": string(existing.Origin)})
+	}
+
+	refusal := Coded(ErrConflict, CodeSuggestionAlreadyDecided,
+		"this suggestion has already been decided")
+	switch {
+	case existing == nil:
+		return refusal
+	case existing.AcceptedAt != nil:
+		return refusal.WithDetail(map[string]any{"accepted_at": existing.AcceptedAt})
+	case existing.DismissedAt != nil:
+		return refusal.WithDetail(map[string]any{"dismissed_at": existing.DismissedAt})
+	}
+	return refusal
 }
 
 // --- the pipeline ------------------------------------------------------------
@@ -442,6 +634,43 @@ func validateStructure(c *domain.Claim) []port.ValidationFailure {
 	if declared > 0 && nominated != 1 {
 		out = append(out, port.ValidationFailure{
 			Message: fmt.Sprintf("exactly one skill is nominated primary, not %d", nominated)})
+	}
+	return out
+}
+
+// diagnoseFetch decides WHY a pull request could not be read.
+//
+// A PR in a private repository 404s exactly as a nonexistent one does, and the
+// two demand different things of the contributor: one is a repository they
+// cannot use as evidence at all, the other is a typo. Asking about the
+// repository separates them, at the cost of one extra call on a path that has
+// already failed.
+func (s *ClaimService) diagnoseFetch(ctx context.Context, pr domain.PREvidence) (domain.EvidenceInvalidReason, string) {
+	if repo, err := s.github.Repository(ctx, pr.RepoOwner, pr.RepoName); err == nil && !repo.Public {
+		return domain.NotPublic, fmt.Sprintf("PR %d (%s/%s#%d) is not publicly visible.",
+			pr.Position, pr.RepoOwner, pr.RepoName, pr.PRNumber)
+	}
+	return domain.GitHubError, fmt.Sprintf("PR %d (%s/%s#%d) could not be read from GitHub.",
+		pr.Position, pr.RepoOwner, pr.RepoName, pr.PRNumber)
+}
+
+// pairFailures names each (PR, skill) already spent on another claim.
+//
+// The conflicting claim id travels with the refusal: the contributor's remedy
+// is to look at that claim, and without its id they cannot.
+func pairFailures(c *domain.Claim, conflicts []port.PairConflict) []port.ValidationFailure {
+	out := make([]port.ValidationFailure, 0, len(conflicts))
+	for _, conflict := range conflicts {
+		claimID := conflict.ClaimID
+		out = append(out, port.ValidationFailure{
+			Position:           conflict.Link.Position,
+			Reason:             domain.DuplicatePair,
+			Skill:              conflict.SkillSlug,
+			ConflictingClaimID: &claimID,
+			Message: fmt.Sprintf("PR %d (%s/%s#%d) already evidences %s in another claim.",
+				conflict.Link.Position, conflict.Link.RepoOwner, conflict.Link.RepoName,
+				conflict.Link.PRNumber, conflict.SkillName),
+		})
 	}
 	return out
 }
@@ -494,22 +723,39 @@ func (s *ClaimService) validateAgainstGitHub(ctx context.Context, c *domain.Clai
 	var out []port.ValidationFailure
 
 	for _, pr := range c.PREvidence {
+		// A row that never parsed has nothing to ask GitHub about. Reported
+		// from what is already known rather than by fetching "/#0", which
+		// would come back as an unreadable repository and send the
+		// contributor looking for a permissions problem they do not have.
+		if pr.InvalidReason != nil {
+			out = append(out, failure(pr, *pr.InvalidReason,
+				fmt.Sprintf("PR %d is not a GitHub pull request URL.", pr.Position)))
+			continue
+		}
+
 		facts, err := s.github.PullRequest(ctx, pr.RepoOwner, pr.RepoName, pr.PRNumber)
 		if err != nil {
-			out = append(out, failure(pr, domain.GitHubError,
-				fmt.Sprintf("PR %d (%s/%s#%d) could not be read from GitHub",
-					pr.Position, pr.RepoOwner, pr.RepoName, pr.PRNumber)))
+			reason, message := s.diagnoseFetch(ctx, pr)
+			if reason == domain.GitHubError {
+				// Unreadable RIGHT NOW is a fact about GitHub, not about the
+				// claim. ADR-0004 retries it on a longer backoff and scores the
+				// rest; failing the submit would record an outage as evidence
+				// against the contributor. The affected skill simply ends up
+				// with fewer distinct PRs, which standing already handles.
+				continue
+			}
+			out = append(out, failure(pr, reason, message))
 			continue
 		}
 		if !facts.Repository.Public {
 			out = append(out, failure(pr, domain.NotPublic,
-				fmt.Sprintf("PR %d (%s/%s#%d) is not publicly visible",
+				fmt.Sprintf("PR %d (%s/%s#%d) is not publicly visible.",
 					pr.Position, pr.RepoOwner, pr.RepoName, pr.PRNumber)))
 			continue
 		}
 		if !facts.Merged {
 			out = append(out, failure(pr, domain.NotMerged,
-				fmt.Sprintf("PR %d (%s/%s#%d) is not merged",
+				fmt.Sprintf("PR %d (%s/%s#%d) is not merged.",
 					pr.Position, pr.RepoOwner, pr.RepoName, pr.PRNumber)))
 			continue
 		}
@@ -518,24 +764,25 @@ func (s *ClaimService) validateAgainstGitHub(ctx context.Context, c *domain.Clai
 		case domain.RoleReviewer:
 			if facts.AuthorUserID == contributor.GitHubUserID {
 				out = append(out, failure(pr, domain.AuthoredByClaimant,
-					fmt.Sprintf("PR %d was written by you; reviewing your own work is not review",
-						pr.Position)))
+					fmt.Sprintf("PR %d (%s/%s#%d) was authored by you. Reviewing your own pull request is not review work.",
+						pr.Position, pr.RepoOwner, pr.RepoName, pr.PRNumber)))
 				continue
 			}
 			reviews, err := s.github.Reviews(ctx, pr.RepoOwner, pr.RepoName, pr.PRNumber)
 			if err != nil {
 				out = append(out, failure(pr, domain.GitHubError,
-					fmt.Sprintf("PR %d's reviews could not be read", pr.Position)))
+					fmt.Sprintf("PR %d's reviews could not be read.", pr.Position)))
 				continue
 			}
 			if !reviewedBy(reviews, contributor.GitHubUserID) {
 				out = append(out, failure(pr, domain.NotReviewedByClaimant,
-					fmt.Sprintf("PR %d carries no review by you", pr.Position)))
+					fmt.Sprintf("PR %d (%s/%s#%d) has no review from you.",
+						pr.Position, pr.RepoOwner, pr.RepoName, pr.PRNumber)))
 			}
 		default:
 			if facts.AuthorUserID != contributor.GitHubUserID {
 				out = append(out, failure(pr, domain.NotAuthoredByClaimant,
-					fmt.Sprintf("PR %d (%s/%s#%d) was authored by someone else",
+					fmt.Sprintf("PR %d (%s/%s#%d) was authored by someone else.",
 						pr.Position, pr.RepoOwner, pr.RepoName, pr.PRNumber)))
 			}
 		}
@@ -557,3 +804,72 @@ func failure(pr domain.PREvidence, reason domain.EvidenceInvalidReason, message 
 }
 
 var _ port.ClaimService = (*ClaimService)(nil)
+
+// recomputeUserScores rewrites Overall and Generalist from what survives.
+//
+// Overall is the best primary score, Generalist their sum — both nil when no
+// primary standing remains, because a score of zero would claim a measurement
+// that was not made.
+func (s *ClaimService) recomputeUserScores(ctx context.Context, tx port.Tx, id domain.UserID) error {
+	// Read through the TRANSACTION: the standings this is derived from were
+	// rewritten moments ago in it, and the pool would still see the old ones.
+	standings, err := s.skills.UserSkills(ctx, tx, id)
+	if err != nil {
+		return fmt.Errorf("reading standings: %w", err)
+	}
+
+	var overall, generalist *float64
+	for _, us := range standings {
+		if us.Standing != domain.Primary {
+			continue
+		}
+		score := us.Score
+		if overall == nil || score > *overall {
+			best := score
+			overall = &best
+		}
+		if generalist == nil {
+			zero := 0.0
+			generalist = &zero
+		}
+		*generalist += score
+	}
+
+	if err := s.users.SetUserScores(ctx, tx, id, overall, generalist); err != nil {
+		return fmt.Errorf("recomputing user scores: %w", err)
+	}
+	return nil
+}
+
+// lockedClaim refuses an edit during the seven-day window.
+//
+// Carries locked_until, because ADR-0003 wants the contributor told WHEN they
+// may edit rather than merely that they may not.
+func lockedClaim(c *domain.Claim) error {
+	return Coded(ErrConflict, CodeClaimLocked,
+		"claim %s is locked until %s", c.ID, c.LockedUntil.Format(time.RFC3339)).
+		WithDetail(map[string]any{
+			"locked_until": c.LockedUntil,
+			"reason":       "A scored claim cannot be edited for seven days.",
+		})
+}
+
+// SkillDemotion is one skill a withdrawal would drop out of ranking, as the
+// refusal reports it.
+type SkillDemotion struct {
+	Skill string `json:"skill"`
+	From  string `json:"from"`
+	To    string `json:"to"`
+}
+
+func demotionsOf(in []port.Demotion) []SkillDemotion {
+	out := make([]SkillDemotion, 0, len(in))
+	for _, d := range in {
+		out = append(out, SkillDemotion{
+			Skill: d.Skill.Slug,
+			From:  string(domain.Primary),
+			To:    string(domain.Secondary),
+		})
+	}
+	return out
+}

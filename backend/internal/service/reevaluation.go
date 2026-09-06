@@ -44,8 +44,12 @@ func (s *ReevaluationService) Request(ctx context.Context, id domain.UserID, cla
 	if claim.UserID != id {
 		return nil, ErrNotFound
 	}
-	if claim.Status != domain.ClaimEvaluated {
-		return nil, fmt.Errorf("only an evaluated claim can be disputed: %w", ErrConflict)
+	// What can be disputed is a JUDGEMENT, not a status. An accepted dispute
+	// requeues the claim, and refusing the next dispute because the requeue is
+	// still in flight would punish the contributor for the platform's own
+	// timing (ADR-0007 §6).
+	if claim.EvaluatedAt == nil {
+		return nil, fmt.Errorf("only a judged claim can be disputed: %w", ErrConflict)
 	}
 
 	cooldown, err := s.reevals.Cooldown(ctx, id)
@@ -53,8 +57,10 @@ func (s *ReevaluationService) Request(ctx context.Context, id domain.UserID, cla
 		return nil, fmt.Errorf("reading the cooldown: %w", err)
 	}
 	if !cooldown.CanRequest(s.clock.Now()) {
-		return nil, fmt.Errorf("you may dispute again after %s: %w",
-			cooldown.CooldownUntil.Format(time.RFC3339), ErrConflict)
+		return nil, Coded(ErrThrottled, CodeReevaluationCooldown,
+			"you may dispute again after %s",
+			cooldown.CooldownUntil.Format(time.RFC3339)).
+			WithDetail(map[string]any{"cooldown_until": cooldown.CooldownUntil})
 	}
 
 	created, err := s.reevals.Create(ctx, &domain.ReevaluationRequest{
@@ -62,7 +68,8 @@ func (s *ReevaluationService) Request(ctx context.Context, id domain.UserID, cla
 	})
 	if err != nil {
 		if errors.Is(err, port.ErrConflict) {
-			return nil, fmt.Errorf("this claim already has an open dispute: %w", ErrConflict)
+			return nil, Coded(ErrConflict, CodeRequestAlreadyOpen,
+				"this claim already has an open dispute")
 		}
 		return nil, fmt.Errorf("creating the dispute: %w", err)
 	}
@@ -71,10 +78,41 @@ func (s *ReevaluationService) Request(ctx context.Context, id domain.UserID, cla
 
 // Status makes the cooldown legible BEFORE a contributor spends a request on a
 // refusal.
-func (s *ReevaluationService) Status(ctx context.Context, id domain.UserID) (*domain.Cooldown, error) {
-	c, err := s.reevals.Cooldown(ctx, id)
+func (s *ReevaluationService) Status(ctx context.Context, id domain.UserID) (*domain.DisputeStanding, error) {
+	cooldown, err := s.reevals.Cooldown(ctx, id)
 	if err != nil {
 		return nil, fmt.Errorf("reading the cooldown: %w", err)
 	}
-	return c, nil
+
+	standing := domain.DisputeStanding{ClaimsEligible: []domain.ClaimID{}}
+	if cooldown != nil {
+		standing.Cooldown = *cooldown
+	}
+
+	open, err := s.reevals.OpenRequest(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("reading the open dispute: %w", err)
+	}
+	if open != nil {
+		requestID := open.ID
+		standing.PendingRequestID = &requestID
+	}
+
+	// Nothing is eligible while blocked. Listing claims a contributor cannot
+	// act on would be an invitation to a refusal.
+	standing.Blocker = standing.BlockedBy(s.clock.Now())
+	if standing.Blocker != domain.NotBlocked {
+		return &standing, nil
+	}
+
+	claims, err := s.claims.ListByUser(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("listing claims: %w", err)
+	}
+	for _, c := range claims {
+		if c.EvaluatedAt != nil {
+			standing.ClaimsEligible = append(standing.ClaimsEligible, c.ID)
+		}
+	}
+	return &standing, nil
 }

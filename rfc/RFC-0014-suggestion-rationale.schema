@@ -1,0 +1,16 @@
+-- RFC-0014 — An AI suggestion carries its reasoning
+--
+-- Amends RFC-0003.
+--
+-- claim_skills records that the model proposed a skill, and nothing about WHY.
+-- ADR-0003 §10 makes a suggestion inert until the contributor accepts it —
+-- which is a decision they are asked to make, and a decision needs the argument
+-- behind it. Without this column the platform shows "we think you also know
+-- Kubernetes" with no evidence, and the only honest answer to "why?" is that we
+-- did not keep it.
+--
+-- Nullable: a user_declared row has no model reasoning to carry, and the
+-- contributor's own rationale for claiming a skill is a different field on a
+-- different table (skill_requests.rationale).
+
+ALTER TABLE claim_skills ADD COLUMN rationale text;

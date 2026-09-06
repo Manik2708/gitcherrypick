@@ -40,23 +40,23 @@ func (_m *SkillService) EXPECT() *SkillService_Expecter {
 }
 
 // MySkills provides a mock function for the type SkillService
-func (_mock *SkillService) MySkills(ctx context.Context, id domain.UserID) ([]domain.UserSkill, error) {
+func (_mock *SkillService) MySkills(ctx context.Context, id domain.UserID) (*port.SkillStanding, error) {
 	ret := _mock.Called(ctx, id)
 
 	if len(ret) == 0 {
 		panic("no return value specified for MySkills")
 	}
 
-	var r0 []domain.UserSkill
+	var r0 *port.SkillStanding
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.UserID) ([]domain.UserSkill, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.UserID) (*port.SkillStanding, error)); ok {
 		return returnFunc(ctx, id)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.UserID) []domain.UserSkill); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.UserID) *port.SkillStanding); ok {
 		r0 = returnFunc(ctx, id)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]domain.UserSkill)
+			r0 = ret.Get(0).(*port.SkillStanding)
 		}
 	}
 	if returnFunc, ok := ret.Get(1).(func(context.Context, domain.UserID) error); ok {
@@ -97,12 +97,12 @@ func (_c *SkillService_MySkills_Call) Run(run func(ctx context.Context, id domai
 	return _c
 }
 
-func (_c *SkillService_MySkills_Call) Return(userSkills []domain.UserSkill, err error) *SkillService_MySkills_Call {
-	_c.Call.Return(userSkills, err)
+func (_c *SkillService_MySkills_Call) Return(skillStanding *port.SkillStanding, err error) *SkillService_MySkills_Call {
+	_c.Call.Return(skillStanding, err)
 	return _c
 }
 
-func (_c *SkillService_MySkills_Call) RunAndReturn(run func(ctx context.Context, id domain.UserID) ([]domain.UserSkill, error)) *SkillService_MySkills_Call {
+func (_c *SkillService_MySkills_Call) RunAndReturn(run func(ctx context.Context, id domain.UserID) (*port.SkillStanding, error)) *SkillService_MySkills_Call {
 	_c.Call.Return(run)
 	return _c
 }

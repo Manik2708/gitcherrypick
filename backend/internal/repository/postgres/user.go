@@ -130,6 +130,22 @@ func (r *UserRepository) Create(ctx context.Context, t port.Tx, c *domain.Contri
 	return &created, nil
 }
 
+// RefreshGitHubLogin updates the handle attached to a GitHub identity.
+//
+// The numeric id is the identity and never changes; the login is a display
+// handle that does. Keeping the first one seen would show a name the
+// contributor no longer answers to.
+func (r *UserRepository) RefreshGitHubLogin(ctx context.Context, githubUserID int64, login string) error {
+	if login == "" {
+		return nil
+	}
+	_, err := r.db.pool.Exec(ctx, `
+		UPDATE user_github_identities SET github_login = $2
+		WHERE github_user_id = $1 AND github_login IS DISTINCT FROM $2`,
+		githubUserID, login)
+	return translate(err, fmt.Sprintf("refreshing the login for %d", githubUserID))
+}
+
 // SetAvailability states availability and resets the 15-day window.
 //
 // Upsert rather than insert-or-update: a contributor may have no row yet, and

@@ -61,6 +61,7 @@ type invitationBody struct {
 	InvitedBy    domain.HirerID   `json:"invited_by,omitempty"`
 	Token        string           `json:"token"`
 	ExpiresAt    time.Time        `json:"expires_at"`
+	CreatedAt    time.Time        `json:"created_at"`
 }
 
 type acceptInvitationRequest struct {

@@ -187,8 +187,11 @@ func TestIssueAndVerify(t *testing.T) {
 		_, _, err = jwt.NewParser().ParseUnverified(token, claims)
 		require.NoError(t, err)
 
+		// `fam` names the session family, not a capability. It is what lets a
+		// sign-out end the access token too (ADR-0002) — the opposite of an
+		// embedded permission, since it can only ever take authority away.
 		require.ElementsMatch(t,
-			[]string{"iss", "sub", "kind", "iat", "exp", "jti"},
+			[]string{"iss", "sub", "kind", "iat", "exp", "jti", "fam"},
 			keysOf(claims))
 		require.Equal(t, crypto.Issuer, claims["iss"])
 		require.EqualValues(t, epoch.Unix(), claims["iat"])

@@ -28,7 +28,7 @@ var _ port.SavedSearchRepository = (*SavedSearchRepository)(nil)
 // ByID reads one saved search.
 func (r *SavedSearchRepository) ByID(ctx context.Context, id domain.SavedSearchID) (*domain.SavedSearch, error) {
 	s, err := scanSavedSearch(r.db.pool.QueryRow(ctx,
-		`SELECT id, organization_id, name, filters, created_by
+		`SELECT id, organization_id, name, filters, created_by, created_at
 		 FROM saved_searches WHERE id = $1`, string(id)))
 	if err != nil {
 		return nil, translate(err, fmt.Sprintf("saved search %s", id))
@@ -39,7 +39,7 @@ func (r *SavedSearchRepository) ByID(ctx context.Context, id domain.SavedSearchI
 // ListByOrganization reads an org's saved searches.
 func (r *SavedSearchRepository) ListByOrganization(ctx context.Context, id domain.OrganizationID) ([]domain.SavedSearch, error) {
 	rows, err := r.db.pool.Query(ctx,
-		`SELECT id, organization_id, name, filters, created_by
+		`SELECT id, organization_id, name, filters, created_by, created_at
 		 FROM saved_searches WHERE organization_id = $1
 		 ORDER BY created_at`, string(id))
 	if err != nil {
@@ -77,7 +77,7 @@ func (r *SavedSearchRepository) Create(ctx context.Context, s *domain.SavedSearc
 	created, err := scanSavedSearch(r.db.pool.QueryRow(ctx, `
 		INSERT INTO saved_searches (id, organization_id, name, filters, created_by)
 		VALUES ($1, $2, $3, $4, $5)
-		RETURNING id, organization_id, name, filters, created_by`,
+		RETURNING id, organization_id, name, filters, created_by, created_at`,
 		id.String(), string(s.OrganizationID), s.Name, string(filters), string(s.CreatedBy)))
 	if err != nil {
 		return nil, translate(err, "creating saved search")
@@ -102,7 +102,7 @@ func scanSavedSearch(row rowScanner) (*domain.SavedSearch, error) {
 		s       domain.SavedSearch
 		filters []byte
 	)
-	if err := row.Scan(&s.ID, &s.OrganizationID, &s.Name, &filters, &s.CreatedBy); err != nil {
+	if err := row.Scan(&s.ID, &s.OrganizationID, &s.Name, &filters, &s.CreatedBy, &s.CreatedAt); err != nil {
 		return nil, err
 	}
 	if err := json.Unmarshal(filters, &s.Filters); err != nil {

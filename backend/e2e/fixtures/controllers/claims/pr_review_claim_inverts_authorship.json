@@ -1,11 +1,7 @@
 {
   "name": "a pr-review claim requires the reviewer role, not authorship",
   "description": "ADR-0003: pr-review is claimed like any skill, but validation inverts. The claimant must have REVIEWED the PR and must NOT have authored it — reviewing your own pull request is not review work. Project evidence is also refused, since pr-review is judged_only and projects would contribute nothing.",
-  "seed": [
-    "principals",
-    "catalogue",
-    "repositories"
-  ],
+  "seed": ["principals", "catalogue", "repositories"],
   "steps": [
     {
       "as": "alice",
@@ -150,8 +146,8 @@
             },
             {
               "position": 3,
-              "reason": "not_reviewed_by_claimant",
-              "message": "PR 3 (acme/bigrepo#102) has no review from you."
+              "reason": "authored_by_claimant",
+              "message": "PR 3 (acme/bigrepo#102) was authored by you. Reviewing your own pull request is not review work."
             }
           ]
         }

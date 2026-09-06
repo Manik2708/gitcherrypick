@@ -133,6 +133,94 @@ func (_c *AuthService_CompleteGitHub_Call) RunAndReturn(run func(ctx context.Con
 	return _c
 }
 
+// CompleteGitHubHirer provides a mock function for the type AuthService
+func (_mock *AuthService) CompleteGitHubHirer(ctx context.Context, code string, state string, expectedState string) (*domain.Hirer, *domain.TokenPair, error) {
+	ret := _mock.Called(ctx, code, state, expectedState)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CompleteGitHubHirer")
+	}
+
+	var r0 *domain.Hirer
+	var r1 *domain.TokenPair
+	var r2 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string) (*domain.Hirer, *domain.TokenPair, error)); ok {
+		return returnFunc(ctx, code, state, expectedState)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string) *domain.Hirer); ok {
+		r0 = returnFunc(ctx, code, state, expectedState)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*domain.Hirer)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string, string) *domain.TokenPair); ok {
+		r1 = returnFunc(ctx, code, state, expectedState)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*domain.TokenPair)
+		}
+	}
+	if returnFunc, ok := ret.Get(2).(func(context.Context, string, string, string) error); ok {
+		r2 = returnFunc(ctx, code, state, expectedState)
+	} else {
+		r2 = ret.Error(2)
+	}
+	return r0, r1, r2
+}
+
+// AuthService_CompleteGitHubHirer_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CompleteGitHubHirer'
+type AuthService_CompleteGitHubHirer_Call struct {
+	*mock.Call
+}
+
+// CompleteGitHubHirer is a helper method to define mock.On call
+//   - ctx context.Context
+//   - code string
+//   - state string
+//   - expectedState string
+func (_e *AuthService_Expecter) CompleteGitHubHirer(ctx interface{}, code interface{}, state interface{}, expectedState interface{}) *AuthService_CompleteGitHubHirer_Call {
+	return &AuthService_CompleteGitHubHirer_Call{Call: _e.mock.On("CompleteGitHubHirer", ctx, code, state, expectedState)}
+}
+
+func (_c *AuthService_CompleteGitHubHirer_Call) Run(run func(ctx context.Context, code string, state string, expectedState string)) *AuthService_CompleteGitHubHirer_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		var arg3 string
+		if args[3] != nil {
+			arg3 = args[3].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *AuthService_CompleteGitHubHirer_Call) Return(hirer *domain.Hirer, tokenPair *domain.TokenPair, err error) *AuthService_CompleteGitHubHirer_Call {
+	_c.Call.Return(hirer, tokenPair, err)
+	return _c
+}
+
+func (_c *AuthService_CompleteGitHubHirer_Call) RunAndReturn(run func(ctx context.Context, code string, state string, expectedState string) (*domain.Hirer, *domain.TokenPair, error)) *AuthService_CompleteGitHubHirer_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // CompleteGoogle provides a mock function for the type AuthService
 func (_mock *AuthService) CompleteGoogle(ctx context.Context, code string, state string, expectedState string) (*domain.Hirer, *domain.TokenPair, error) {
 	ret := _mock.Called(ctx, code, state, expectedState)
@@ -851,39 +939,31 @@ func (_c *AuthService_Refresh_Call) RunAndReturn(run func(ctx context.Context, r
 }
 
 // RegisterHirer provides a mock function for the type AuthService
-func (_mock *AuthService) RegisterHirer(ctx context.Context, req port.RegisterHirerRequest) (*domain.Hirer, *domain.TokenPair, error) {
+func (_mock *AuthService) RegisterHirer(ctx context.Context, req port.RegisterHirerRequest) (*port.HirerRegistration, error) {
 	ret := _mock.Called(ctx, req)
 
 	if len(ret) == 0 {
 		panic("no return value specified for RegisterHirer")
 	}
 
-	var r0 *domain.Hirer
-	var r1 *domain.TokenPair
-	var r2 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, port.RegisterHirerRequest) (*domain.Hirer, *domain.TokenPair, error)); ok {
+	var r0 *port.HirerRegistration
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, port.RegisterHirerRequest) (*port.HirerRegistration, error)); ok {
 		return returnFunc(ctx, req)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, port.RegisterHirerRequest) *domain.Hirer); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, port.RegisterHirerRequest) *port.HirerRegistration); ok {
 		r0 = returnFunc(ctx, req)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*domain.Hirer)
+			r0 = ret.Get(0).(*port.HirerRegistration)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, port.RegisterHirerRequest) *domain.TokenPair); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, port.RegisterHirerRequest) error); ok {
 		r1 = returnFunc(ctx, req)
 	} else {
-		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*domain.TokenPair)
-		}
+		r1 = ret.Error(1)
 	}
-	if returnFunc, ok := ret.Get(2).(func(context.Context, port.RegisterHirerRequest) error); ok {
-		r2 = returnFunc(ctx, req)
-	} else {
-		r2 = ret.Error(2)
-	}
-	return r0, r1, r2
+	return r0, r1
 }
 
 // AuthService_RegisterHirer_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RegisterHirer'
@@ -916,12 +996,12 @@ func (_c *AuthService_RegisterHirer_Call) Run(run func(ctx context.Context, req 
 	return _c
 }
 
-func (_c *AuthService_RegisterHirer_Call) Return(hirer *domain.Hirer, tokenPair *domain.TokenPair, err error) *AuthService_RegisterHirer_Call {
-	_c.Call.Return(hirer, tokenPair, err)
+func (_c *AuthService_RegisterHirer_Call) Return(hirerRegistration *port.HirerRegistration, err error) *AuthService_RegisterHirer_Call {
+	_c.Call.Return(hirerRegistration, err)
 	return _c
 }
 
-func (_c *AuthService_RegisterHirer_Call) RunAndReturn(run func(ctx context.Context, req port.RegisterHirerRequest) (*domain.Hirer, *domain.TokenPair, error)) *AuthService_RegisterHirer_Call {
+func (_c *AuthService_RegisterHirer_Call) RunAndReturn(run func(ctx context.Context, req port.RegisterHirerRequest) (*port.HirerRegistration, error)) *AuthService_RegisterHirer_Call {
 	_c.Call.Return(run)
 	return _c
 }

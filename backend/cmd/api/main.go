@@ -148,7 +148,12 @@ func build(ctx context.Context, cfg *config) (*application, error) {
 	})
 
 	// --- storage ---------------------------------------------------------
-	pool, err := pgxpool.New(ctx, cfg.databaseURL)
+	poolConfig, err := postgres.PoolConfig(cfg.databaseURL)
+	if err != nil {
+		closeClock()
+		return nil, err
+	}
+	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)
 	if err != nil {
 		closeClock()
 		return nil, fmt.Errorf("connecting to the database: %w", err)
@@ -158,7 +163,7 @@ func build(ctx context.Context, cfg *config) (*application, error) {
 		pool.Close()
 		return nil, fmt.Errorf("reaching the database: %w", err)
 	}
-	db := postgres.New(pool)
+	db := postgres.New(pool).WithClock(now)
 
 	// --- services ---------------------------------------------------------
 	access := service.NewAccessService(db.Hirers())
@@ -166,17 +171,18 @@ func build(ctx context.Context, cfg *config) (*application, error) {
 	auth := service.NewAuthService(
 		db.Users(), db.Hirers(), db.Admins(), db.Sessions(),
 		githubClient, googleClient, tokens, minter, hasher,
-		db.ShareLinks(), db.Search(), db, now,
+		db.ShareLinks(), db.Search(), db, now, cfg.rubricVersion,
 	)
 	orgs := service.NewOrganizationService(
 		db.Organizations(), db.Hirers(), db.Sessions(), notifier,
 		minter, tokens, hasher, db, now,
 	)
 	claims := service.NewClaimService(
-		db.Claims(), db.Skills(), db.Users(), githubClient, db.Queue(), db, now,
+		db.Claims(), db.Skills(), db.Evaluations(), db.Users(), githubClient, db.Queue(), db, now,
 	)
-	skills := service.NewSkillService(db.Skills(), now)
-	discovery := service.NewDiscoveryService(db.Search(), db.Skills(), db.SavedSearches(), access)
+	skills := service.NewSkillService(db.Skills(), db.Users(), db.Reevaluations(),
+		db.Claims(), db.Evaluations(), now, cfg.rubricVersion)
+	discovery := service.NewDiscoveryService(db.Search(), db.Skills(), db.SavedSearches(), access, cfg.rubricVersion)
 	shortlists := service.NewShortlistService(
 		db.Shortlists(), db.Contacts(), db.Users(), db.Hirers(), notifier, access, db, now,
 	)
@@ -204,7 +210,7 @@ func build(ctx context.Context, cfg *config) (*application, error) {
 		controller.NewSkillRequestController(skills),
 		controller.NewShortlistController(shortlists),
 		controller.NewOrganizationController(orgs),
-		controller.NewAdminController(admin, evaluation),
+		controller.NewAdminController(admin, evaluation, now),
 		controller.NewPublicController(auth),
 
 		// Mounted last: it claims "/" and chi resolves the more specific

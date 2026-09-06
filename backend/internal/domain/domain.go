@@ -264,3 +264,53 @@ type TokenPair struct {
 	RefreshToken string
 	ExpiresIn    int
 }
+
+// VerificationDecision is an admin's answer to one verification request.
+//
+// Payment capability is decided SEPARATELY from the account. A studio can be
+// demonstrably real and still have nothing but self-reported payment history,
+// and a contributor deciding whether to release their address is told which of
+// the two was established (ADR-0002 §5).
+type VerificationDecision struct {
+	Approve         bool
+	Reason          string
+	PaymentVerified bool
+}
+
+// VerificationProof is one piece of evidence that a hiring account is real.
+//
+// Five kinds, and the two unstructured ones matter most: `alternative` and
+// `payment_capability` exist so a three-person studio with no company domain
+// and no LinkedIn page can still be verified (ADR-0002). Without them,
+// verification would be satisfiable only by large companies.
+type VerificationProof struct {
+	Kind          VerificationProofKind
+	Value         string
+	Notes         string
+	AttachmentURL string
+}
+
+// VerificationProofKind names the shape of one proof.
+type VerificationProofKind string
+
+// The proof kinds. Link-shaped ones carry a Value; the last two carry Notes.
+const (
+	ProofOrganizationLinkedIn VerificationProofKind = "organization_linkedin"
+	ProofWorkEmailDomain      VerificationProofKind = "work_email_domain"
+	ProofFreelancerProfile    VerificationProofKind = "freelancer_profile"
+	ProofPaymentCapability    VerificationProofKind = "payment_capability"
+	ProofAlternative          VerificationProofKind = "alternative"
+)
+
+// ValidProofKind reports whether a kind is one the catalogue accepts.
+//
+// Checked before the insert so a typo comes back as a named field error rather
+// than as an enum violation from Postgres.
+func ValidProofKind(k VerificationProofKind) bool {
+	switch k {
+	case ProofOrganizationLinkedIn, ProofWorkEmailDomain, ProofFreelancerProfile,
+		ProofPaymentCapability, ProofAlternative:
+		return true
+	}
+	return false
+}

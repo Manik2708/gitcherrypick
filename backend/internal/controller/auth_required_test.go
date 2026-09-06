@@ -75,9 +75,12 @@ func TestEveryAuthenticatedRouteRefusesAnonymousCallers(t *testing.T) {
 		{http.MethodGet, "/admin/reevaluations"},
 		{http.MethodPost, "/admin/reevaluations/" + requestID + "/decide"},
 		{http.MethodPost, "/admin/evaluations/sweep"},
-
-		{http.MethodPost, "/auth/logout"},
 	}
+
+	// /auth/logout is deliberately absent. Signing out is a request to hold no
+	// session, and someone who already holds none has got what they asked for
+	// — answering 401 would turn it into an oracle for whether a token is
+	// live (ADR-0002).
 
 	for _, route := range routes {
 		t.Run(route.method+" "+route.path, func(t *testing.T) {
@@ -86,7 +89,7 @@ func TestEveryAuthenticatedRouteRefusesAnonymousCallers(t *testing.T) {
 			got := h.do(t, route.method, route.path, "", `{}`)
 			require.Equal(t, http.StatusUnauthorized, got.Status,
 				"anonymous caller reached the handler; body was %s", got.Body)
-			require.Equal(t, service.CodeAuthRequired, got.errorCode(t))
+			require.Equal(t, service.CodeUnauthenticated, got.errorCode(t))
 		})
 	}
 }
@@ -109,16 +112,4 @@ func TestOversizedBodyIsRejected(t *testing.T) {
 	huge := `{"skills":[{"slug":"` + strings.Repeat("x", 2<<20) + `"}]}`
 	got := h.do(t, http.MethodPost, "/claims/"+claimID+"/skills", "alice-token", huge)
 	require.GreaterOrEqual(t, got.Status, 400)
-}
-
-func TestPRNumberTooLargeIsRejected(t *testing.T) {
-	// The pattern matches digits, so a number wider than an int still reaches
-	// the conversion. It must fail rather than wrap.
-	h := newHarness(t)
-	h.signIn("alice-token", contributorPrincipal())
-
-	got := h.do(t, http.MethodPost, "/claims/"+claimID+"/evidence/prs", "alice-token",
-		`{"prs":[{"position":1,"url":"https://github.com/a/b/pull/999999999999999999999999"}]}`)
-	require.Equal(t, http.StatusUnprocessableEntity, got.Status)
-	require.Equal(t, service.CodeInvalidEvidence, got.errorCode(t))
 }

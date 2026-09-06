@@ -177,20 +177,31 @@ func (_c *ClaimRepository_Create_Call) RunAndReturn(run func(ctx context.Context
 }
 
 // DecideSuggestion provides a mock function for the type ClaimRepository
-func (_mock *ClaimRepository) DecideSuggestion(ctx context.Context, tx port.Tx, id domain.ClaimID, skillID domain.SkillID, accept bool) error {
+func (_mock *ClaimRepository) DecideSuggestion(ctx context.Context, tx port.Tx, id domain.ClaimID, skillID domain.SkillID, accept bool) (*domain.ClaimSkill, error) {
 	ret := _mock.Called(ctx, tx, id, skillID, accept)
 
 	if len(ret) == 0 {
 		panic("no return value specified for DecideSuggestion")
 	}
 
-	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, port.Tx, domain.ClaimID, domain.SkillID, bool) error); ok {
+	var r0 *domain.ClaimSkill
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, port.Tx, domain.ClaimID, domain.SkillID, bool) (*domain.ClaimSkill, error)); ok {
+		return returnFunc(ctx, tx, id, skillID, accept)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, port.Tx, domain.ClaimID, domain.SkillID, bool) *domain.ClaimSkill); ok {
 		r0 = returnFunc(ctx, tx, id, skillID, accept)
 	} else {
-		r0 = ret.Error(0)
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*domain.ClaimSkill)
+		}
 	}
-	return r0
+	if returnFunc, ok := ret.Get(1).(func(context.Context, port.Tx, domain.ClaimID, domain.SkillID, bool) error); ok {
+		r1 = returnFunc(ctx, tx, id, skillID, accept)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
 }
 
 // ClaimRepository_DecideSuggestion_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DecideSuggestion'
@@ -241,12 +252,147 @@ func (_c *ClaimRepository_DecideSuggestion_Call) Run(run func(ctx context.Contex
 	return _c
 }
 
-func (_c *ClaimRepository_DecideSuggestion_Call) Return(err error) *ClaimRepository_DecideSuggestion_Call {
+func (_c *ClaimRepository_DecideSuggestion_Call) Return(claimSkill *domain.ClaimSkill, err error) *ClaimRepository_DecideSuggestion_Call {
+	_c.Call.Return(claimSkill, err)
+	return _c
+}
+
+func (_c *ClaimRepository_DecideSuggestion_Call) RunAndReturn(run func(ctx context.Context, tx port.Tx, id domain.ClaimID, skillID domain.SkillID, accept bool) (*domain.ClaimSkill, error)) *ClaimRepository_DecideSuggestion_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// Enrich provides a mock function for the type ClaimRepository
+func (_mock *ClaimRepository) Enrich(ctx context.Context, tx port.Tx, id domain.ClaimID, prs []domain.PREvidence) error {
+	ret := _mock.Called(ctx, tx, id, prs)
+
+	if len(ret) == 0 {
+		panic("no return value specified for Enrich")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, port.Tx, domain.ClaimID, []domain.PREvidence) error); ok {
+		r0 = returnFunc(ctx, tx, id, prs)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// ClaimRepository_Enrich_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Enrich'
+type ClaimRepository_Enrich_Call struct {
+	*mock.Call
+}
+
+// Enrich is a helper method to define mock.On call
+//   - ctx context.Context
+//   - tx port.Tx
+//   - id domain.ClaimID
+//   - prs []domain.PREvidence
+func (_e *ClaimRepository_Expecter) Enrich(ctx interface{}, tx interface{}, id interface{}, prs interface{}) *ClaimRepository_Enrich_Call {
+	return &ClaimRepository_Enrich_Call{Call: _e.mock.On("Enrich", ctx, tx, id, prs)}
+}
+
+func (_c *ClaimRepository_Enrich_Call) Run(run func(ctx context.Context, tx port.Tx, id domain.ClaimID, prs []domain.PREvidence)) *ClaimRepository_Enrich_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 port.Tx
+		if args[1] != nil {
+			arg1 = args[1].(port.Tx)
+		}
+		var arg2 domain.ClaimID
+		if args[2] != nil {
+			arg2 = args[2].(domain.ClaimID)
+		}
+		var arg3 []domain.PREvidence
+		if args[3] != nil {
+			arg3 = args[3].([]domain.PREvidence)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *ClaimRepository_Enrich_Call) Return(err error) *ClaimRepository_Enrich_Call {
 	_c.Call.Return(err)
 	return _c
 }
 
-func (_c *ClaimRepository_DecideSuggestion_Call) RunAndReturn(run func(ctx context.Context, tx port.Tx, id domain.ClaimID, skillID domain.SkillID, accept bool) error) *ClaimRepository_DecideSuggestion_Call {
+func (_c *ClaimRepository_Enrich_Call) RunAndReturn(run func(ctx context.Context, tx port.Tx, id domain.ClaimID, prs []domain.PREvidence) error) *ClaimRepository_Enrich_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// EvaluatedFingerprint provides a mock function for the type ClaimRepository
+func (_mock *ClaimRepository) EvaluatedFingerprint(ctx context.Context, id domain.ClaimID) (string, error) {
+	ret := _mock.Called(ctx, id)
+
+	if len(ret) == 0 {
+		panic("no return value specified for EvaluatedFingerprint")
+	}
+
+	var r0 string
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.ClaimID) (string, error)); ok {
+		return returnFunc(ctx, id)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.ClaimID) string); ok {
+		r0 = returnFunc(ctx, id)
+	} else {
+		r0 = ret.Get(0).(string)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, domain.ClaimID) error); ok {
+		r1 = returnFunc(ctx, id)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// ClaimRepository_EvaluatedFingerprint_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'EvaluatedFingerprint'
+type ClaimRepository_EvaluatedFingerprint_Call struct {
+	*mock.Call
+}
+
+// EvaluatedFingerprint is a helper method to define mock.On call
+//   - ctx context.Context
+//   - id domain.ClaimID
+func (_e *ClaimRepository_Expecter) EvaluatedFingerprint(ctx interface{}, id interface{}) *ClaimRepository_EvaluatedFingerprint_Call {
+	return &ClaimRepository_EvaluatedFingerprint_Call{Call: _e.mock.On("EvaluatedFingerprint", ctx, id)}
+}
+
+func (_c *ClaimRepository_EvaluatedFingerprint_Call) Run(run func(ctx context.Context, id domain.ClaimID)) *ClaimRepository_EvaluatedFingerprint_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 domain.ClaimID
+		if args[1] != nil {
+			arg1 = args[1].(domain.ClaimID)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *ClaimRepository_EvaluatedFingerprint_Call) Return(s string, err error) *ClaimRepository_EvaluatedFingerprint_Call {
+	_c.Call.Return(s, err)
+	return _c
+}
+
+func (_c *ClaimRepository_EvaluatedFingerprint_Call) RunAndReturn(run func(ctx context.Context, id domain.ClaimID) (string, error)) *ClaimRepository_EvaluatedFingerprint_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -318,23 +464,23 @@ func (_c *ClaimRepository_Fingerprint_Call) RunAndReturn(run func(ctx context.Co
 }
 
 // ListByUser provides a mock function for the type ClaimRepository
-func (_mock *ClaimRepository) ListByUser(ctx context.Context, id domain.UserID) ([]domain.Claim, error) {
+func (_mock *ClaimRepository) ListByUser(ctx context.Context, id domain.UserID) ([]port.ClaimSummary, error) {
 	ret := _mock.Called(ctx, id)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ListByUser")
 	}
 
-	var r0 []domain.Claim
+	var r0 []port.ClaimSummary
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.UserID) ([]domain.Claim, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.UserID) ([]port.ClaimSummary, error)); ok {
 		return returnFunc(ctx, id)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.UserID) []domain.Claim); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.UserID) []port.ClaimSummary); ok {
 		r0 = returnFunc(ctx, id)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]domain.Claim)
+			r0 = ret.Get(0).([]port.ClaimSummary)
 		}
 	}
 	if returnFunc, ok := ret.Get(1).(func(context.Context, domain.UserID) error); ok {
@@ -375,12 +521,12 @@ func (_c *ClaimRepository_ListByUser_Call) Run(run func(ctx context.Context, id 
 	return _c
 }
 
-func (_c *ClaimRepository_ListByUser_Call) Return(claims []domain.Claim, err error) *ClaimRepository_ListByUser_Call {
-	_c.Call.Return(claims, err)
+func (_c *ClaimRepository_ListByUser_Call) Return(claimSummarys []port.ClaimSummary, err error) *ClaimRepository_ListByUser_Call {
+	_c.Call.Return(claimSummarys, err)
 	return _c
 }
 
-func (_c *ClaimRepository_ListByUser_Call) RunAndReturn(run func(ctx context.Context, id domain.UserID) ([]domain.Claim, error)) *ClaimRepository_ListByUser_Call {
+func (_c *ClaimRepository_ListByUser_Call) RunAndReturn(run func(ctx context.Context, id domain.UserID) ([]port.ClaimSummary, error)) *ClaimRepository_ListByUser_Call {
 	_c.Call.Return(run)
 	return _c
 }

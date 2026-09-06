@@ -6,6 +6,7 @@ package mocks
 
 import (
 	"context"
+	"time"
 
 	"github.com/Manik2708/gitcherrypick/backend/internal/domain"
 	"github.com/Manik2708/gitcherrypick/backend/internal/port"
@@ -39,9 +40,75 @@ func (_m *EvaluationRepository) EXPECT() *EvaluationRepository_Expecter {
 	return &EvaluationRepository_Expecter{mock: &_m.Mock}
 }
 
+// ActiveRubricVersion provides a mock function for the type EvaluationRepository
+func (_mock *EvaluationRepository) ActiveRubricVersion(ctx context.Context, fallback string) (string, error) {
+	ret := _mock.Called(ctx, fallback)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ActiveRubricVersion")
+	}
+
+	var r0 string
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (string, error)); ok {
+		return returnFunc(ctx, fallback)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) string); ok {
+		r0 = returnFunc(ctx, fallback)
+	} else {
+		r0 = ret.Get(0).(string)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = returnFunc(ctx, fallback)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// EvaluationRepository_ActiveRubricVersion_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ActiveRubricVersion'
+type EvaluationRepository_ActiveRubricVersion_Call struct {
+	*mock.Call
+}
+
+// ActiveRubricVersion is a helper method to define mock.On call
+//   - ctx context.Context
+//   - fallback string
+func (_e *EvaluationRepository_Expecter) ActiveRubricVersion(ctx interface{}, fallback interface{}) *EvaluationRepository_ActiveRubricVersion_Call {
+	return &EvaluationRepository_ActiveRubricVersion_Call{Call: _e.mock.On("ActiveRubricVersion", ctx, fallback)}
+}
+
+func (_c *EvaluationRepository_ActiveRubricVersion_Call) Run(run func(ctx context.Context, fallback string)) *EvaluationRepository_ActiveRubricVersion_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *EvaluationRepository_ActiveRubricVersion_Call) Return(s string, err error) *EvaluationRepository_ActiveRubricVersion_Call {
+	_c.Call.Return(s, err)
+	return _c
+}
+
+func (_c *EvaluationRepository_ActiveRubricVersion_Call) RunAndReturn(run func(ctx context.Context, fallback string) (string, error)) *EvaluationRepository_ActiveRubricVersion_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // AlreadyEvaluated provides a mock function for the type EvaluationRepository
-func (_mock *EvaluationRepository) AlreadyEvaluated(ctx context.Context, claimID domain.ClaimID, version int) (bool, error) {
-	ret := _mock.Called(ctx, claimID, version)
+func (_mock *EvaluationRepository) AlreadyEvaluated(ctx context.Context, claimID domain.ClaimID, version int, rubricVersion string) (bool, error) {
+	ret := _mock.Called(ctx, claimID, version, rubricVersion)
 
 	if len(ret) == 0 {
 		panic("no return value specified for AlreadyEvaluated")
@@ -49,16 +116,16 @@ func (_mock *EvaluationRepository) AlreadyEvaluated(ctx context.Context, claimID
 
 	var r0 bool
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.ClaimID, int) (bool, error)); ok {
-		return returnFunc(ctx, claimID, version)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.ClaimID, int, string) (bool, error)); ok {
+		return returnFunc(ctx, claimID, version, rubricVersion)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.ClaimID, int) bool); ok {
-		r0 = returnFunc(ctx, claimID, version)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.ClaimID, int, string) bool); ok {
+		r0 = returnFunc(ctx, claimID, version, rubricVersion)
 	} else {
 		r0 = ret.Get(0).(bool)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, domain.ClaimID, int) error); ok {
-		r1 = returnFunc(ctx, claimID, version)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, domain.ClaimID, int, string) error); ok {
+		r1 = returnFunc(ctx, claimID, version, rubricVersion)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -74,11 +141,12 @@ type EvaluationRepository_AlreadyEvaluated_Call struct {
 //   - ctx context.Context
 //   - claimID domain.ClaimID
 //   - version int
-func (_e *EvaluationRepository_Expecter) AlreadyEvaluated(ctx interface{}, claimID interface{}, version interface{}) *EvaluationRepository_AlreadyEvaluated_Call {
-	return &EvaluationRepository_AlreadyEvaluated_Call{Call: _e.mock.On("AlreadyEvaluated", ctx, claimID, version)}
+//   - rubricVersion string
+func (_e *EvaluationRepository_Expecter) AlreadyEvaluated(ctx interface{}, claimID interface{}, version interface{}, rubricVersion interface{}) *EvaluationRepository_AlreadyEvaluated_Call {
+	return &EvaluationRepository_AlreadyEvaluated_Call{Call: _e.mock.On("AlreadyEvaluated", ctx, claimID, version, rubricVersion)}
 }
 
-func (_c *EvaluationRepository_AlreadyEvaluated_Call) Run(run func(ctx context.Context, claimID domain.ClaimID, version int)) *EvaluationRepository_AlreadyEvaluated_Call {
+func (_c *EvaluationRepository_AlreadyEvaluated_Call) Run(run func(ctx context.Context, claimID domain.ClaimID, version int, rubricVersion string)) *EvaluationRepository_AlreadyEvaluated_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -92,10 +160,15 @@ func (_c *EvaluationRepository_AlreadyEvaluated_Call) Run(run func(ctx context.C
 		if args[2] != nil {
 			arg2 = args[2].(int)
 		}
+		var arg3 string
+		if args[3] != nil {
+			arg3 = args[3].(string)
+		}
 		run(
 			arg0,
 			arg1,
 			arg2,
+			arg3,
 		)
 	})
 	return _c
@@ -106,7 +179,76 @@ func (_c *EvaluationRepository_AlreadyEvaluated_Call) Return(b bool, err error) 
 	return _c
 }
 
-func (_c *EvaluationRepository_AlreadyEvaluated_Call) RunAndReturn(run func(ctx context.Context, claimID domain.ClaimID, version int) (bool, error)) *EvaluationRepository_AlreadyEvaluated_Call {
+func (_c *EvaluationRepository_AlreadyEvaluated_Call) RunAndReturn(run func(ctx context.Context, claimID domain.ClaimID, version int, rubricVersion string) (bool, error)) *EvaluationRepository_AlreadyEvaluated_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// CompleteSweep provides a mock function for the type EvaluationRepository
+func (_mock *EvaluationRepository) CompleteSweep(ctx context.Context, tx port.Tx, id domain.RequestID, at time.Time) error {
+	ret := _mock.Called(ctx, tx, id, at)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CompleteSweep")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, port.Tx, domain.RequestID, time.Time) error); ok {
+		r0 = returnFunc(ctx, tx, id, at)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// EvaluationRepository_CompleteSweep_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CompleteSweep'
+type EvaluationRepository_CompleteSweep_Call struct {
+	*mock.Call
+}
+
+// CompleteSweep is a helper method to define mock.On call
+//   - ctx context.Context
+//   - tx port.Tx
+//   - id domain.RequestID
+//   - at time.Time
+func (_e *EvaluationRepository_Expecter) CompleteSweep(ctx interface{}, tx interface{}, id interface{}, at interface{}) *EvaluationRepository_CompleteSweep_Call {
+	return &EvaluationRepository_CompleteSweep_Call{Call: _e.mock.On("CompleteSweep", ctx, tx, id, at)}
+}
+
+func (_c *EvaluationRepository_CompleteSweep_Call) Run(run func(ctx context.Context, tx port.Tx, id domain.RequestID, at time.Time)) *EvaluationRepository_CompleteSweep_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 port.Tx
+		if args[1] != nil {
+			arg1 = args[1].(port.Tx)
+		}
+		var arg2 domain.RequestID
+		if args[2] != nil {
+			arg2 = args[2].(domain.RequestID)
+		}
+		var arg3 time.Time
+		if args[3] != nil {
+			arg3 = args[3].(time.Time)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *EvaluationRepository_CompleteSweep_Call) Return(err error) *EvaluationRepository_CompleteSweep_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *EvaluationRepository_CompleteSweep_Call) RunAndReturn(run func(ctx context.Context, tx port.Tx, id domain.RequestID, at time.Time) error) *EvaluationRepository_CompleteSweep_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -176,6 +318,68 @@ func (_c *EvaluationRepository_DeadLetter_Call) Return(err error) *EvaluationRep
 }
 
 func (_c *EvaluationRepository_DeadLetter_Call) RunAndReturn(run func(ctx context.Context, jobID domain.JobID, reason string, payload []byte) error) *EvaluationRepository_DeadLetter_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// OpenSweep provides a mock function for the type EvaluationRepository
+func (_mock *EvaluationRepository) OpenSweep(ctx context.Context) (*domain.RubricSweep, error) {
+	ret := _mock.Called(ctx)
+
+	if len(ret) == 0 {
+		panic("no return value specified for OpenSweep")
+	}
+
+	var r0 *domain.RubricSweep
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context) (*domain.RubricSweep, error)); ok {
+		return returnFunc(ctx)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context) *domain.RubricSweep); ok {
+		r0 = returnFunc(ctx)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*domain.RubricSweep)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context) error); ok {
+		r1 = returnFunc(ctx)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// EvaluationRepository_OpenSweep_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'OpenSweep'
+type EvaluationRepository_OpenSweep_Call struct {
+	*mock.Call
+}
+
+// OpenSweep is a helper method to define mock.On call
+//   - ctx context.Context
+func (_e *EvaluationRepository_Expecter) OpenSweep(ctx interface{}) *EvaluationRepository_OpenSweep_Call {
+	return &EvaluationRepository_OpenSweep_Call{Call: _e.mock.On("OpenSweep", ctx)}
+}
+
+func (_c *EvaluationRepository_OpenSweep_Call) Run(run func(ctx context.Context)) *EvaluationRepository_OpenSweep_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *EvaluationRepository_OpenSweep_Call) Return(rubricSweep *domain.RubricSweep, err error) *EvaluationRepository_OpenSweep_Call {
+	_c.Call.Return(rubricSweep, err)
+	return _c
+}
+
+func (_c *EvaluationRepository_OpenSweep_Call) RunAndReturn(run func(ctx context.Context) (*domain.RubricSweep, error)) *EvaluationRepository_OpenSweep_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -255,6 +459,143 @@ func (_c *EvaluationRepository_Persist_Call) RunAndReturn(run func(ctx context.C
 	return _c
 }
 
+// Record provides a mock function for the type EvaluationRepository
+func (_mock *EvaluationRepository) Record(ctx context.Context, tx port.Tx, e port.Evaluation) error {
+	ret := _mock.Called(ctx, tx, e)
+
+	if len(ret) == 0 {
+		panic("no return value specified for Record")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, port.Tx, port.Evaluation) error); ok {
+		r0 = returnFunc(ctx, tx, e)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// EvaluationRepository_Record_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Record'
+type EvaluationRepository_Record_Call struct {
+	*mock.Call
+}
+
+// Record is a helper method to define mock.On call
+//   - ctx context.Context
+//   - tx port.Tx
+//   - e port.Evaluation
+func (_e *EvaluationRepository_Expecter) Record(ctx interface{}, tx interface{}, e interface{}) *EvaluationRepository_Record_Call {
+	return &EvaluationRepository_Record_Call{Call: _e.mock.On("Record", ctx, tx, e)}
+}
+
+func (_c *EvaluationRepository_Record_Call) Run(run func(ctx context.Context, tx port.Tx, e port.Evaluation)) *EvaluationRepository_Record_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 port.Tx
+		if args[1] != nil {
+			arg1 = args[1].(port.Tx)
+		}
+		var arg2 port.Evaluation
+		if args[2] != nil {
+			arg2 = args[2].(port.Evaluation)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *EvaluationRepository_Record_Call) Return(err error) *EvaluationRepository_Record_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *EvaluationRepository_Record_Call) RunAndReturn(run func(ctx context.Context, tx port.Tx, e port.Evaluation) error) *EvaluationRepository_Record_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// RecordSweep provides a mock function for the type EvaluationRepository
+func (_mock *EvaluationRepository) RecordSweep(ctx context.Context, tx port.Tx, s *domain.RubricSweep) (*domain.RubricSweep, error) {
+	ret := _mock.Called(ctx, tx, s)
+
+	if len(ret) == 0 {
+		panic("no return value specified for RecordSweep")
+	}
+
+	var r0 *domain.RubricSweep
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, port.Tx, *domain.RubricSweep) (*domain.RubricSweep, error)); ok {
+		return returnFunc(ctx, tx, s)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, port.Tx, *domain.RubricSweep) *domain.RubricSweep); ok {
+		r0 = returnFunc(ctx, tx, s)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*domain.RubricSweep)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, port.Tx, *domain.RubricSweep) error); ok {
+		r1 = returnFunc(ctx, tx, s)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// EvaluationRepository_RecordSweep_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RecordSweep'
+type EvaluationRepository_RecordSweep_Call struct {
+	*mock.Call
+}
+
+// RecordSweep is a helper method to define mock.On call
+//   - ctx context.Context
+//   - tx port.Tx
+//   - s *domain.RubricSweep
+func (_e *EvaluationRepository_Expecter) RecordSweep(ctx interface{}, tx interface{}, s interface{}) *EvaluationRepository_RecordSweep_Call {
+	return &EvaluationRepository_RecordSweep_Call{Call: _e.mock.On("RecordSweep", ctx, tx, s)}
+}
+
+func (_c *EvaluationRepository_RecordSweep_Call) Run(run func(ctx context.Context, tx port.Tx, s *domain.RubricSweep)) *EvaluationRepository_RecordSweep_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 port.Tx
+		if args[1] != nil {
+			arg1 = args[1].(port.Tx)
+		}
+		var arg2 *domain.RubricSweep
+		if args[2] != nil {
+			arg2 = args[2].(*domain.RubricSweep)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *EvaluationRepository_RecordSweep_Call) Return(rubricSweep *domain.RubricSweep, err error) *EvaluationRepository_RecordSweep_Call {
+	_c.Call.Return(rubricSweep, err)
+	return _c
+}
+
+func (_c *EvaluationRepository_RecordSweep_Call) RunAndReturn(run func(ctx context.Context, tx port.Tx, s *domain.RubricSweep) (*domain.RubricSweep, error)) *EvaluationRepository_RecordSweep_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Scores provides a mock function for the type EvaluationRepository
 func (_mock *EvaluationRepository) Scores(ctx context.Context, claimID domain.ClaimID) ([]domain.PRSkillScore, error) {
 	ret := _mock.Called(ctx, claimID)
@@ -323,6 +664,86 @@ func (_c *EvaluationRepository_Scores_Call) RunAndReturn(run func(ctx context.Co
 	return _c
 }
 
+// SkillPRScores provides a mock function for the type EvaluationRepository
+func (_mock *EvaluationRepository) SkillPRScores(ctx context.Context, tx port.Tx, id domain.UserID, skillID domain.SkillID) ([]float64, error) {
+	ret := _mock.Called(ctx, tx, id, skillID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SkillPRScores")
+	}
+
+	var r0 []float64
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, port.Tx, domain.UserID, domain.SkillID) ([]float64, error)); ok {
+		return returnFunc(ctx, tx, id, skillID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, port.Tx, domain.UserID, domain.SkillID) []float64); ok {
+		r0 = returnFunc(ctx, tx, id, skillID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]float64)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, port.Tx, domain.UserID, domain.SkillID) error); ok {
+		r1 = returnFunc(ctx, tx, id, skillID)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// EvaluationRepository_SkillPRScores_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SkillPRScores'
+type EvaluationRepository_SkillPRScores_Call struct {
+	*mock.Call
+}
+
+// SkillPRScores is a helper method to define mock.On call
+//   - ctx context.Context
+//   - tx port.Tx
+//   - id domain.UserID
+//   - skillID domain.SkillID
+func (_e *EvaluationRepository_Expecter) SkillPRScores(ctx interface{}, tx interface{}, id interface{}, skillID interface{}) *EvaluationRepository_SkillPRScores_Call {
+	return &EvaluationRepository_SkillPRScores_Call{Call: _e.mock.On("SkillPRScores", ctx, tx, id, skillID)}
+}
+
+func (_c *EvaluationRepository_SkillPRScores_Call) Run(run func(ctx context.Context, tx port.Tx, id domain.UserID, skillID domain.SkillID)) *EvaluationRepository_SkillPRScores_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 port.Tx
+		if args[1] != nil {
+			arg1 = args[1].(port.Tx)
+		}
+		var arg2 domain.UserID
+		if args[2] != nil {
+			arg2 = args[2].(domain.UserID)
+		}
+		var arg3 domain.SkillID
+		if args[3] != nil {
+			arg3 = args[3].(domain.SkillID)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *EvaluationRepository_SkillPRScores_Call) Return(float64s []float64, err error) *EvaluationRepository_SkillPRScores_Call {
+	_c.Call.Return(float64s, err)
+	return _c
+}
+
+func (_c *EvaluationRepository_SkillPRScores_Call) RunAndReturn(run func(ctx context.Context, tx port.Tx, id domain.UserID, skillID domain.SkillID) ([]float64, error)) *EvaluationRepository_SkillPRScores_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Snapshot provides a mock function for the type EvaluationRepository
 func (_mock *EvaluationRepository) Snapshot(ctx context.Context, tx port.Tx, s domain.ScoreSnapshot) error {
 	ret := _mock.Called(ctx, tx, s)
@@ -382,6 +803,72 @@ func (_c *EvaluationRepository_Snapshot_Call) Return(err error) *EvaluationRepos
 }
 
 func (_c *EvaluationRepository_Snapshot_Call) RunAndReturn(run func(ctx context.Context, tx port.Tx, s domain.ScoreSnapshot) error) *EvaluationRepository_Snapshot_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// SweptClaimsRemaining provides a mock function for the type EvaluationRepository
+func (_mock *EvaluationRepository) SweptClaimsRemaining(ctx context.Context, tx port.Tx) (int, error) {
+	ret := _mock.Called(ctx, tx)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SweptClaimsRemaining")
+	}
+
+	var r0 int
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, port.Tx) (int, error)); ok {
+		return returnFunc(ctx, tx)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, port.Tx) int); ok {
+		r0 = returnFunc(ctx, tx)
+	} else {
+		r0 = ret.Get(0).(int)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, port.Tx) error); ok {
+		r1 = returnFunc(ctx, tx)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// EvaluationRepository_SweptClaimsRemaining_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SweptClaimsRemaining'
+type EvaluationRepository_SweptClaimsRemaining_Call struct {
+	*mock.Call
+}
+
+// SweptClaimsRemaining is a helper method to define mock.On call
+//   - ctx context.Context
+//   - tx port.Tx
+func (_e *EvaluationRepository_Expecter) SweptClaimsRemaining(ctx interface{}, tx interface{}) *EvaluationRepository_SweptClaimsRemaining_Call {
+	return &EvaluationRepository_SweptClaimsRemaining_Call{Call: _e.mock.On("SweptClaimsRemaining", ctx, tx)}
+}
+
+func (_c *EvaluationRepository_SweptClaimsRemaining_Call) Run(run func(ctx context.Context, tx port.Tx)) *EvaluationRepository_SweptClaimsRemaining_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 port.Tx
+		if args[1] != nil {
+			arg1 = args[1].(port.Tx)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *EvaluationRepository_SweptClaimsRemaining_Call) Return(n int, err error) *EvaluationRepository_SweptClaimsRemaining_Call {
+	_c.Call.Return(n, err)
+	return _c
+}
+
+func (_c *EvaluationRepository_SweptClaimsRemaining_Call) RunAndReturn(run func(ctx context.Context, tx port.Tx) (int, error)) *EvaluationRepository_SweptClaimsRemaining_Call {
 	_c.Call.Return(run)
 	return _c
 }

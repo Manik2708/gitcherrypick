@@ -1,8 +1,13 @@
 # Repo-level checks. Every target here is what CI runs — if it passes locally it passes there.
 #
-#   make setup    once per machine: tools, deps, venv
-#   make check    everything, in the order a reviewer would want it
-#   make fmt      fix what is fixable
+#   make setup      once per machine: tools, deps, venv
+#   make check      the Docker-free checks, in the order a reviewer would want them
+#   make check-all  check plus both suites that need a database
+#   make fmt        fix what is fixable
+#
+# CI runs three jobs, and between them they run every test in the tree: `check`
+# (with unit tests under -short), `db-test`, and `e2e`. `make check-all` is the
+# same set locally. None of the three is allowed to fail.
 #
 # Go targets run inside backend/. Prettier and the fixture validator run at the
 # root, because they cover markdown and JSON that live outside backend/.
@@ -22,7 +27,7 @@ MOCKERY_VERSION  := v3.5.1
 export GOBIN := $(TOOLS)
 export PATH  := $(TOOLS):$(PATH)
 
-.PHONY: setup check fmt fmt-check lint \
+.PHONY: setup check check-all fmt fmt-check lint \
         go-fmt go-fmt-check go-lint go-vet go-test go-tidy-check mocks \
         validate-fixtures validate-docs db-test e2e clean
 
@@ -137,6 +142,11 @@ validate-docs: $(VENV)/.installed
 # --- everything ---------------------------------------------------------------
 
 check: fmt-check lint validate-docs validate-fixtures go-test
+
+# Everything CI runs, including the two suites that need Docker. Ordered so the
+# cheap checks fail first: waiting on a container to learn that gofmt is unhappy
+# is time nobody gets back.
+check-all: check db-test e2e
 
 clean:
 	rm -rf $(VENV) node_modules $(TOOLS)

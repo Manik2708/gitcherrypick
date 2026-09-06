@@ -130,6 +130,14 @@ type verificationBody struct {
 	SubmittedAt   *time.Time           `json:"submitted_at"`
 	ReviewedAt    *time.Time           `json:"reviewed_at"`
 	Reason        *string              `json:"reason"`
+
+	// CanAppeal says whether submitting again is worth the hirer's time.
+	//
+	// A rejection with a reason is something they can answer; an approval is
+	// not something to appeal. Reported rather than inferred, because "may I
+	// try again" is the only question a rejected applicant actually has
+	// (ADR-0002).
+	CanAppeal bool `json:"can_appeal,omitempty"`
 }
 
 type shareLinkBody struct {
@@ -139,11 +147,41 @@ type shareLinkBody struct {
 	CreatedAt time.Time          `json:"created_at"`
 }
 
+// mySkillsBody is a contributor's own standing.
+//
+// The scores are pointers because null is not zero: a contributor with no
+// primary skill has not been measured (ADR-0007).
+type mySkillsBody struct {
+	Skills          []userSkillBody `json:"skills"`
+	OverallScore    *float64        `json:"overall_score"`
+	GeneralistScore *float64        `json:"generalist_score"`
+	RubricVersion   string          `json:"rubric_version"`
+
+	// Both are warnings, so both are omitted when there is nothing to warn
+	// about. Stale means at least one skill was judged under an older rubric,
+	// so these numbers are not comparable with a current leaderboard.
+	Stale                  bool `json:"stale,omitempty"`
+	ReevaluationInProgress bool `json:"reevaluation_in_progress,omitempty"`
+}
+
 type cooldownBody struct {
-	RejectionCount int              `json:"rejection_count"`
-	Tier           int              `json:"tier"`
-	CooldownUntil  *time.Time       `json:"cooldown_until"`
-	CanRequest     bool             `json:"can_request"`
+	RejectionCount int        `json:"rejection_count"`
+	Tier           int        `json:"tier"`
+	CooldownUntil  *time.Time `json:"cooldown_until"`
+
+	// CooldownDays is the length of the CURRENT tier's wait, present only
+	// while one is running. "28 days" is the number a contributor can act on;
+	// a bare expiry date makes them do the subtraction.
+	CooldownDays int `json:"cooldown_days,omitempty"`
+
+	CanRequest bool `json:"can_request"`
+
+	// BlockedBy and PendingRequestID are present only when something blocks.
+	// Reporting `"blocked_by": null` beside `can_request: true` would invite
+	// a client to branch on a field that never means anything.
+	BlockedBy        string            `json:"blocked_by,omitempty"`
+	PendingRequestID *domain.RequestID `json:"pending_request_id,omitempty"`
+
 	ClaimsEligible []domain.ClaimID `json:"claims_eligible"`
 }
 
@@ -204,12 +242,19 @@ func (c *MeController) mySkills(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	skills, err := c.skills.MySkills(r.Context(), p.Contributor.ID)
+	standing, err := c.skills.MySkills(r.Context(), p.Contributor.ID)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"skills": userSkillBodies(skills)})
+	writeJSON(w, http.StatusOK, mySkillsBody{
+		Skills:                 userSkillBodies(standing.Skills, standing.ActiveRubricVersion),
+		OverallScore:           standing.OverallScore,
+		GeneralistScore:        standing.GeneralistScore,
+		RubricVersion:          standing.RubricVersion,
+		Stale:                  standing.Stale,
+		ReevaluationInProgress: standing.ReevaluationInProgress,
+	})
 }
 
 // myRank returns positions and totals and nothing identifying anyone else.
@@ -241,7 +286,11 @@ func (c *MeController) myVerification(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	out := verificationBody{Status: status.Status, HirerVerified: status.HirerVerified}
+	out := verificationBody{
+		Status:        status.Status,
+		HirerVerified: status.HirerVerified,
+		CanAppeal:     status.Status == "rejected",
+	}
 	if !status.SubmittedAt.IsZero() {
 		out.SubmittedAt = &status.SubmittedAt
 	}
@@ -268,18 +317,29 @@ func (c *MeController) reevaluationStatus(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	cooldown, err := c.reeval.Status(r.Context(), p.Contributor.ID)
+	standing, err := c.reeval.Status(r.Context(), p.Contributor.ID)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
 
-	out := cooldownBody{CanRequest: true, ClaimsEligible: []domain.ClaimID{}}
-	if cooldown != nil {
-		out.RejectionCount = cooldown.RejectionCount
-		out.Tier = cooldown.Tier
-		out.CooldownUntil = cooldown.CooldownUntil
-		out.CanRequest = cooldown.CanRequest(time.Now())
+	blocker := standing.Blocker
+	out := cooldownBody{
+		RejectionCount:   standing.Cooldown.RejectionCount,
+		Tier:             standing.Cooldown.Tier,
+		CooldownUntil:    standing.Cooldown.CooldownUntil,
+		CanRequest:       blocker == domain.NotBlocked,
+		BlockedBy:        string(blocker),
+		ClaimsEligible:   standing.ClaimsEligible,
+		PendingRequestID: standing.PendingRequestID,
+	}
+	if blocker == domain.BlockedByCooldown {
+		out.CooldownDays = standing.Cooldown.CooldownDays()
+	}
+	// The pending dispute is named only when it is what blocks. Reporting it
+	// alongside a cooldown would point at the shorter of two waits.
+	if blocker != domain.BlockedByPending {
+		out.PendingRequestID = nil
 	}
 	writeJSON(w, http.StatusOK, out)
 }
@@ -360,8 +420,35 @@ func (c *MeController) respondContact(accept bool) http.HandlerFunc {
 			writeError(w, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, contactBody(*request))
+		writeJSON(w, http.StatusOK, contactDecisionBody{
+			ID:              request.ID,
+			Status:          string(request.Status),
+			RespondedAt:     request.RespondedAt,
+			EmailReleasedAt: request.EmailReleasedAt,
+			// Answering yes is a clearer statement of availability than the
+			// button they forgot to click, so accepting refreshes the window
+			// (ADR-0008 §1a). Said out loud, because it changes who can see
+			// them and they did not ask for it.
+			AvailabilityRefreshed: accept,
+		})
 	}
+}
+
+// contactDecisionBody is the answer a contributor just gave.
+//
+// Not the request as they browse it: what they need back is confirmation of
+// what their answer DID — when it was recorded, whether their address went
+// out, and that their availability was refreshed as a side effect.
+type contactDecisionBody struct {
+	ID          domain.ContactID `json:"id"`
+	Status      string           `json:"status"`
+	RespondedAt *time.Time       `json:"responded_at"`
+
+	// Both omitted on a DECLINE: nothing was released and nothing refreshed,
+	// and reporting "null, false" would invite the reader to wonder whether
+	// something nearly happened.
+	EmailReleasedAt       *time.Time `json:"email_released_at,omitempty"`
+	AvailabilityRefreshed bool       `json:"availability_refreshed,omitempty"`
 }
 
 // --- serialization -----------------------------------------------------------

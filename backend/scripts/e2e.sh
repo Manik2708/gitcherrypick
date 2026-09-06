@@ -149,8 +149,10 @@ cd "${BACKEND_DIR}"
 go build -o "${RUN_DIR}/api" ./cmd/api || die "building cmd/api"
 go build -o "${RUN_DIR}/fakethirdparty" ./cmd/fakethirdparty || die "building cmd/fakethirdparty"
 go build -o "${RUN_DIR}/jobs" ./cmd/jobs || die "building cmd/jobs"
+go build -o "${RUN_DIR}/evaluator" ./cmd/evaluator || die "building cmd/evaluator"
 
 export E2E_JOBS_BINARY="${RUN_DIR}/jobs"
+export E2E_EVALUATOR_BINARY="${RUN_DIR}/evaluator"
 export E2E_API_BINARY="${RUN_DIR}/api"
 
 # A throwaway Ed25519 keypair. ADR-0011 refuses to boot without one and has no
@@ -170,6 +172,7 @@ log "starting the fake third-party server on ${FAKE_PORT}"
 "${RUN_DIR}/fakethirdparty" \
   --addr="127.0.0.1:${FAKE_PORT}" \
   --self-url="${E2E_CONTROL_URL}" \
+  --now="${E2E_EPOCH:-2026-08-12T09:00:00Z}" \
   >"${RUN_DIR}/fake.log" 2>&1 &
 FAKE_PID=$!
 

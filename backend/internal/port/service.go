@@ -41,12 +41,24 @@ type AuthService interface {
 	// GitHub id rather than the login.
 	CompleteGitHub(ctx context.Context, code, state, expectedState string) (*domain.Contributor, *domain.TokenPair, bool, error)
 
+	// CompleteGitHubHirer signs in a seat whose provider is GitHub.
+	//
+	// Separate from CompleteGitHub because the namespaces are separate: one
+	// identity may own a contributor and a hirer, and the callback cannot
+	// guess which the caller meant. It NEVER creates — like the Google path,
+	// registration is what raises the verification request.
+	CompleteGitHubHirer(ctx context.Context, code, state, expectedState string) (*domain.Hirer, *domain.TokenPair, error)
+
 	GoogleAuthorizeURL(ctx context.Context) (url string, state string, err error)
 	// CompleteGoogle never auto-creates an account: that would bypass
 	// registration and therefore bypass the verification request.
 	CompleteGoogle(ctx context.Context, code, state, expectedState string) (*domain.Hirer, *domain.TokenPair, error)
 
-	RegisterHirer(ctx context.Context, req RegisterHirerRequest) (*domain.Hirer, *domain.TokenPair, error)
+	// RegisterHirer creates the account and queues it for review. It does NOT
+	// sign the registrant in: an unverified hirer can do nothing on the
+	// platform, so a token pair here would be a credential with no use that
+	// still has to be stored and expired.
+	RegisterHirer(ctx context.Context, req RegisterHirerRequest) (*HirerRegistration, error)
 	LoginHirer(ctx context.Context, email, password string) (*domain.Hirer, *domain.TokenPair, error)
 	LoginAdmin(ctx context.Context, email, password string) (*domain.Admin, *domain.TokenPair, error)
 
@@ -82,7 +94,17 @@ type RegisterHirerRequest struct {
 	OrganizationName string
 	Website          string
 	LinkedInURL      string
-	Proofs           []string
+	Proofs           []domain.VerificationProof
+}
+
+// HirerRegistration is what a completed registration produced.
+//
+// The queued request is returned rather than left to be looked up, because the
+// only useful thing a new registrant can do is watch it — and telling them its
+// id in the same response is what makes that possible.
+type HirerRegistration struct {
+	Hirer               *domain.Hirer
+	VerificationRequest *VerificationRequest
 }
 
 // OrganizationService owns seats. An org self-administers them, with no admin
@@ -113,11 +135,22 @@ type VerificationStatus struct {
 	Reason        string
 }
 
+// Demotion is one skill a withdrawal would drop out of ranking.
+//
+// DistinctPRCountAfter is what the count becomes once this claim's evidence is
+// removed — the number that decides the demotion, not the one the contributor
+// currently has. Reporting the current count would show a figure at or above
+// the threshold next to a warning that the threshold was missed.
+type Demotion struct {
+	Skill                domain.UserSkill
+	DistinctPRCountAfter int
+}
+
 // ClaimService owns the claim lifecycle and the validation pipeline.
 type ClaimService interface {
 	Create(ctx context.Context, id domain.UserID) (*domain.Claim, error)
 	Get(ctx context.Context, id domain.UserID, claimID domain.ClaimID) (*domain.Claim, error)
-	List(ctx context.Context, id domain.UserID) ([]domain.Claim, error)
+	List(ctx context.Context, id domain.UserID) ([]ClaimSummary, error)
 
 	// Replace is the whole-claim edit. It refuses while the seven-day lock is
 	// in force and on a stale version.
@@ -134,10 +167,10 @@ type ClaimService interface {
 
 	// WithdrawPreview names the skills that would demote, so withdrawal warns
 	// before it costs something.
-	WithdrawPreview(ctx context.Context, id domain.UserID, claimID domain.ClaimID) ([]domain.UserSkill, error)
+	WithdrawPreview(ctx context.Context, id domain.UserID, claimID domain.ClaimID) ([]Demotion, error)
 	Withdraw(ctx context.Context, id domain.UserID, claimID domain.ClaimID, confirmDemotion bool) (*domain.Claim, error)
 
-	DecideSuggestion(ctx context.Context, id domain.UserID, claimID domain.ClaimID, skillID domain.SkillID, accept bool) (*domain.UserSkill, error)
+	DecideSuggestion(ctx context.Context, id domain.UserID, claimID domain.ClaimID, skillID domain.SkillID, accept bool) (*domain.SuggestionDecision, error)
 }
 
 // ValidationFailure names one failing evidence row. Every failure is reported,
@@ -147,7 +180,12 @@ type ValidationFailure struct {
 	Position int
 	Reason   domain.EvidenceInvalidReason
 	Message  string
-	// Set on a pair conflict, naming the claim that already owns the triple.
+
+	// Set on a pair conflict, naming the skill the triple is already spent on
+	// and the claim that owns it. Both are needed to act: the contributor has
+	// to know WHICH skill this PR already evidences before deciding whether to
+	// drop the row or the skill (ADR-0007).
+	Skill              string
 	ConflictingClaimID *domain.ClaimID
 }
 
@@ -155,7 +193,39 @@ type ValidationFailure struct {
 type SkillService interface {
 	Search(ctx context.Context, query string) ([]SkillMatch, error)
 	RequestSkill(ctx context.Context, id domain.UserID, proposedName, rationale string) (domain.RequestID, error)
-	MySkills(ctx context.Context, id domain.UserID) ([]domain.UserSkill, error)
+	// MySkills is the contributor's own standing, with the context that makes
+	// a score readable: which rubric produced it, whether that rubric has since
+	// moved, and whether a dispute is already in flight.
+	MySkills(ctx context.Context, id domain.UserID) (*SkillStanding, error)
+}
+
+// SkillStanding is a contributor's own view of their skills.
+type SkillStanding struct {
+	Skills []domain.UserSkill
+
+	// Nil until a skill reaches primary standing. Null is not zero: zero would
+	// claim we measured something (ADR-0007).
+	OverallScore    *float64
+	GeneralistScore *float64
+
+	// RubricVersion is what these SCORES were produced under — which, mid
+	// sweep, is not what the platform scores under now. Labelling superseded
+	// numbers with the current version would claim they had been re-judged.
+	RubricVersion string
+
+	// ActiveRubricVersion is what the platform scores under now. Carried
+	// alongside rather than instead: staleness is the comparison between the
+	// two, and a caller that had only one could not make it.
+	ActiveRubricVersion string
+
+	// Stale reports that at least one skill was judged under an older rubric,
+	// so the numbers below are not comparable with a current leaderboard until
+	// the sweep reaches them (ADR-0004).
+	Stale bool
+
+	// ReevaluationInProgress stops a contributor raising a second dispute
+	// while the first is open, and tells them why.
+	ReevaluationInProgress bool
 }
 
 // EvaluationService is the evaluator's business logic: judge, compute, persist.
@@ -171,7 +241,7 @@ type EvaluationService interface {
 	// Sweep re-queues the corpus when the rubric changes. Enqueue-only: a
 	// half-swept corpus mixes versions, and a leaderboard mixing them ranks
 	// people by which version happened to judge them.
-	Sweep(ctx context.Context, p domain.Principal, toVersion, reason string) (enqueued int, err error)
+	Sweep(ctx context.Context, p domain.Principal, toVersion, reason string) (*domain.RubricSweep, error)
 }
 
 // DiscoveryService owns search, leaderboards, scorecards and rank.
@@ -232,12 +302,12 @@ type ContactService interface {
 // AdminService owns the queues only an admin may drain.
 type AdminService interface {
 	PendingVerifications(ctx context.Context, p domain.Principal) ([]VerificationRequest, error)
-	DecideVerification(ctx context.Context, p domain.Principal, id domain.RequestID, approve bool, reason string) error
+	DecideVerification(ctx context.Context, p domain.Principal, id domain.RequestID, d domain.VerificationDecision) error
 
 	PendingSkillRequests(ctx context.Context, p domain.Principal, status string) ([]SkillRequest, error)
 	DecideSkillRequest(ctx context.Context, p domain.Principal, id domain.RequestID, approve bool, skill *domain.Skill, reason string) (*domain.Skill, error)
 
-	PendingReevaluations(ctx context.Context, p domain.Principal) ([]domain.ReevaluationRequest, error)
+	Reevaluations(ctx context.Context, p domain.Principal, status string) ([]domain.ReevaluationRequest, error)
 	DecideReevaluation(ctx context.Context, p domain.Principal, id domain.RequestID, accept bool, reason string) error
 }
 
@@ -246,7 +316,7 @@ type ReevaluationService interface {
 	Request(ctx context.Context, id domain.UserID, claimID domain.ClaimID, reason string) (*domain.ReevaluationRequest, error)
 	// Status makes the cooldown legible BEFORE a contributor spends a request
 	// on a 429.
-	Status(ctx context.Context, id domain.UserID) (*domain.Cooldown, error)
+	Status(ctx context.Context, id domain.UserID) (*domain.DisputeStanding, error)
 }
 
 // JobService is the set of scheduled tasks. They are exposed as an interface so

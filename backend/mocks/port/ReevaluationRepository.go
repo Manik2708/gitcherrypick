@@ -39,6 +39,74 @@ func (_m *ReevaluationRepository) EXPECT() *ReevaluationRepository_Expecter {
 	return &ReevaluationRepository_Expecter{mock: &_m.Mock}
 }
 
+// ByStatus provides a mock function for the type ReevaluationRepository
+func (_mock *ReevaluationRepository) ByStatus(ctx context.Context, status string) ([]domain.ReevaluationRequest, error) {
+	ret := _mock.Called(ctx, status)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ByStatus")
+	}
+
+	var r0 []domain.ReevaluationRequest
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) ([]domain.ReevaluationRequest, error)); ok {
+		return returnFunc(ctx, status)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) []domain.ReevaluationRequest); ok {
+		r0 = returnFunc(ctx, status)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]domain.ReevaluationRequest)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = returnFunc(ctx, status)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// ReevaluationRepository_ByStatus_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ByStatus'
+type ReevaluationRepository_ByStatus_Call struct {
+	*mock.Call
+}
+
+// ByStatus is a helper method to define mock.On call
+//   - ctx context.Context
+//   - status string
+func (_e *ReevaluationRepository_Expecter) ByStatus(ctx interface{}, status interface{}) *ReevaluationRepository_ByStatus_Call {
+	return &ReevaluationRepository_ByStatus_Call{Call: _e.mock.On("ByStatus", ctx, status)}
+}
+
+func (_c *ReevaluationRepository_ByStatus_Call) Run(run func(ctx context.Context, status string)) *ReevaluationRepository_ByStatus_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *ReevaluationRepository_ByStatus_Call) Return(reevaluationRequests []domain.ReevaluationRequest, err error) *ReevaluationRepository_ByStatus_Call {
+	_c.Call.Return(reevaluationRequests, err)
+	return _c
+}
+
+func (_c *ReevaluationRepository_ByStatus_Call) RunAndReturn(run func(ctx context.Context, status string) ([]domain.ReevaluationRequest, error)) *ReevaluationRepository_ByStatus_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Cooldown provides a mock function for the type ReevaluationRepository
 func (_mock *ReevaluationRepository) Cooldown(ctx context.Context, id domain.UserID) (*domain.Cooldown, error) {
 	ret := _mock.Called(ctx, id)
@@ -252,6 +320,74 @@ func (_c *ReevaluationRepository_Decide_Call) Return(err error) *ReevaluationRep
 }
 
 func (_c *ReevaluationRepository_Decide_Call) RunAndReturn(run func(ctx context.Context, tx port.Tx, id domain.RequestID, by domain.AdminID, accept bool, reason string) error) *ReevaluationRepository_Decide_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// OpenRequest provides a mock function for the type ReevaluationRepository
+func (_mock *ReevaluationRepository) OpenRequest(ctx context.Context, id domain.UserID) (*domain.ReevaluationRequest, error) {
+	ret := _mock.Called(ctx, id)
+
+	if len(ret) == 0 {
+		panic("no return value specified for OpenRequest")
+	}
+
+	var r0 *domain.ReevaluationRequest
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.UserID) (*domain.ReevaluationRequest, error)); ok {
+		return returnFunc(ctx, id)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.UserID) *domain.ReevaluationRequest); ok {
+		r0 = returnFunc(ctx, id)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*domain.ReevaluationRequest)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, domain.UserID) error); ok {
+		r1 = returnFunc(ctx, id)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// ReevaluationRepository_OpenRequest_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'OpenRequest'
+type ReevaluationRepository_OpenRequest_Call struct {
+	*mock.Call
+}
+
+// OpenRequest is a helper method to define mock.On call
+//   - ctx context.Context
+//   - id domain.UserID
+func (_e *ReevaluationRepository_Expecter) OpenRequest(ctx interface{}, id interface{}) *ReevaluationRepository_OpenRequest_Call {
+	return &ReevaluationRepository_OpenRequest_Call{Call: _e.mock.On("OpenRequest", ctx, id)}
+}
+
+func (_c *ReevaluationRepository_OpenRequest_Call) Run(run func(ctx context.Context, id domain.UserID)) *ReevaluationRepository_OpenRequest_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 domain.UserID
+		if args[1] != nil {
+			arg1 = args[1].(domain.UserID)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *ReevaluationRepository_OpenRequest_Call) Return(reevaluationRequest *domain.ReevaluationRequest, err error) *ReevaluationRepository_OpenRequest_Call {
+	_c.Call.Return(reevaluationRequest, err)
+	return _c
+}
+
+func (_c *ReevaluationRepository_OpenRequest_Call) RunAndReturn(run func(ctx context.Context, id domain.UserID) (*domain.ReevaluationRequest, error)) *ReevaluationRepository_OpenRequest_Call {
 	_c.Call.Return(run)
 	return _c
 }

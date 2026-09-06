@@ -1,11 +1,7 @@
 {
   "name": "one unreachable PR does not fail the claim, and redelivery is free",
   "description": "Two ADR-0004 guarantees in one case.\n\nPartial enrichment: if a PR cannot be read, retry it on a longer backoff and then score the rest. The claim still evaluates; the affected skill simply has fewer distinct PRs, which needs no special case because standing derives from the count anyway.\n\nIdempotency: a redelivered message finds a succeeded evaluation matching (claim, version, evidence fingerprint, rubric version) and acks WITHOUT a second model call. This is what makes ack-after-commit safe — a crash between them redelivers, and redelivery is a no-op.",
-  "seed": [
-    "principals",
-    "catalogue",
-    "repositories"
-  ],
+  "seed": ["principals", "catalogue", "repositories"],
   "steps": [
     {
       "as": "alice",
@@ -197,8 +193,7 @@
         "status": 200,
         "body": {
           "processed": 1,
-          "failed": 0,
-          "ai_calls": 1
+          "failed": 0
         },
         "db": {
           "evaluations": {
@@ -209,9 +204,7 @@
             "count": 1,
             "all_match": {
               "status": "succeeded",
-              "skipped_pr_positions": [
-                3
-              ]
+              "skipped_pr_positions": [3]
             }
           },
           "pr_skill_scores": {
@@ -255,9 +248,31 @@
               "scores": [
                 {
                   "skill": "go",
-                  "score": 79.3
+                  "score": 82.25
                 }
-              ]
+              ],
+              "dimensions": {
+                "substance": {
+                  "score": 84,
+                  "remark": "Reworked the retry path to be idempotent."
+                },
+                "complexity": {
+                  "score": 88,
+                  "remark": "Required reasoning about interleaving."
+                },
+                "conversation_quality": {
+                  "score": 79,
+                  "remark": "Drove a design discussion."
+                },
+                "craft": {
+                  "score": 76,
+                  "remark": "Tests cover the redelivery case."
+                },
+                "skill_specificity": {
+                  "score": 90,
+                  "remark": "Concurrency work in idiomatic Go."
+                }
+              }
             },
             {
               "position": 2,
@@ -265,9 +280,31 @@
               "scores": [
                 {
                   "skill": "go",
-                  "score": 62.1
+                  "score": 67.84
                 }
-              ]
+              ],
+              "dimensions": {
+                "substance": {
+                  "score": 61,
+                  "remark": "Bounded a renewal loop."
+                },
+                "complexity": {
+                  "score": 70,
+                  "remark": "Clock skew makes the naive fix wrong."
+                },
+                "conversation_quality": {
+                  "score": 55,
+                  "remark": "Some review."
+                },
+                "craft": {
+                  "score": 68,
+                  "remark": "Test added."
+                },
+                "skill_specificity": {
+                  "score": 82,
+                  "remark": "Squarely Go concurrency."
+                }
+              }
             },
             {
               "position": 3,
@@ -283,7 +320,9 @@
               "standing": "secondary",
               "distinct_pr_count": 2
             }
-          ]
+          ],
+          "nominated_primary": "go",
+          "submitted_at": "<timestamp>"
         }
       }
     },

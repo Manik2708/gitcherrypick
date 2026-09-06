@@ -1,11 +1,7 @@
 {
   "name": "a typo fix in a huge repo scores zero, not eighteen",
   "description": "THE regression test for ADR-0007 §1. Before disqualification existed, a README typo in a 40,000-star repository scored ~18, because project reach is a property of the repository rather than the change — outscoring a careful fix in a small library. The verdict must bypass the arithmetic entirely, not reduce it.\n\nIt also proves the consequence in ADR-0007 §3: the rejected PR does not count toward standing, so Go sits at FOUR surviving PRs and stays secondary — unranked, despite the claim carrying five.",
-  "seed": [
-    "principals",
-    "catalogue",
-    "repositories"
-  ],
+  "seed": ["principals", "catalogue", "repositories"],
   "steps": [
     {
       "as": "alice",
@@ -365,9 +361,31 @@
               "scores": [
                 {
                   "skill": "go",
-                  "score": 79.3
+                  "score": 82.25
                 }
-              ]
+              ],
+              "dimensions": {
+                "substance": {
+                  "score": 84,
+                  "remark": "Reworked the retry path to be idempotent across redelivery."
+                },
+                "complexity": {
+                  "score": 88,
+                  "remark": "Required reasoning about interleaving and partial failure."
+                },
+                "conversation_quality": {
+                  "score": 79,
+                  "remark": "Drove a design discussion that changed the approach."
+                },
+                "craft": {
+                  "score": 76,
+                  "remark": "Tests cover the redelivery case; naming is clear."
+                },
+                "skill_specificity": {
+                  "score": 90,
+                  "remark": "Concurrency work in idiomatic Go throughout."
+                }
+              }
             },
             {
               "position": 2,
@@ -375,9 +393,31 @@
               "scores": [
                 {
                   "skill": "go",
-                  "score": 62.1
+                  "score": 67.84
                 }
-              ]
+              ],
+              "dimensions": {
+                "substance": {
+                  "score": 61,
+                  "remark": "Bounded a renewal loop; contained but real."
+                },
+                "complexity": {
+                  "score": 70,
+                  "remark": "Clock skew makes the naive fix wrong."
+                },
+                "conversation_quality": {
+                  "score": 55,
+                  "remark": "Some review, applied without much discussion."
+                },
+                "craft": {
+                  "score": 68,
+                  "remark": "Test added; error handling at the right boundary."
+                },
+                "skill_specificity": {
+                  "score": 82,
+                  "remark": "Squarely Go concurrency."
+                }
+              }
             },
             {
               "position": 3,
@@ -385,9 +425,31 @@
               "scores": [
                 {
                   "skill": "go",
-                  "score": 60.4
+                  "score": 63.09
                 }
-              ]
+              ],
+              "dimensions": {
+                "substance": {
+                  "score": 72,
+                  "remark": "New operator; substantial surface."
+                },
+                "complexity": {
+                  "score": 65,
+                  "remark": "Follows an established controller pattern."
+                },
+                "conversation_quality": {
+                  "score": 62,
+                  "remark": "Reviewed thoroughly, revised twice."
+                },
+                "craft": {
+                  "score": 70,
+                  "remark": "Readable; some duplication in the reconciler."
+                },
+                "skill_specificity": {
+                  "score": 45,
+                  "remark": "Mostly Kubernetes work expressed in Go."
+                }
+              }
             },
             {
               "position": 4,
@@ -395,9 +457,31 @@
               "scores": [
                 {
                   "skill": "go",
-                  "score": 54.8
+                  "score": 55.52
                 }
-              ]
+              ],
+              "dimensions": {
+                "substance": {
+                  "score": 58,
+                  "remark": "Lease reconciliation on restart."
+                },
+                "complexity": {
+                  "score": 60,
+                  "remark": "Restart semantics needed care."
+                },
+                "conversation_quality": {
+                  "score": 48,
+                  "remark": "Brief review, one substantive comment."
+                },
+                "craft": {
+                  "score": 64,
+                  "remark": "Adequate tests."
+                },
+                "skill_specificity": {
+                  "score": 50,
+                  "remark": "Split between Go and Kubernetes concerns."
+                }
+              }
             },
             {
               "position": 5,
@@ -414,7 +498,9 @@
               "distinct_pr_count": 4,
               "note": "Needs one more surviving PR to become primary and enter ranking."
             }
-          ]
+          ],
+          "nominated_primary": "go",
+          "submitted_at": "<timestamp>"
         }
       }
     }

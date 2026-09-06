@@ -43,7 +43,10 @@ const scopes = "openid email profile"
 // port.OAuthProvider makes verification a PRECONDITION rather than a field to
 // inspect: anyone can put any address in a profile they control, and the
 // address is what decides which organization seat a sign-in lands on.
-var ErrEmailUnverified = errors.New("google has not verified this email address")
+// An alias for port.ErrEmailUnverified rather than a separate value: the
+// service decides what an unverified address means, and it must be able to
+// recognise one without importing this package.
+var ErrEmailUnverified = port.ErrEmailUnverified
 
 // Config is everything the client needs.
 type Config struct {

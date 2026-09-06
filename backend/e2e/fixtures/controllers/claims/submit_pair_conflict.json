@@ -1,11 +1,7 @@
 {
   "name": "the same PR cannot evidence the same skill twice",
   "description": "The (user, PR, skill) uniqueness rule — ADR-0003. Enforced by the primary key of user_skill_pr_links, so it is a database invariant rather than a check-then-act race. The rejection must NAME the claim already holding the pair, or the contributor cannot find what to remove.\n\nThe final steps prove the other half: the same PR for a DIFFERENT skill is permitted, which is how secondary skills accumulate toward promotion.",
-  "seed": [
-    "principals",
-    "catalogue",
-    "repositories"
-  ],
+  "seed": ["principals", "catalogue", "repositories"],
   "steps": [
     {
       "as": "alice",

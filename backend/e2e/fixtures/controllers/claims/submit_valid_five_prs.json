@@ -1,11 +1,7 @@
 {
   "name": "submit a complete claim with five merged PRs",
   "description": "The happy path through ADR-0003: draft, evidence, skills, submit. Submission writes user_skill_pr_links as 'pending' and enqueues the job in the SAME transaction — the outbox property from ADR-0004.",
-  "seed": [
-    "principals",
-    "catalogue",
-    "repositories"
-  ],
+  "seed": ["principals", "catalogue", "repositories"],
   "steps": [
     {
       "as": "alice",
@@ -108,10 +104,7 @@
               "url": "https://github.com/acme/bigrepo",
               "contribution_summary": "Core maintainer of the broker package.",
               "maintainer": {
-                "sources": [
-                  "merges_others_prs",
-                  "codeowners"
-                ]
+                "sources": ["merges_others_prs", "codeowners"]
               }
             }
           ]

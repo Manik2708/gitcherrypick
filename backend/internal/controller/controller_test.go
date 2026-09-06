@@ -63,6 +63,11 @@ func newHarness(t *testing.T) *harness {
 		reeval:     mocks.NewReevaluationService(t),
 	}
 
+	// A fixed clock: the admin queue reports how long a request has waited,
+	// and a wall-clock reading would make that number differ per run.
+	clock := mocks.NewClock(t)
+	clock.EXPECT().Now().Return(time.Now().UTC()).Maybe()
+
 	h.server = controller.NewServer(controller.NewPrincipalResolver(h.tokens, h.auth))
 	h.server.Health()
 	h.server.Mount(
@@ -73,7 +78,7 @@ func newHarness(t *testing.T) *harness {
 		controller.NewSkillRequestController(h.skills),
 		controller.NewShortlistController(h.shortlists),
 		controller.NewOrganizationController(h.orgs),
-		controller.NewAdminController(h.admin, h.evaluation),
+		controller.NewAdminController(h.admin, h.evaluation, clock),
 		controller.NewPublicController(h.auth),
 		controller.NewDiscoveryController(h.discovery),
 	)

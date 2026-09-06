@@ -1,7 +1,5 @@
 package e2e
 
-import ()
-
 // Principals is the seeded cast, loaded from fixtures/seed/principals.json.
 //
 // The runner needs it for two things a fixture cannot supply: which sign-in

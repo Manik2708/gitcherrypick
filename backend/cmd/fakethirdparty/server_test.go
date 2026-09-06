@@ -208,7 +208,8 @@ func TestRunServesAndShutsDown(t *testing.T) {
 
 	runCtx, cancel := context.WithCancel(ctx)
 	done := make(chan error, 1)
-	go func() { done <- run(runCtx, addr, "http://"+addr) }()
+	// No --now: this exercises the server, not the pinned clock.
+	go func() { done <- run(runCtx, addr, "http://"+addr, "") }()
 
 	client := &http.Client{Timeout: time.Second}
 	require.Eventually(t, func() bool {
@@ -234,6 +235,12 @@ func TestRunServesAndShutsDown(t *testing.T) {
 	}
 }
 
+func TestRunRejectsAMalformedPin(t *testing.T) {
+	// --now is a fixed instant, and a run that silently ignored a typo in it
+	// would produce results that depend on the calendar date again.
+	require.Error(t, run(context.Background(), "127.0.0.1:0", "http://127.0.0.1", "yesterday"))
+}
+
 func TestRunReportsAnUnusablePort(t *testing.T) {
-	require.Error(t, run(context.Background(), "127.0.0.1:-1", "http://127.0.0.1"))
+	require.Error(t, run(context.Background(), "127.0.0.1:-1", "http://127.0.0.1", ""))
 }

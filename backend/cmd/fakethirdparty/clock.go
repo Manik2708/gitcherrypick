@@ -4,6 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"regexp"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -45,7 +48,7 @@ func (s *Server) clockAdvance(w http.ResponseWriter, r *http.Request) {
 
 	by := time.Duration(req.Seconds * float64(time.Second))
 	if req.Duration != "" {
-		parsed, err := time.ParseDuration(req.Duration)
+		parsed, err := parseDuration(req.Duration)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("unparseable duration %q: %v", req.Duration, err), http.StatusBadRequest)
 			return
@@ -59,4 +62,35 @@ func (s *Server) clockAdvance(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, clockOffset{OffsetSeconds: s.store.Advance(by).Seconds()})
+}
+
+// dayPrefix matches a leading day count, which time.ParseDuration does not
+// accept.
+//
+// The windows this clock exists to cross are stated in days — a seven-day
+// lock, a fifteen-day availability window, a fourteen-day invitation — so a
+// fixture that had to write "360h" would be stating the same fact in units
+// nobody reasons in.
+var dayPrefix = regexp.MustCompile(`^(\d+)d`)
+
+// parseDuration accepts Go durations, extended with a leading day count.
+func parseDuration(s string) (time.Duration, error) {
+	var days time.Duration
+	if m := dayPrefix.FindStringSubmatch(s); m != nil {
+		n, err := strconv.Atoi(m[1])
+		if err != nil {
+			return 0, fmt.Errorf("unparseable day count %q: %w", m[1], err)
+		}
+		days = time.Duration(n) * 24 * time.Hour
+		s = strings.TrimPrefix(s, m[0])
+	}
+	if s == "" {
+		return days, nil
+	}
+
+	rest, err := time.ParseDuration(s)
+	if err != nil {
+		return 0, err
+	}
+	return days + rest, nil
 }

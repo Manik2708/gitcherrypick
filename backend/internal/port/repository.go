@@ -3,6 +3,7 @@ package port
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/Manik2708/gitcherrypick/backend/internal/domain"
@@ -34,12 +35,38 @@ var (
 	// down is a fact about right now and must not be recorded as evidence
 	// against the contributor.
 	ErrUnavailable = errors.New("upstream unavailable")
+
+	// ErrEmailUnverified is an OAuth identity whose provider will not vouch for
+	// the address. Distinct from a failed exchange: the exchange SUCCEEDED and
+	// returned somebody, and what is wrong is the address — which is a
+	// different thing to tell the caller, and a different thing to fix.
+	ErrEmailUnverified = errors.New("the provider has not verified this email address")
+
+	// An invitation that was real and no longer works, split by WHY. The
+	// holder's remedy differs: one asks for a fresh invitation, the other
+	// simply signs in.
+	// ErrEntryNotified is a shortlist entry whose contributor was already
+	// told. Removing it would destroy the record of a disclosure that
+	// happened, which is the one thing the two-phase design guarantees
+	// (ADR-0008 §3a).
+	ErrEntryNotified = fmt.Errorf("the entry has been notified: %w", ErrConflict)
+
+	ErrInvitationExpired  = fmt.Errorf("the invitation has expired: %w", ErrConflict)
+	ErrInvitationAccepted = fmt.Errorf("the invitation was already accepted: %w", ErrConflict)
 )
 
 // UserRepository owns contributors and their availability.
 type UserRepository interface {
 	ByID(ctx context.Context, id domain.UserID) (*domain.Contributor, error)
+
 	ByGitHubUserID(ctx context.Context, githubUserID int64) (*domain.Contributor, error)
+
+	// RefreshGitHubLogin records a login the user renamed on GitHub.
+	//
+	// The numeric id is the identity and never changes; the login is a
+	// display handle that does. A platform that kept the handle it first saw
+	// would show a name the contributor no longer answers to (ADR-0002).
+	RefreshGitHubLogin(ctx context.Context, githubUserID int64, login string) error
 
 	// Create is the only path to a contributor account: there is no email
 	// signup (ADR-0002). It writes the user and the GitHub identity together.
@@ -77,6 +104,17 @@ type SessionRepository interface {
 	// token stolen beforehand.
 	RevokeFamily(ctx context.Context, tx Tx, familyID string) error
 
+	// CloseFamily retires a family the holder signed out of.
+	//
+	// Distinct from RevokeFamily, which is the COLLATERAL case: a session
+	// revoked by somebody else's replay was never spent, and telling those two
+	// apart is what lets refresh answer "you signed out" rather than "your
+	// session was revoked" (ADR-0002).
+	CloseFamily(ctx context.Context, tx Tx, familyID string) error
+
+	// FamilyLive reports whether a family still has an unrevoked session.
+	FamilyLive(ctx context.Context, familyID string) (bool, error)
+
 	ActiveCount(ctx context.Context, principalID string) (int, error)
 
 	// ActiveFamily returns the family a principal's live session belongs to,
@@ -93,12 +131,22 @@ type SessionRepository interface {
 type HirerRepository interface {
 	ByID(ctx context.Context, id domain.HirerID) (*domain.Hirer, error)
 	ByEmail(ctx context.Context, email string) (*domain.Hirer, error)
+
+	// ByGitHubUserID resolves a seat that signed up through GitHub.
+	//
+	// A separate namespace from the contributor lookup of the same name: one
+	// identity may own one contributor AND one hirer (ADR-0009), and
+	// dave/dave_hiring is exactly that case. Resolving across both would hand
+	// a recruiter their own contributor account, or the reverse.
+	ByGitHubUserID(ctx context.Context, githubUserID int64) (*domain.Hirer, error)
 	PasswordHash(ctx context.Context, id domain.HirerID) ([]byte, error)
 
-	// Register creates the account and its verification request in one
-	// transaction (ADR-0002). Splitting them would allow an account with no
-	// pending request, which nothing would ever verify.
-	Register(ctx context.Context, tx Tx, h *domain.Hirer, org *domain.Organization, passwordHash []byte) (*domain.Hirer, error)
+	// Register creates the account, its organization, its verification
+	// request and that request's proofs in one transaction (ADR-0002).
+	// Splitting them would allow an account with no pending request, which
+	// nothing would ever verify — or a request with no evidence attached,
+	// which no admin could decide.
+	Register(ctx context.Context, tx Tx, in NewHirerAccount) (*HirerRegistration, error)
 
 	Organization(ctx context.Context, id domain.OrganizationID) (*domain.Organization, error)
 	Members(ctx context.Context, id domain.OrganizationID) ([]domain.Hirer, error)
@@ -109,15 +157,117 @@ type HirerRepository interface {
 	SharesGitHubIdentity(ctx context.Context, hirer domain.HirerID, target domain.UserID) (bool, error)
 }
 
+// NotifiedEntryError refuses removal and says when the disclosure happened.
+type NotifiedEntryError struct {
+	NotifiedAt time.Time
+}
+
+func (e *NotifiedEntryError) Error() string {
+	return "the entry was notified at " + e.NotifiedAt.Format(time.RFC3339)
+}
+
+// Unwrap keeps errors.Is(err, ErrEntryNotified) working for callers that only
+// need to know which case this is.
+func (e *NotifiedEntryError) Unwrap() error { return ErrEntryNotified }
+
+// Evaluation is one judging run, as the evaluator opens it.
+type Evaluation struct {
+	ClaimID       domain.ClaimID
+	ClaimVersion  int
+	RubricVersion string
+	Model         string
+	PromptVersion string
+
+	// Fingerprint identifies the evidence that was judged. Two runs over the
+	// same evidence under the same rubric are the same evaluation, which is
+	// what makes redelivery free.
+	Fingerprint []byte
+
+	Trigger string
+}
+
+// SkillCollision is an existing catalogue entry a proposed one would clash with.
+//
+// The catalogue is curated precisely so that one skill has one name (ADR-0003),
+// which makes a collision the normal outcome of a careless approval rather than
+// an exceptional one. An admin refused needs to know WHICH entry they hit and
+// on which term, or their only recourse is to guess.
+type SkillCollision struct {
+	Skill domain.Skill
+
+	// Term is the proposed slug or alias that collided.
+	Term string
+
+	// TermIsAlias reports that Term came from the proposed ALIASES rather than
+	// the proposed slug — which is the difference between alias_taken and
+	// slug_taken on the wire.
+	TermIsAlias bool
+
+	// MatchedAlias reports that Term hit an existing ALIAS rather than an
+	// existing slug. A slug colliding with somebody's alias is still a slug
+	// problem, but the admin needs to be told which alias to look at.
+	MatchedAlias bool
+}
+
+// SkillRef names a catalogue entry the way the wire does: slug to key on, name
+// to show.
+type SkillRef struct {
+	Slug string `json:"slug"`
+	Name string `json:"name"`
+}
+
+// SkillRequester is who asked for a catalogue addition.
+//
+// Resolved rather than referenced: an admin deciding whether to add a skill is
+// weighing who is asking, and three uuids in a queue tell them nothing.
+type SkillRequester struct {
+	ID          domain.UserID
+	DisplayName string
+}
+
+// ClaimSummary is one claim as the list shows it.
+//
+// NominatedPrimary is the slug the contributor put forward for primary
+// standing on this claim, empty when they nominated none.
+type ClaimSummary struct {
+	ID               domain.ClaimID
+	Status           domain.ClaimStatus
+	Version          int
+	NominatedPrimary string
+	PRCount          int
+	SkillCount       int
+	SubmittedAt      *time.Time
+	EvaluatedAt      *time.Time
+	LockedUntil      *time.Time
+}
+
+// NewHirerAccount is everything one registration writes.
+//
+// A struct rather than six parameters: the call already crossed the line where
+// positional arguments stop being readable, and proofs made it worse.
+type NewHirerAccount struct {
+	Hirer        *domain.Hirer
+	Organization *domain.Organization
+	PasswordHash []byte
+	Proofs       []domain.VerificationProof
+}
+
 // OrganizationRepository owns invitations and seat grants.
 type OrganizationRepository interface {
-	CreateInvitation(ctx context.Context, tx Tx, orgID domain.OrganizationID, email string, role domain.OrgRole, invitedBy domain.HirerID, tokenHash []byte, expiresAt time.Time) (domain.RequestID, error)
+	// CreateInvitation returns the stored row rather than just its id, so the
+	// created_at on the wire is the one the database wrote — not a second
+	// clock reading taken next to it, which would differ under load.
+	CreateInvitation(ctx context.Context, tx Tx, orgID domain.OrganizationID, email string, role domain.OrgRole, invitedBy domain.HirerID, tokenHash []byte, expiresAt time.Time) (*Invitation, error)
 	InvitationByTokenHash(ctx context.Context, tx Tx, hash []byte) (*Invitation, error)
 
 	// AcceptInvitation creates the hirer, the membership, and marks the
 	// invitation accepted in one transaction. The seat inherits the
 	// organization's verification rather than earning its own.
-	AcceptInvitation(ctx context.Context, tx Tx, id domain.RequestID, h *domain.Hirer, passwordHash []byte) (*domain.Hirer, error)
+	// AcceptInvitation takes `now` rather than using the database clock.
+	// Expiry is a business rule measured on the platform's clock (ADR-0012),
+	// and SQL now() would answer from a second one nothing else in the system
+	// reads.
+	AcceptInvitation(ctx context.Context, tx Tx, id domain.RequestID, h *domain.Hirer, passwordHash []byte, now time.Time) (*domain.Hirer, error)
 
 	// VerifyOrganization lifts every seat at once. Verification is per
 	// organization, not per person (ADR-0002, ADR-0008 §3a).
@@ -141,6 +291,7 @@ type Invitation struct {
 	InvitedBy      domain.HirerID
 	AcceptedAt     *time.Time
 	ExpiresAt      time.Time
+	CreatedAt      time.Time
 }
 
 // ShareLinkRepository owns a contributor's publishable scorecard link.
@@ -169,7 +320,10 @@ type ShareLinkRepository interface {
 // ClaimRepository owns claims and their evidence.
 type ClaimRepository interface {
 	ByID(ctx context.Context, id domain.ClaimID) (*domain.Claim, error)
-	ListByUser(ctx context.Context, id domain.UserID) ([]domain.Claim, error)
+	// ListByUser returns SUMMARIES, not claims. The list view shows counts,
+	// and loading five PRs and their scores for every claim to report "5"
+	// would be several joins per row to produce one integer.
+	ListByUser(ctx context.Context, id domain.UserID) ([]ClaimSummary, error)
 
 	Create(ctx context.Context, userID domain.UserID) (*domain.Claim, error)
 
@@ -177,6 +331,14 @@ type ClaimRepository interface {
 	// expected version and returns ErrVersionStale when it does not match, so
 	// two tabs editing one draft cannot silently clobber each other.
 	Replace(ctx context.Context, tx Tx, id domain.ClaimID, expectedVersion int, c *domain.Claim) (*domain.Claim, error)
+
+	// Enrich caches the GitHub facts a judgement and the arithmetic need.
+	//
+	// Stored rather than re-fetched at scoring time so a run is reproducible
+	// from what the database holds: the reach and engagement terms normalise
+	// against these numbers, and a repository whose star count moved between
+	// two reads would make the same evidence score differently (ADR-0004).
+	Enrich(ctx context.Context, tx Tx, id domain.ClaimID, prs []domain.PREvidence) error
 
 	// ReplaceEvidence writes a sub-resource without consuming the version.
 	//
@@ -190,7 +352,15 @@ type ClaimRepository interface {
 
 	// DecideSuggestion accepts or dismisses an inert AI suggestion. A decision
 	// is final in both directions.
-	DecideSuggestion(ctx context.Context, tx Tx, id domain.ClaimID, skillID domain.SkillID, accept bool) error
+	DecideSuggestion(ctx context.Context, tx Tx, id domain.ClaimID, skillID domain.SkillID, accept bool) (*domain.ClaimSkill, error)
+
+	// EvaluatedFingerprint is the evidence the last successful judgement ran
+	// over, or "" if the claim has never been judged.
+	//
+	// Compared against the claim's current fingerprint on submit: resubmitting
+	// evidence that was already judged buys nothing and costs a model call
+	// (ADR-0003).
+	EvaluatedFingerprint(ctx context.Context, id domain.ClaimID) (string, error)
 
 	// Fingerprint identifies unchanged evidence, so a resubmission that changed
 	// nothing can be refused without spending a model call.
@@ -210,14 +380,53 @@ type SkillRepository interface {
 
 	Create(ctx context.Context, tx Tx, s *domain.Skill) (*domain.Skill, error)
 
-	UserSkills(ctx context.Context, id domain.UserID) ([]domain.UserSkill, error)
+	// UserSkills takes a Tx so a caller mid-transaction reads what it has
+	// already written. Passing nil reads through the pool, which is what every
+	// plain read wants; passing the tx is what a recompute needs, since a
+	// separate connection cannot see uncommitted standings.
+	UserSkills(ctx context.Context, tx Tx, id domain.UserID) ([]domain.UserSkill, error)
 
 	// LinkPairs writes (user, PR, skill) rows as pending, in the submitting
 	// transaction. The uniqueness constraint on that triple is what stops the
 	// same PR evidencing the same skill twice — enforced BEFORE a model call is
 	// spent, which is why this joins the caller's Tx.
 	LinkPairs(ctx context.Context, tx Tx, links []PRLink) error
-	SetLinkStatus(ctx context.Context, tx Tx, links []PRLink, status domain.PRLinkStatus) error
+
+	// LinkJudgedEvidence claims, for one skill, every PR on a claim that has
+	// already been judged against it.
+	//
+	// Accepting an AI suggestion is the case: the model judged those PRs
+	// against the suggested skill while it was still inert, so acceptance has
+	// nothing left to evaluate and only needs the evidence attached
+	// (ADR-0003 §10).
+	LinkJudgedEvidence(ctx context.Context, tx Tx, id domain.UserID,
+		claimID domain.ClaimID, skillID domain.SkillID) error
+
+	// SetSkillScore writes a skill's score and the components behind it.
+	//
+	// The components are STORED rather than derived on read: the formula lives
+	// in the evaluator, and a read path recomputing it would be a second
+	// implementation that eventually disagrees (ADR-0005).
+	SetSkillScore(ctx context.Context, tx Tx, id domain.UserID, skillID domain.SkillID,
+		score, prComponent, projectComponent float64) error
+
+	// UnlinkClaim drops every (user, PR, skill) link a claim holds.
+	//
+	// Withdrawal has to release them or the evidence stays spent: the pairs
+	// would keep counting toward standing and keep blocking a resubmission of
+	// PRs the contributor no longer claims anything with (ADR-0007).
+	UnlinkClaim(ctx context.Context, tx Tx, id domain.ClaimID) error
+
+	// ConflictingPairs reports which of these triples another claim already
+	// holds. The unique index catches them anyway, but a constraint violation
+	// cannot say WHICH claim owns the pair — and "one of these is a duplicate"
+	// leaves the contributor to find it by elimination.
+	ConflictingPairs(ctx context.Context, links []PRLink) ([]PairConflict, error)
+	// SetLinkStatus takes the reason alongside the status. A rejected link is
+	// KEPT rather than deleted — it blocks the same PR being resubmitted for
+	// the same skill to reroll the verdict (ADR-0007) — so it has to say what
+	// the verdict was.
+	SetLinkStatus(ctx context.Context, tx Tx, links []PRLink, status domain.PRLinkStatus, reason *domain.RejectionReason) error
 
 	// RecomputeStanding derives standing from the count of DISTINCT SCORED PRs
 	// and promotes at five, automatically. Standing is derived, never declared,
@@ -231,6 +440,16 @@ type SkillRepository interface {
 	// Asked as a question so the DEDUP DECISION stays in the service: whether
 	// a near-match blocks a request is a product rule, not a storage detail.
 	MatchSkill(ctx context.Context, proposedName string) (*domain.Skill, error)
+
+	// RequestByID reads one catalogue request, decided or not. Used to report
+	// the standing decision when a second one is refused.
+	RequestByID(ctx context.Context, id domain.RequestID) (*SkillRequest, error)
+
+	// CollidesWith reports the first exact clash between a proposed catalogue
+	// entry and the existing one, or nil when there is none. Exact, unlike
+	// MatchSkill: a fuzzy match is advice to a contributor, while this decides
+	// whether a write is allowed.
+	CollidesWith(ctx context.Context, slug string, aliases []string) (*SkillCollision, error)
 
 	// RequestsSince returns a contributor's requests within a window, oldest
 	// first, so the service can apply the rolling limit and say when it lifts.
@@ -261,10 +480,18 @@ type PRLink struct {
 	PRNumber  int
 }
 
+// PairConflict is one (PR, skill) pair already evidenced by another claim.
+type PairConflict struct {
+	Link      PRLink
+	SkillSlug string
+	SkillName string
+	ClaimID   domain.ClaimID
+}
+
 // SkillRequest is a proposed catalogue entry awaiting a decision.
 type SkillRequest struct {
 	ID           domain.RequestID
-	UserID       domain.UserID
+	RequestedBy  SkillRequester
 	ProposedName string
 	Rationale    string
 	Status       string
@@ -275,6 +502,47 @@ type SkillRequest struct {
 
 // EvaluationRepository owns judgements, scores and the job record.
 type EvaluationRepository interface {
+	// Record opens the evaluation a judgement belongs to, in the transaction
+	// that persists it. The row is what AlreadyEvaluated later matches on, so
+	// creating it separately would leave a window where a redelivery could not
+	// tell a finished run from one that never started (ADR-0004).
+	Record(ctx context.Context, tx Tx, e Evaluation) error
+
+	// ActiveRubricVersion is the version scores are currently compared
+	// against: the target of the most recent sweep, or the configured
+	// fallback when none has run (RFC-0015).
+	//
+	// Read rather than configured, because search gates on it and a value that
+	// lived in a flag could differ between two processes serving the same
+	// corpus.
+	ActiveRubricVersion(ctx context.Context, fallback string) (string, error)
+
+	// OpenSweep returns the sweep still draining, or nil.
+	OpenSweep(ctx context.Context) (*domain.RubricSweep, error)
+
+	// RecordSweep writes the sweep, in the transaction that enqueues it. A
+	// sweep row with nothing queued, or a queue with no sweep to explain it,
+	// are both states nothing could account for.
+	RecordSweep(ctx context.Context, tx Tx, s *domain.RubricSweep) (*domain.RubricSweep, error)
+
+	// CompleteSweep closes a sweep whose corpus has drained.
+	CompleteSweep(ctx context.Context, tx Tx, id domain.RequestID, at time.Time) error
+
+	// SweptClaimsRemaining counts what a sweep has left to judge.
+	//
+	// Takes a Tx because the worker asks it immediately after acking its own
+	// job: outside the transaction that ack is not yet visible, and the count
+	// would never reach zero.
+	SweptClaimsRemaining(ctx context.Context, tx Tx) (int, error)
+
+	// SkillPRScores returns every surviving per-PR score a contributor holds
+	// for one skill, across all their claims. The skill's score is the
+	// accumulation of evidence, not a per-claim number (ADR-0007).
+	// Takes a Tx: it is called mid-evaluation, after the link statuses this
+	// query filters on have been written but before they are committed. The
+	// pool would still see the previous run's verdicts.
+	SkillPRScores(ctx context.Context, tx Tx, id domain.UserID, skillID domain.SkillID) ([]float64, error)
+
 	// Persist writes every score, link status and standing change for one
 	// evaluated claim in ONE transaction. A half-persisted evaluation would
 	// leave a contributor with some skills promoted and others not.
@@ -285,7 +553,7 @@ type EvaluationRepository interface {
 
 	// AlreadyEvaluated makes redelivery free. The broker is at-least-once, so
 	// the same job WILL arrive twice and the second time must cost nothing.
-	AlreadyEvaluated(ctx context.Context, claimID domain.ClaimID, version int) (bool, error)
+	AlreadyEvaluated(ctx context.Context, claimID domain.ClaimID, version int, rubricVersion string) (bool, error)
 
 	DeadLetter(ctx context.Context, jobID domain.JobID, reason string, payload []byte) error
 }
@@ -379,7 +647,7 @@ type AdminRepository interface {
 	PasswordHash(ctx context.Context, id domain.AdminID) ([]byte, error)
 
 	PendingVerifications(ctx context.Context) ([]VerificationRequest, error)
-	DecideVerification(ctx context.Context, tx Tx, id domain.RequestID, by domain.AdminID, approve bool, reason string) error
+	DecideVerification(ctx context.Context, tx Tx, id domain.RequestID, by domain.AdminID, d domain.VerificationDecision) error
 
 	// SeedAdmin creates the first admin if none exists, and only then.
 	SeedAdmin(ctx context.Context, email string, passwordHash []byte) (bool, error)
@@ -387,16 +655,43 @@ type AdminRepository interface {
 
 // VerificationRequest is a hirer or organization awaiting review.
 type VerificationRequest struct {
-	ID             domain.RequestID
-	HirerID        *domain.HirerID
-	OrganizationID *domain.OrganizationID
-	Status         string
-	CreatedAt      time.Time
-	ReviewedAt     *time.Time
+	ID domain.RequestID
+
+	// The subject, resolved. An admin draining this queue is deciding about a
+	// company and a person, and a pair of uuids tells them nothing — so the
+	// repository joins rather than making the service fetch each one.
+	//
+	// ck_verification_single_subject means exactly one is set.
+	Hirer        *VerificationHirer
+	Organization *VerificationOrganization
+
+	Status     string
+	CreatedAt  time.Time
+	ReviewedAt *time.Time
 
 	// DecisionReason is what an admin wrote when refusing. Shown back to the
 	// hirer, because "rejected" with no reason gives them nothing to fix.
 	DecisionReason string
+
+	// Proofs is the evidence attached to the request.
+	//
+	// An admin cannot decide a verification without seeing what was submitted,
+	// and the two unstructured kinds are precisely the ones a small studio
+	// depends on (ADR-0002).
+	Proofs []domain.VerificationProof
+}
+
+// VerificationHirer is the seat awaiting review.
+type VerificationHirer struct {
+	ID          domain.HirerID
+	DisplayName string
+	Email       string
+}
+
+// VerificationOrganization is the company awaiting review.
+type VerificationOrganization struct {
+	ID   domain.OrganizationID
+	Name string
 }
 
 // ReevaluationRepository owns disputes and the escalating cooldown.
@@ -410,4 +705,12 @@ type ReevaluationRepository interface {
 	Decide(ctx context.Context, tx Tx, id domain.RequestID, by domain.AdminID, accept bool, reason string) error
 
 	Cooldown(ctx context.Context, id domain.UserID) (*domain.Cooldown, error)
+
+	// OpenRequest returns the dispute a contributor already has in flight, or
+	// nil. One at a time: a queue of disputes from one person is a way to
+	// spend an admin's attention rather than to be heard.
+	OpenRequest(ctx context.Context, id domain.UserID) (*domain.ReevaluationRequest, error)
+
+	// ByStatus drains the admin queue for one status.
+	ByStatus(ctx context.Context, status string) ([]domain.ReevaluationRequest, error)
 }

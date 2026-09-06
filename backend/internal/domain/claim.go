@@ -73,7 +73,13 @@ const (
 
 // PREvidence is one pull request offered as evidence.
 type PREvidence struct {
-	Position  int
+	Position int
+
+	// RawURL is what the contributor pasted. Kept because a URL that did not
+	// parse has no owner, name or number to reconstruct one from, and the
+	// draft still has to show them what they typed.
+	RawURL string
+
 	RepoOwner string
 	RepoName  string
 	PRNumber  int
@@ -86,6 +92,32 @@ type PREvidence struct {
 	// validation is rejected NAMING the failing item, never generically — the
 	// contributor is doing curation work and a vague rejection wastes it.
 	InvalidReason *EvidenceInvalidReason
+
+	// What the model made of this PR, one entry per skill it was judged
+	// against. Empty until the claim has been evaluated.
+	//
+	// Per PR per skill is the finest of the three score families (ADR-0007),
+	// and it is the one that explains the other two: a contributor asking why
+	// a skill scored what it did is asking about these.
+	Scores []PRScore
+
+	// The model's per-dimension reasoning, and — when the PR counted toward
+	// nothing — why. A score with no reasoning behind it cannot be disputed,
+	// and the dispute flow is what produces the labelled set (ADR-0007 §4).
+	Dimensions map[string]Dimension
+
+	Rejected        bool
+	RejectionReason string
+}
+
+// PRScore is what one skill scored on one PR, as a claim read reports it.
+//
+// Named by slug and carrying only the number: the components behind it live on
+// PRSkillScore, which is the evaluator's record. A contributor reading their
+// claim wants to see which skill got what, not the arithmetic.
+type PRScore struct {
+	Skill string
+	Score float64
 }
 
 // EvidenceInvalidReason is why one evidence row failed validation.
@@ -100,6 +132,11 @@ const (
 	NotMerged             EvidenceInvalidReason = "not_merged"
 	NotAuthoredByClaimant EvidenceInvalidReason = "not_authored_by_claimant"
 	DuplicateInClaim      EvidenceInvalidReason = "duplicate_in_claim"
+
+	// DuplicatePair is the same (PR, skill) already spent on ANOTHER claim.
+	// Distinct from DuplicateInClaim, which is the same PR twice in this one:
+	// the fix differs, and so does whose claim holds the evidence.
+	DuplicatePair         EvidenceInvalidReason = "duplicate_pair"
 	RepositoryUnavailable EvidenceInvalidReason = "repository_unavailable"
 	GitHubError           EvidenceInvalidReason = "github_error"
 	NotReviewedByClaimant EvidenceInvalidReason = "not_reviewed_by_claimant"
@@ -124,9 +161,15 @@ type PRFacts struct {
 // RepoFacts are properties of the repository rather than the change. Project
 // reach is computed from these (ADR-0007 §7).
 type RepoFacts struct {
-	Public     bool
-	Stars      int
-	Forks      int
+	Public bool
+	Stars  int
+	Forks  int
+
+	// Contributors carries 0.20 of the reach weight (ADR-0005). Missing it
+	// does not zero the term — the remaining weights renormalise — but it
+	// silently lowers every score in a repository that has one.
+	Contributors int
+
 	Dependents int
 	Downloads  int
 	IsFork     bool
@@ -211,9 +254,18 @@ const (
 type ClaimSkill struct {
 	SkillID            SkillID
 	Slug               string
+	Name               string
 	Origin             ClaimSkillOrigin
 	IsNominatedPrimary bool
 	Rationale          string
+
+	// ScoringMode is copied from the catalogue entry when the slug resolves.
+	//
+	// Carried here rather than looked up again at serialization time: it
+	// decides which formula scores this pair, and a response that reported one
+	// mode while the evaluator used another would be worse than not reporting
+	// it (ADR-0007).
+	ScoringMode ScoringMode
 
 	AcceptedAt  *time.Time
 	DismissedAt *time.Time
@@ -222,6 +274,15 @@ type ClaimSkill struct {
 	// a zero score (ADR-0003).
 	RejectedAt      *time.Time
 	RejectionReason *RejectionReason
+
+	// The contributor's standing in this skill overall, not on this claim.
+	//
+	// A claim is evidence toward a skill, and what a contributor wants to know
+	// on reading one back is what it moved. Score is nil until the skill has
+	// been scored at all.
+	Score           *float64
+	Standing        Standing
+	DistinctPRCount int
 }
 
 // IsInert reports whether a suggestion has yet to be decided.
@@ -287,6 +348,7 @@ type UserSkill struct {
 	UserID           UserID
 	SkillID          SkillID
 	Slug             string
+	Name             string
 	Standing         Standing
 	DistinctPRCount  int
 	Score            float64
@@ -294,6 +356,18 @@ type UserSkill struct {
 	ProjectComponent float64
 	PromotedAt       *time.Time
 	RubricVersion    string
+}
+
+// SuggestionDecision is what accepting or dismissing a suggestion produced.
+//
+// Both outcomes report the skill and the stamp that closed it. Only
+// acceptance reports standing, because only acceptance creates one — a
+// dismissed suggestion never became a skill and has nothing to stand on.
+type SuggestionDecision struct {
+	Skill ClaimSkill
+
+	// Standing is nil on dismissal.
+	Standing *UserSkill
 }
 
 // PRLinkStatus tracks one (user, PR, skill) triple. Uniqueness on that triple

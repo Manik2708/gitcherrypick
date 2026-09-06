@@ -176,16 +176,16 @@ func (_c *AdminRepository_ByID_Call) RunAndReturn(run func(ctx context.Context, 
 }
 
 // DecideVerification provides a mock function for the type AdminRepository
-func (_mock *AdminRepository) DecideVerification(ctx context.Context, tx port.Tx, id domain.RequestID, by domain.AdminID, approve bool, reason string) error {
-	ret := _mock.Called(ctx, tx, id, by, approve, reason)
+func (_mock *AdminRepository) DecideVerification(ctx context.Context, tx port.Tx, id domain.RequestID, by domain.AdminID, d domain.VerificationDecision) error {
+	ret := _mock.Called(ctx, tx, id, by, d)
 
 	if len(ret) == 0 {
 		panic("no return value specified for DecideVerification")
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, port.Tx, domain.RequestID, domain.AdminID, bool, string) error); ok {
-		r0 = returnFunc(ctx, tx, id, by, approve, reason)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, port.Tx, domain.RequestID, domain.AdminID, domain.VerificationDecision) error); ok {
+		r0 = returnFunc(ctx, tx, id, by, d)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -202,13 +202,12 @@ type AdminRepository_DecideVerification_Call struct {
 //   - tx port.Tx
 //   - id domain.RequestID
 //   - by domain.AdminID
-//   - approve bool
-//   - reason string
-func (_e *AdminRepository_Expecter) DecideVerification(ctx interface{}, tx interface{}, id interface{}, by interface{}, approve interface{}, reason interface{}) *AdminRepository_DecideVerification_Call {
-	return &AdminRepository_DecideVerification_Call{Call: _e.mock.On("DecideVerification", ctx, tx, id, by, approve, reason)}
+//   - d domain.VerificationDecision
+func (_e *AdminRepository_Expecter) DecideVerification(ctx interface{}, tx interface{}, id interface{}, by interface{}, d interface{}) *AdminRepository_DecideVerification_Call {
+	return &AdminRepository_DecideVerification_Call{Call: _e.mock.On("DecideVerification", ctx, tx, id, by, d)}
 }
 
-func (_c *AdminRepository_DecideVerification_Call) Run(run func(ctx context.Context, tx port.Tx, id domain.RequestID, by domain.AdminID, approve bool, reason string)) *AdminRepository_DecideVerification_Call {
+func (_c *AdminRepository_DecideVerification_Call) Run(run func(ctx context.Context, tx port.Tx, id domain.RequestID, by domain.AdminID, d domain.VerificationDecision)) *AdminRepository_DecideVerification_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -226,13 +225,9 @@ func (_c *AdminRepository_DecideVerification_Call) Run(run func(ctx context.Cont
 		if args[3] != nil {
 			arg3 = args[3].(domain.AdminID)
 		}
-		var arg4 bool
+		var arg4 domain.VerificationDecision
 		if args[4] != nil {
-			arg4 = args[4].(bool)
-		}
-		var arg5 string
-		if args[5] != nil {
-			arg5 = args[5].(string)
+			arg4 = args[4].(domain.VerificationDecision)
 		}
 		run(
 			arg0,
@@ -240,7 +235,6 @@ func (_c *AdminRepository_DecideVerification_Call) Run(run func(ctx context.Cont
 			arg2,
 			arg3,
 			arg4,
-			arg5,
 		)
 	})
 	return _c
@@ -251,7 +245,7 @@ func (_c *AdminRepository_DecideVerification_Call) Return(err error) *AdminRepos
 	return _c
 }
 
-func (_c *AdminRepository_DecideVerification_Call) RunAndReturn(run func(ctx context.Context, tx port.Tx, id domain.RequestID, by domain.AdminID, approve bool, reason string) error) *AdminRepository_DecideVerification_Call {
+func (_c *AdminRepository_DecideVerification_Call) RunAndReturn(run func(ctx context.Context, tx port.Tx, id domain.RequestID, by domain.AdminID, d domain.VerificationDecision) error) *AdminRepository_DecideVerification_Call {
 	_c.Call.Return(run)
 	return _c
 }

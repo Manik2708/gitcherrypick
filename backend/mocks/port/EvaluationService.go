@@ -97,22 +97,24 @@ func (_c *EvaluationService_Process_Call) RunAndReturn(run func(ctx context.Cont
 }
 
 // Sweep provides a mock function for the type EvaluationService
-func (_mock *EvaluationService) Sweep(ctx context.Context, p domain.Principal, toVersion string, reason string) (int, error) {
+func (_mock *EvaluationService) Sweep(ctx context.Context, p domain.Principal, toVersion string, reason string) (*domain.RubricSweep, error) {
 	ret := _mock.Called(ctx, p, toVersion, reason)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Sweep")
 	}
 
-	var r0 int
+	var r0 *domain.RubricSweep
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.Principal, string, string) (int, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.Principal, string, string) (*domain.RubricSweep, error)); ok {
 		return returnFunc(ctx, p, toVersion, reason)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.Principal, string, string) int); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.Principal, string, string) *domain.RubricSweep); ok {
 		r0 = returnFunc(ctx, p, toVersion, reason)
 	} else {
-		r0 = ret.Get(0).(int)
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*domain.RubricSweep)
+		}
 	}
 	if returnFunc, ok := ret.Get(1).(func(context.Context, domain.Principal, string, string) error); ok {
 		r1 = returnFunc(ctx, p, toVersion, reason)
@@ -164,12 +166,12 @@ func (_c *EvaluationService_Sweep_Call) Run(run func(ctx context.Context, p doma
 	return _c
 }
 
-func (_c *EvaluationService_Sweep_Call) Return(enqueued int, err error) *EvaluationService_Sweep_Call {
-	_c.Call.Return(enqueued, err)
+func (_c *EvaluationService_Sweep_Call) Return(rubricSweep *domain.RubricSweep, err error) *EvaluationService_Sweep_Call {
+	_c.Call.Return(rubricSweep, err)
 	return _c
 }
 
-func (_c *EvaluationService_Sweep_Call) RunAndReturn(run func(ctx context.Context, p domain.Principal, toVersion string, reason string) (int, error)) *EvaluationService_Sweep_Call {
+func (_c *EvaluationService_Sweep_Call) RunAndReturn(run func(ctx context.Context, p domain.Principal, toVersion string, reason string) (*domain.RubricSweep, error)) *EvaluationService_Sweep_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -52,6 +52,55 @@ func (s *sessionCache) For(ctx context.Context, client *http.Client, as string) 
 	return session, nil
 }
 
+// Adopt records a session a FIXTURE created, so later `as:` steps use it
+// rather than signing in again behind its back.
+//
+// Without this a fixture that logs in explicitly ends up with two live
+// sessions for one principal, and a case about logging out revokes only the
+// one the harness happened to mint.
+func (s *sessionCache) Adopt(as string, session *Session) {
+	if as == "" || as == "anonymous" || session == nil {
+		return
+	}
+	if s.sessions == nil {
+		s.sessions = map[string]*Session{}
+	}
+	s.sessions[as] = session
+}
+
+// KeyForEmail names the principal a login body belongs to.
+//
+// A login step is `as: anonymous` — it is establishing the identity, so it
+// cannot declare one. The email is what identifies who signed in.
+func (p Principals) KeyForEmail(email string) string {
+	if email == "" {
+		return ""
+	}
+	for _, a := range p.Admins {
+		if strings.EqualFold(a.Email, email) {
+			return a.Key
+		}
+	}
+	for _, h := range p.Hirers {
+		if strings.EqualFold(h.Email, email) {
+			return h.Key
+		}
+	}
+	for _, c := range p.Contributors {
+		if strings.EqualFold(c.Email, email) {
+			return c.Key
+		}
+	}
+	return ""
+}
+
+// Reset forgets every cached session.
+//
+// Called after the clock moves: the tokens it holds were minted against the
+// old time and a fixture that kept using them would be testing expiry rather
+// than whatever it meant to test.
+func (s *sessionCache) Reset() { s.sessions = nil }
+
 // Session is an authenticated principal's credentials for one case.
 type Session struct {
 	AccessToken  string
@@ -111,8 +160,15 @@ func authenticateHirer(ctx context.Context, client *http.Client, principal strin
 		return nil, fmt.Errorf("hirer %q is not seeded", principal)
 	}
 
-	// A Google-provider hirer has no password, so signing them in with one
-	// would be testing a path that does not exist for them.
+	// A GitHub-provider seat signs in exactly as a contributor does, and
+	// resolves to the HIRER namespace because the two are separate account
+	// types that happen to share an identity provider (ADR-0002).
+	if hirer.AuthProvider == "github" {
+		return authenticateGitHubHirer(ctx, client, principal)
+	}
+
+	// A Google-provider hirer has no password either, so signing them in with
+	// one would test a path that does not exist for them.
 	if hirer.AuthProvider == "google" {
 		var start startResponse
 		if err := call(ctx, client, "GET", "/auth/google/start", nil, "", &start); err != nil {
@@ -131,6 +187,22 @@ func authenticateHirer(ctx context.Context, client *http.Client, principal strin
 	var session sessionResponse
 	if err := call(ctx, client, "POST", "/auth/hirer/login", body, "", &session); err != nil {
 		return nil, fmt.Errorf("hirer login: %w", err)
+	}
+	return session.session()
+}
+
+// authenticateGitHubHirer drives the contributor OAuth flow for a seat that
+// signed up through GitHub.
+func authenticateGitHubHirer(ctx context.Context, client *http.Client, principal string) (*Session, error) {
+	var start startResponse
+	if err := call(ctx, client, "POST", "/auth/hirer/github/start", nil, "", &start); err != nil {
+		return nil, fmt.Errorf("github start: %w", err)
+	}
+
+	var session sessionResponse
+	path := fmt.Sprintf("/auth/hirer/github/callback?code=%s&state=%s", AuthCode(principal), start.State)
+	if err := call(ctx, client, "GET", path, nil, "", &session); err != nil {
+		return nil, fmt.Errorf("github callback: %w", err)
 	}
 	return session.session()
 }
@@ -223,4 +295,43 @@ func unreachable(err error) error {
 			BaseURL())
 	}
 	return err
+}
+
+// loginBody is the part of an authentication request that names who is
+// signing in.
+type loginBody struct {
+	Email string `json:"email"`
+}
+
+// tokenPair is the part of an authentication response worth keeping.
+type tokenPair struct {
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
+}
+
+// adoptSession hands a fixture's own login to the session cache.
+//
+// Only /auth/ responses carrying both tokens qualify, and only when the email
+// in the request names a seeded principal — a rotation or a failed login
+// leaves the cache alone.
+func adoptSession(sessions *sessionCache, principals Principals, step Step, respBody []byte) {
+	if !strings.HasPrefix(step.Request.Path, "/auth/") || len(respBody) == 0 {
+		return
+	}
+
+	var pair tokenPair
+	if err := json.Unmarshal(respBody, &pair); err != nil {
+		return
+	}
+	if pair.AccessToken == "" || pair.RefreshToken == "" {
+		return
+	}
+
+	var login loginBody
+	_ = json.Unmarshal(step.Request.Body, &login)
+	key := principals.KeyForEmail(login.Email)
+	if key == "" {
+		return
+	}
+	sessions.Adopt(key, &Session{AccessToken: pair.AccessToken, RefreshToken: pair.RefreshToken})
 }

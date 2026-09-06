@@ -74,10 +74,10 @@ func (s *OrganizationService) Invite(ctx context.Context, p domain.Principal, or
 	}
 	expiresAt := s.clock.Now().Add(InvitationWindow)
 
-	var id domain.RequestID
+	var invitation *port.Invitation
 	err = s.tx.InTx(ctx, func(ctx context.Context, tx port.Tx) error {
 		var err error
-		id, err = s.orgs.CreateInvitation(ctx, tx, orgID, email, role, hirer.ID, hash, expiresAt)
+		invitation, err = s.orgs.CreateInvitation(ctx, tx, orgID, email, role, hirer.ID, hash, expiresAt)
 		return err
 	})
 	if err != nil {
@@ -90,10 +90,7 @@ func (s *OrganizationService) Invite(ctx context.Context, p domain.Principal, or
 	})
 
 	// The plaintext is returned once and never stored.
-	return &port.Invitation{
-		ID: id, OrganizationID: orgID, Email: email, Role: role,
-		InvitedBy: hirer.ID, ExpiresAt: expiresAt,
-	}, plaintext, nil
+	return invitation, plaintext, nil
 }
 
 // AcceptInvitation creates the seat and signs it in.
@@ -123,8 +120,20 @@ func (s *OrganizationService) AcceptInvitation(ctx context.Context, token, displ
 		}
 
 		created, err = s.orgs.AcceptInvitation(ctx, tx, invitation.ID,
-			&domain.Hirer{DisplayName: displayName, AuthProvider: domain.ProviderEmail}, hash)
+			&domain.Hirer{DisplayName: displayName, AuthProvider: domain.ProviderEmail},
+			hash, s.clock.Now())
 		if err != nil {
+			// Gone rather than not-found: the invitation WAS real, and the
+			// holder needs to know which of the two happened — one asks for a
+			// fresh invitation, the other just signs in (ADR-0002).
+			switch {
+			case errors.Is(err, port.ErrInvitationAccepted):
+				return Coded(ErrConflict, CodeInvitationAccepted,
+					"this invitation has already been accepted")
+			case errors.Is(err, port.ErrInvitationExpired):
+				return Coded(ErrConflict, CodeInvitationExpired,
+					"this invitation has expired")
+			}
 			return err
 		}
 

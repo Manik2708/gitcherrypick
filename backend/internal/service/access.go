@@ -47,6 +47,14 @@ var (
 
 	// ErrInvalid is a request that could never be valid.
 	ErrInvalid = errors.New("invalid")
+
+	// ErrThrottled is a request that is valid, permitted, and simply too soon.
+	//
+	// Distinct from ErrConflict: nothing about the state contradicts the
+	// request, and repeating it later succeeds unchanged. That is the
+	// difference between 409 and 429, and a dispute refused during a cooldown
+	// is the second (ADR-0007 §6).
+	ErrThrottled = errors.New("throttled")
 )
 
 // AccessService holds the two gates ADR-0002 requires as named, individually

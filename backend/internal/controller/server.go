@@ -138,7 +138,10 @@ func (c *PublicController) scorecard(w http.ResponseWriter, r *http.Request) {
 	card, err := c.auth.PublicScorecard(r.Context(), chi.URLParam(r, "token"))
 	if err != nil {
 		if isNotFound(err) {
-			writeCode(w, http.StatusNotFound, service.CodeNotFound)
+			// scorecard_not_found names what was looked for. It says nothing
+			// about WHY — revoked and never-existed are the same answer, which
+			// is what stops an old link confirming the contributor exists.
+			writeCode(w, http.StatusNotFound, service.CodeScorecardNotFound)
 			return
 		}
 		writeError(w, err)

@@ -59,6 +59,21 @@ func (r *HirerRepository) ByEmail(ctx context.Context, email string) (*domain.Hi
 	return h, nil
 }
 
+// ByGitHubUserID resolves a seat that signed up through GitHub.
+//
+// Scoped to rows whose owner is a HIRER. uq_github_identity_hirer_github makes
+// that single-valued, so this cannot return somebody else's seat.
+func (r *HirerRepository) ByGitHubUserID(ctx context.Context, githubUserID int64) (*domain.Hirer, error) {
+	h, err := scanHirer(r.db.pool.QueryRow(ctx,
+		`SELECT`+hirerColumns+hirerFrom+`
+		 JOIN user_github_identities ghi
+		   ON ghi.hirer_account_id = h.id AND ghi.github_user_id = $1`, githubUserID))
+	if err != nil {
+		return nil, translate(err, fmt.Sprintf("hirer for github user %d", githubUserID))
+	}
+	return h, nil
+}
+
 // PasswordHash reads the stored hash for the email provider.
 //
 // Separate from ByEmail so a hash is fetched only when a password is actually
@@ -86,8 +101,9 @@ func (r *HirerRepository) PasswordHash(ctx context.Context, id domain.HirerID) (
 // The request names the ORGANIZATION, not the seat. ck_verification_single_subject
 // permits either, and per-organization is what makes approval lift every seat
 // at once.
-func (r *HirerRepository) Register(ctx context.Context, t port.Tx, h *domain.Hirer, org *domain.Organization, passwordHash []byte) (*domain.Hirer, error) {
+func (r *HirerRepository) Register(ctx context.Context, t port.Tx, in port.NewHirerAccount) (*port.HirerRegistration, error) {
 	q := r.db.q(t)
+	h, org, passwordHash := in.Hirer, in.Organization, in.PasswordHash
 
 	orgID := org.ID
 	if orgID == "" {
@@ -135,17 +151,34 @@ func (r *HirerRepository) Register(ctx context.Context, t port.Tx, h *domain.Hir
 		return nil, translate(err, "creating the owner membership")
 	}
 
-	if _, err := q.Exec(ctx, `
+	// The request and its proofs go in with the account. An admin draining
+	// the queue decides on the evidence, so a request that arrived without it
+	// is one they can only reject.
+	var request port.VerificationRequest
+	if err := q.QueryRow(ctx, `
 		INSERT INTO verification_requests (id, organization_id, status)
-		VALUES (gen_random_uuid(), $1, 'pending')`, string(orgID)); err != nil {
+		VALUES (gen_random_uuid(), $1, 'pending')
+		RETURNING id, status, created_at`, string(orgID),
+	).Scan(&request.ID, &request.Status, &request.CreatedAt); err != nil {
 		return nil, translate(err, "creating the verification request")
+	}
+
+	for _, proof := range in.Proofs {
+		if _, err := q.Exec(ctx, `
+			INSERT INTO verification_proofs (id, request_id, kind, value, notes, attachment_url)
+			VALUES (gen_random_uuid(), $1, $2, NULLIF($3, ''), NULLIF($4, ''), NULLIF($5, ''))`,
+			string(request.ID), string(proof.Kind), proof.Value, proof.Notes,
+			proof.AttachmentURL); err != nil {
+			return nil, translate(err, fmt.Sprintf("attaching %s proof", proof.Kind))
+		}
 	}
 
 	created := *h
 	created.ID = hirerID
 	created.OrganizationID = orgID
 	created.OrgRole = domain.RoleOwner
-	return &created, nil
+	request.Organization = &port.VerificationOrganization{ID: orgID, Name: org.Name}
+	return &port.HirerRegistration{Hirer: &created, VerificationRequest: &request}, nil
 }
 
 // Organization reads one organization.

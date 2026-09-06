@@ -1,12 +1,7 @@
 {
   "name": "shortlists are staged privately, then confirmed irreversibly",
   "description": "RFC-0008 §3 and §3a. The consent flow is covered by contact_request_requires_consent; this case covers the two-phase model and the ownership rules around it.\n\nA shortlisted contributor can never be un-shortlisted — once someone has been told an organization is interested, that is a fact, and an endpoint that erased the record of it would be pretending otherwise. A rule that strict is only tolerable if there is a moment before it binds, so building a shortlist discloses NOTHING and only confirm sends anything.\n\nConfirm notifies exactly the entries where notified_at IS NULL. That makes the shortlist a living round: a fourth candidate on day 3 gets an email, and the original three are not re-notified. One rule for every entry whenever it was added — removable until confirmed, permanent after.\n\nScoping is to organization_id, so a departing recruiter does not take the hiring round with them. created_by and added_by are an audit trail, not an ownership claim.",
-  "seed": [
-    "principals",
-    "catalogue",
-    "repositories",
-    "scored_population"
-  ],
+  "seed": ["principals", "catalogue", "repositories", "scored_population"],
   "steps": [
     {
       "as": "hank",
@@ -452,7 +447,8 @@
               "id": "<uuid>",
               "organization": {
                 "name": "Acme Corp",
-                "payment_verified": true
+                "payment_verified": true,
+                "verified": true
               },
               "status": "pending",
               "tentative_result_date": "2026-09-30",
@@ -539,18 +535,28 @@
         "body": {
           "id": "<uuid>",
           "name": "Platform team, Q3 (revised)",
-          "description": "Two Go/Kubernetes hires.",
           "status": "open",
           "tentative_result_date": "2026-09-30",
-          "organization": {
-            "id": "01920000-0000-7000-8000-00000000b001",
-            "name": "Acme Corp"
-          },
-          "created_by": "01920000-0000-7000-8000-00000000c001",
-          "entry_count": 3,
-          "unnotified_count": 1,
-          "first_confirmed_at": "<timestamp>",
-          "created_at": "<timestamp>"
+          "entries": [
+            {
+              "user_id": "01920000-0000-7000-8000-00000000a001",
+              "display_name": "Alice Okafor",
+              "contact_status": "pending",
+              "email": null
+            },
+            {
+              "user_id": "01920000-0000-7000-8000-00000000a002",
+              "display_name": "Bob Nakamura",
+              "contact_status": "pending",
+              "email": null
+            },
+            {
+              "user_id": "01920000-0000-7000-8000-00000000a003",
+              "display_name": "Carol Diaz",
+              "contact_status": null,
+              "email": null
+            }
+          ]
         }
       }
     },

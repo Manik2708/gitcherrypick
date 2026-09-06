@@ -71,7 +71,7 @@ func TestAdminRepositoryVerifications(t *testing.T) {
 		if len(pending) != 1 {
 			t.Fatalf("expected 1 pending request, got %d", len(pending))
 		}
-		if pending[0].OrganizationID == nil {
+		if pending[0].Organization == nil {
 			t.Fatal("registration should queue an ORGANIZATION request")
 		}
 
@@ -112,7 +112,8 @@ func TestAdminRepositoryVerifications(t *testing.T) {
 		mustDecideVerification(ctx, t, db, pending[0].ID, admin, true)
 
 		err := db.InTx(ctx, func(ctx context.Context, tx port.Tx) error {
-			return db.Admins().DecideVerification(ctx, tx, pending[0].ID, admin, false, "changed my mind")
+			return db.Admins().DecideVerification(ctx, tx, pending[0].ID, admin,
+				domain.VerificationDecision{Reason: "changed my mind"})
 		})
 		if !errors.Is(err, port.ErrConflict) {
 			t.Fatalf("expected port.ErrConflict, got %v", err)
@@ -283,7 +284,8 @@ func TestReevaluationRepository(t *testing.T) {
 func mustDecideVerification(ctx context.Context, t *testing.T, db *postgres.DB, id domain.RequestID, admin domain.AdminID, approve bool) {
 	t.Helper()
 	if err := db.InTx(ctx, func(ctx context.Context, tx port.Tx) error {
-		return db.Admins().DecideVerification(ctx, tx, id, admin, approve, "Reviewed.")
+		return db.Admins().DecideVerification(ctx, tx, id, admin,
+			domain.VerificationDecision{Approve: approve, Reason: "Reviewed."})
 	}); err != nil {
 		t.Fatalf("deciding verification: %v", err)
 	}

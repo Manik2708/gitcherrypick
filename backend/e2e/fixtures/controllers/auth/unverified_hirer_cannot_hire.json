@@ -38,8 +38,9 @@
       "expect": {
         "status": 403,
         "body": {
-          "error": "verification_required",
-          "message": "Your hiring account is awaiting review. We aim to respond within 48 hours."
+          "error": "hiring_capability_required",
+          "hirer_verified": false,
+          "organization_verified": false
         }
       }
     },
@@ -52,7 +53,9 @@
       "expect": {
         "status": 403,
         "body": {
-          "error": "verification_required"
+          "error": "hiring_capability_required",
+          "hirer_verified": false,
+          "organization_verified": false
         }
       }
     },
@@ -85,7 +88,9 @@
       "expect": {
         "status": 403,
         "body": {
-          "error": "verification_required"
+          "error": "hiring_capability_required",
+          "hirer_verified": false,
+          "organization_verified": false
         }
       }
     }

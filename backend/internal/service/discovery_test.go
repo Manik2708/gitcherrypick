@@ -48,14 +48,18 @@ func TestDiscoveryServiceGating(t *testing.T) {
 }
 
 func TestDiscoveryServiceFilterValidation(t *testing.T) {
-	t.Run("a skill outside the catalogue is refused, not silently empty", func(t *testing.T) {
-		// Returning zero results would read as "nobody has this skill" rather
-		// than "you typed a skill that does not exist".
+	t.Run("a skill outside the catalogue is refused when SAVING a search", func(t *testing.T) {
+		// A saved search is replayed for months with nobody watching, so a
+		// typo would go on returning nothing forever. A live search is
+		// different: zero results are visible immediately, so it runs the
+		// query rather than refusing it.
 		f := newDiscoveryFixture(t)
 		f.access.EXPECT().RequireHiringCapability(mock.Anything, mock.Anything).Return(nil)
 		f.skills.EXPECT().BySlug(mock.Anything, "cobol").Return(nil, port.ErrNotFound)
+		f.skills.EXPECT().MatchSkill(mock.Anything, "cobol").Return(nil, port.ErrNotFound).Maybe()
 
-		_, err := f.svc.Search(ctx(t), hirerPrincipal(), domain.SearchQuery{Skills: []string{"cobol"}})
+		_, err := f.svc.SaveSearch(ctx(t), hirerPrincipal(), "Ghost",
+			domain.SearchQuery{Skills: []string{"cobol"}})
 		if !errors.Is(err, service.ErrInvalid) {
 			t.Fatalf("expected ErrInvalid, got %v", err)
 		}
@@ -116,8 +120,10 @@ func TestDiscoveryServiceSavedSearches(t *testing.T) {
 			ID: savedID, OrganizationID: orgID, Name: "Go",
 			Filters: domain.SearchQuery{Skills: []string{"go"}},
 		}, nil)
-		f.skills.EXPECT().BySlug(mock.Anything, "go").
-			Return(&domain.Skill{ID: goSkillID, Slug: "go"}, nil)
+		// Replay runs the query rather than re-validating the slugs: the
+		// catalogue was checked when the search was saved, and a skill
+		// retired since then should return nothing rather than break a
+		// stored search the hirer cannot see to fix.
 		f.search.EXPECT().Search(mock.Anything, hirerID, mock.Anything).
 			Return(&domain.SearchResults{}, nil)
 
@@ -161,7 +167,7 @@ func TestAdminServiceDecisions(t *testing.T) {
 		if _, err := f.svc.PendingVerifications(ctx(t), hirerPrincipal()); !errors.Is(err, service.ErrForbidden) {
 			t.Errorf("a hirer drained the verification queue: %v", err)
 		}
-		if _, err := f.svc.PendingReevaluations(ctx(t), contributorPrincipal()); !errors.Is(err, service.ErrForbidden) {
+		if _, err := f.svc.Reevaluations(ctx(t), contributorPrincipal(), ""); !errors.Is(err, service.ErrForbidden) {
 			t.Errorf("a contributor drained the dispute queue: %v", err)
 		}
 	})
@@ -170,7 +176,7 @@ func TestAdminServiceDecisions(t *testing.T) {
 		// 'No' without a reason produces a resubmission of the same thing.
 		f := newAdminFixture(t)
 
-		err := f.svc.DecideVerification(ctx(t), adminPrincipal(), requestID, false, "")
+		err := f.svc.DecideVerification(ctx(t), adminPrincipal(), requestID, domain.VerificationDecision{})
 		if !errors.Is(err, service.ErrInvalid) {
 			t.Fatalf("expected ErrInvalid, got %v", err)
 		}
@@ -228,6 +234,11 @@ func TestAdminServiceDecisions(t *testing.T) {
 		f := newAdminFixture(t)
 		created := &domain.Skill{ID: "new-skill", Slug: "webassembly", Name: "WebAssembly"}
 
+		// The catalogue is checked before the write, so an approval that would
+		// collide names the entry it hit rather than surfacing a constraint
+		// violation.
+		f.skills.EXPECT().CollidesWith(mock.Anything, "webassembly", mock.Anything).
+			Return(nil, nil)
 		f.skills.EXPECT().Create(mock.Anything, mock.Anything, mock.Anything).Return(created, nil)
 		f.skills.EXPECT().DecideRequest(mock.Anything, mock.Anything, requestID, adminID, true, "", created).
 			Return(nil)
@@ -244,16 +255,26 @@ func TestAdminServiceDecisions(t *testing.T) {
 
 	t.Run("a slug collision is a conflict the admin sees, not a crash", func(t *testing.T) {
 		// A bad slug fragments a population forever, so the admin has to be
-		// told rather than shown a 500.
+		// told rather than shown a 500 — and told WHICH entry they hit, since
+		// "slug taken" alone leaves them guessing.
 		f := newAdminFixture(t)
-		f.skills.EXPECT().Create(mock.Anything, mock.Anything, mock.Anything).
-			Return(nil, port.ErrConflict)
+		f.skills.EXPECT().CollidesWith(mock.Anything, "go", mock.Anything).
+			Return(&port.SkillCollision{
+				Skill: domain.Skill{Slug: "go", Name: "Go"}, Term: "go",
+			}, nil)
 
 		_, err := f.svc.DecideSkillRequest(ctx(t), adminPrincipal(), requestID, true,
 			&domain.Skill{Slug: "go", Name: "Go Again"}, "")
 		if !errors.Is(err, service.ErrConflict) {
 			t.Fatalf("expected ErrConflict, got %v", err)
 		}
+		if code := service.CodeOf(err); code != service.CodeSlugTaken {
+			t.Errorf("expected slug_taken, got %q", code)
+		}
+		// Nothing was written: the collision is caught before the insert, so a
+		// refused approval cannot leave a half-created catalogue entry.
+		f.skills.AssertNotCalled(t, "Create",
+			mock.Anything, mock.Anything, mock.Anything)
 	})
 }
 
@@ -280,7 +301,7 @@ func newDiscoveryFixture(t *testing.T) *discoveryFixture {
 		saved:  mocks.NewSavedSearchRepository(t),
 		access: mocks.NewAccessService(t),
 	}
-	f.svc = service.NewDiscoveryService(f.search, f.skills, f.saved, f.access)
+	f.svc = service.NewDiscoveryService(f.search, f.skills, f.saved, f.access, "v1")
 	return f
 }
 

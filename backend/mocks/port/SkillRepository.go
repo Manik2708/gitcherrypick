@@ -108,6 +108,148 @@ func (_c *SkillRepository_BySlug_Call) RunAndReturn(run func(ctx context.Context
 	return _c
 }
 
+// CollidesWith provides a mock function for the type SkillRepository
+func (_mock *SkillRepository) CollidesWith(ctx context.Context, slug string, aliases []string) (*port.SkillCollision, error) {
+	ret := _mock.Called(ctx, slug, aliases)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CollidesWith")
+	}
+
+	var r0 *port.SkillCollision
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, []string) (*port.SkillCollision, error)); ok {
+		return returnFunc(ctx, slug, aliases)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, []string) *port.SkillCollision); ok {
+		r0 = returnFunc(ctx, slug, aliases)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*port.SkillCollision)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, []string) error); ok {
+		r1 = returnFunc(ctx, slug, aliases)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// SkillRepository_CollidesWith_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CollidesWith'
+type SkillRepository_CollidesWith_Call struct {
+	*mock.Call
+}
+
+// CollidesWith is a helper method to define mock.On call
+//   - ctx context.Context
+//   - slug string
+//   - aliases []string
+func (_e *SkillRepository_Expecter) CollidesWith(ctx interface{}, slug interface{}, aliases interface{}) *SkillRepository_CollidesWith_Call {
+	return &SkillRepository_CollidesWith_Call{Call: _e.mock.On("CollidesWith", ctx, slug, aliases)}
+}
+
+func (_c *SkillRepository_CollidesWith_Call) Run(run func(ctx context.Context, slug string, aliases []string)) *SkillRepository_CollidesWith_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 []string
+		if args[2] != nil {
+			arg2 = args[2].([]string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *SkillRepository_CollidesWith_Call) Return(skillCollision *port.SkillCollision, err error) *SkillRepository_CollidesWith_Call {
+	_c.Call.Return(skillCollision, err)
+	return _c
+}
+
+func (_c *SkillRepository_CollidesWith_Call) RunAndReturn(run func(ctx context.Context, slug string, aliases []string) (*port.SkillCollision, error)) *SkillRepository_CollidesWith_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ConflictingPairs provides a mock function for the type SkillRepository
+func (_mock *SkillRepository) ConflictingPairs(ctx context.Context, links []port.PRLink) ([]port.PairConflict, error) {
+	ret := _mock.Called(ctx, links)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ConflictingPairs")
+	}
+
+	var r0 []port.PairConflict
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []port.PRLink) ([]port.PairConflict, error)); ok {
+		return returnFunc(ctx, links)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []port.PRLink) []port.PairConflict); ok {
+		r0 = returnFunc(ctx, links)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]port.PairConflict)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, []port.PRLink) error); ok {
+		r1 = returnFunc(ctx, links)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// SkillRepository_ConflictingPairs_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ConflictingPairs'
+type SkillRepository_ConflictingPairs_Call struct {
+	*mock.Call
+}
+
+// ConflictingPairs is a helper method to define mock.On call
+//   - ctx context.Context
+//   - links []port.PRLink
+func (_e *SkillRepository_Expecter) ConflictingPairs(ctx interface{}, links interface{}) *SkillRepository_ConflictingPairs_Call {
+	return &SkillRepository_ConflictingPairs_Call{Call: _e.mock.On("ConflictingPairs", ctx, links)}
+}
+
+func (_c *SkillRepository_ConflictingPairs_Call) Run(run func(ctx context.Context, links []port.PRLink)) *SkillRepository_ConflictingPairs_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 []port.PRLink
+		if args[1] != nil {
+			arg1 = args[1].([]port.PRLink)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *SkillRepository_ConflictingPairs_Call) Return(pairConflicts []port.PairConflict, err error) *SkillRepository_ConflictingPairs_Call {
+	_c.Call.Return(pairConflicts, err)
+	return _c
+}
+
+func (_c *SkillRepository_ConflictingPairs_Call) RunAndReturn(run func(ctx context.Context, links []port.PRLink) ([]port.PairConflict, error)) *SkillRepository_ConflictingPairs_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Create provides a mock function for the type SkillRepository
 func (_mock *SkillRepository) Create(ctx context.Context, tx port.Tx, s *domain.Skill) (*domain.Skill, error) {
 	ret := _mock.Called(ctx, tx, s)
@@ -343,6 +485,81 @@ func (_c *SkillRepository_DecideRequest_Call) Return(err error) *SkillRepository
 }
 
 func (_c *SkillRepository_DecideRequest_Call) RunAndReturn(run func(ctx context.Context, tx port.Tx, id domain.RequestID, by domain.AdminID, approve bool, reason string, created *domain.Skill) error) *SkillRepository_DecideRequest_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// LinkJudgedEvidence provides a mock function for the type SkillRepository
+func (_mock *SkillRepository) LinkJudgedEvidence(ctx context.Context, tx port.Tx, id domain.UserID, claimID domain.ClaimID, skillID domain.SkillID) error {
+	ret := _mock.Called(ctx, tx, id, claimID, skillID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for LinkJudgedEvidence")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, port.Tx, domain.UserID, domain.ClaimID, domain.SkillID) error); ok {
+		r0 = returnFunc(ctx, tx, id, claimID, skillID)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// SkillRepository_LinkJudgedEvidence_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'LinkJudgedEvidence'
+type SkillRepository_LinkJudgedEvidence_Call struct {
+	*mock.Call
+}
+
+// LinkJudgedEvidence is a helper method to define mock.On call
+//   - ctx context.Context
+//   - tx port.Tx
+//   - id domain.UserID
+//   - claimID domain.ClaimID
+//   - skillID domain.SkillID
+func (_e *SkillRepository_Expecter) LinkJudgedEvidence(ctx interface{}, tx interface{}, id interface{}, claimID interface{}, skillID interface{}) *SkillRepository_LinkJudgedEvidence_Call {
+	return &SkillRepository_LinkJudgedEvidence_Call{Call: _e.mock.On("LinkJudgedEvidence", ctx, tx, id, claimID, skillID)}
+}
+
+func (_c *SkillRepository_LinkJudgedEvidence_Call) Run(run func(ctx context.Context, tx port.Tx, id domain.UserID, claimID domain.ClaimID, skillID domain.SkillID)) *SkillRepository_LinkJudgedEvidence_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 port.Tx
+		if args[1] != nil {
+			arg1 = args[1].(port.Tx)
+		}
+		var arg2 domain.UserID
+		if args[2] != nil {
+			arg2 = args[2].(domain.UserID)
+		}
+		var arg3 domain.ClaimID
+		if args[3] != nil {
+			arg3 = args[3].(domain.ClaimID)
+		}
+		var arg4 domain.SkillID
+		if args[4] != nil {
+			arg4 = args[4].(domain.SkillID)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+			arg4,
+		)
+	})
+	return _c
+}
+
+func (_c *SkillRepository_LinkJudgedEvidence_Call) Return(err error) *SkillRepository_LinkJudgedEvidence_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *SkillRepository_LinkJudgedEvidence_Call) RunAndReturn(run func(ctx context.Context, tx port.Tx, id domain.UserID, claimID domain.ClaimID, skillID domain.SkillID) error) *SkillRepository_LinkJudgedEvidence_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -626,6 +843,74 @@ func (_c *SkillRepository_RecomputeStanding_Call) RunAndReturn(run func(ctx cont
 	return _c
 }
 
+// RequestByID provides a mock function for the type SkillRepository
+func (_mock *SkillRepository) RequestByID(ctx context.Context, id domain.RequestID) (*port.SkillRequest, error) {
+	ret := _mock.Called(ctx, id)
+
+	if len(ret) == 0 {
+		panic("no return value specified for RequestByID")
+	}
+
+	var r0 *port.SkillRequest
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.RequestID) (*port.SkillRequest, error)); ok {
+		return returnFunc(ctx, id)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.RequestID) *port.SkillRequest); ok {
+		r0 = returnFunc(ctx, id)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*port.SkillRequest)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, domain.RequestID) error); ok {
+		r1 = returnFunc(ctx, id)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// SkillRepository_RequestByID_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RequestByID'
+type SkillRepository_RequestByID_Call struct {
+	*mock.Call
+}
+
+// RequestByID is a helper method to define mock.On call
+//   - ctx context.Context
+//   - id domain.RequestID
+func (_e *SkillRepository_Expecter) RequestByID(ctx interface{}, id interface{}) *SkillRepository_RequestByID_Call {
+	return &SkillRepository_RequestByID_Call{Call: _e.mock.On("RequestByID", ctx, id)}
+}
+
+func (_c *SkillRepository_RequestByID_Call) Run(run func(ctx context.Context, id domain.RequestID)) *SkillRepository_RequestByID_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 domain.RequestID
+		if args[1] != nil {
+			arg1 = args[1].(domain.RequestID)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *SkillRepository_RequestByID_Call) Return(skillRequest *port.SkillRequest, err error) *SkillRepository_RequestByID_Call {
+	_c.Call.Return(skillRequest, err)
+	return _c
+}
+
+func (_c *SkillRepository_RequestByID_Call) RunAndReturn(run func(ctx context.Context, id domain.RequestID) (*port.SkillRequest, error)) *SkillRepository_RequestByID_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // RequestsSince provides a mock function for the type SkillRepository
 func (_mock *SkillRepository) RequestsSince(ctx context.Context, userID domain.UserID, since time.Time) ([]port.SkillRequest, error) {
 	ret := _mock.Called(ctx, userID, since)
@@ -769,16 +1054,16 @@ func (_c *SkillRepository_Search_Call) RunAndReturn(run func(ctx context.Context
 }
 
 // SetLinkStatus provides a mock function for the type SkillRepository
-func (_mock *SkillRepository) SetLinkStatus(ctx context.Context, tx port.Tx, links []port.PRLink, status domain.PRLinkStatus) error {
-	ret := _mock.Called(ctx, tx, links, status)
+func (_mock *SkillRepository) SetLinkStatus(ctx context.Context, tx port.Tx, links []port.PRLink, status domain.PRLinkStatus, reason *domain.RejectionReason) error {
+	ret := _mock.Called(ctx, tx, links, status, reason)
 
 	if len(ret) == 0 {
 		panic("no return value specified for SetLinkStatus")
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, port.Tx, []port.PRLink, domain.PRLinkStatus) error); ok {
-		r0 = returnFunc(ctx, tx, links, status)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, port.Tx, []port.PRLink, domain.PRLinkStatus, *domain.RejectionReason) error); ok {
+		r0 = returnFunc(ctx, tx, links, status, reason)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -795,11 +1080,12 @@ type SkillRepository_SetLinkStatus_Call struct {
 //   - tx port.Tx
 //   - links []port.PRLink
 //   - status domain.PRLinkStatus
-func (_e *SkillRepository_Expecter) SetLinkStatus(ctx interface{}, tx interface{}, links interface{}, status interface{}) *SkillRepository_SetLinkStatus_Call {
-	return &SkillRepository_SetLinkStatus_Call{Call: _e.mock.On("SetLinkStatus", ctx, tx, links, status)}
+//   - reason *domain.RejectionReason
+func (_e *SkillRepository_Expecter) SetLinkStatus(ctx interface{}, tx interface{}, links interface{}, status interface{}, reason interface{}) *SkillRepository_SetLinkStatus_Call {
+	return &SkillRepository_SetLinkStatus_Call{Call: _e.mock.On("SetLinkStatus", ctx, tx, links, status, reason)}
 }
 
-func (_c *SkillRepository_SetLinkStatus_Call) Run(run func(ctx context.Context, tx port.Tx, links []port.PRLink, status domain.PRLinkStatus)) *SkillRepository_SetLinkStatus_Call {
+func (_c *SkillRepository_SetLinkStatus_Call) Run(run func(ctx context.Context, tx port.Tx, links []port.PRLink, status domain.PRLinkStatus, reason *domain.RejectionReason)) *SkillRepository_SetLinkStatus_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -817,11 +1103,16 @@ func (_c *SkillRepository_SetLinkStatus_Call) Run(run func(ctx context.Context, 
 		if args[3] != nil {
 			arg3 = args[3].(domain.PRLinkStatus)
 		}
+		var arg4 *domain.RejectionReason
+		if args[4] != nil {
+			arg4 = args[4].(*domain.RejectionReason)
+		}
 		run(
 			arg0,
 			arg1,
 			arg2,
 			arg3,
+			arg4,
 		)
 	})
 	return _c
@@ -832,14 +1123,164 @@ func (_c *SkillRepository_SetLinkStatus_Call) Return(err error) *SkillRepository
 	return _c
 }
 
-func (_c *SkillRepository_SetLinkStatus_Call) RunAndReturn(run func(ctx context.Context, tx port.Tx, links []port.PRLink, status domain.PRLinkStatus) error) *SkillRepository_SetLinkStatus_Call {
+func (_c *SkillRepository_SetLinkStatus_Call) RunAndReturn(run func(ctx context.Context, tx port.Tx, links []port.PRLink, status domain.PRLinkStatus, reason *domain.RejectionReason) error) *SkillRepository_SetLinkStatus_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// SetSkillScore provides a mock function for the type SkillRepository
+func (_mock *SkillRepository) SetSkillScore(ctx context.Context, tx port.Tx, id domain.UserID, skillID domain.SkillID, score float64, prComponent float64, projectComponent float64) error {
+	ret := _mock.Called(ctx, tx, id, skillID, score, prComponent, projectComponent)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SetSkillScore")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, port.Tx, domain.UserID, domain.SkillID, float64, float64, float64) error); ok {
+		r0 = returnFunc(ctx, tx, id, skillID, score, prComponent, projectComponent)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// SkillRepository_SetSkillScore_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetSkillScore'
+type SkillRepository_SetSkillScore_Call struct {
+	*mock.Call
+}
+
+// SetSkillScore is a helper method to define mock.On call
+//   - ctx context.Context
+//   - tx port.Tx
+//   - id domain.UserID
+//   - skillID domain.SkillID
+//   - score float64
+//   - prComponent float64
+//   - projectComponent float64
+func (_e *SkillRepository_Expecter) SetSkillScore(ctx interface{}, tx interface{}, id interface{}, skillID interface{}, score interface{}, prComponent interface{}, projectComponent interface{}) *SkillRepository_SetSkillScore_Call {
+	return &SkillRepository_SetSkillScore_Call{Call: _e.mock.On("SetSkillScore", ctx, tx, id, skillID, score, prComponent, projectComponent)}
+}
+
+func (_c *SkillRepository_SetSkillScore_Call) Run(run func(ctx context.Context, tx port.Tx, id domain.UserID, skillID domain.SkillID, score float64, prComponent float64, projectComponent float64)) *SkillRepository_SetSkillScore_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 port.Tx
+		if args[1] != nil {
+			arg1 = args[1].(port.Tx)
+		}
+		var arg2 domain.UserID
+		if args[2] != nil {
+			arg2 = args[2].(domain.UserID)
+		}
+		var arg3 domain.SkillID
+		if args[3] != nil {
+			arg3 = args[3].(domain.SkillID)
+		}
+		var arg4 float64
+		if args[4] != nil {
+			arg4 = args[4].(float64)
+		}
+		var arg5 float64
+		if args[5] != nil {
+			arg5 = args[5].(float64)
+		}
+		var arg6 float64
+		if args[6] != nil {
+			arg6 = args[6].(float64)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+			arg4,
+			arg5,
+			arg6,
+		)
+	})
+	return _c
+}
+
+func (_c *SkillRepository_SetSkillScore_Call) Return(err error) *SkillRepository_SetSkillScore_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *SkillRepository_SetSkillScore_Call) RunAndReturn(run func(ctx context.Context, tx port.Tx, id domain.UserID, skillID domain.SkillID, score float64, prComponent float64, projectComponent float64) error) *SkillRepository_SetSkillScore_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// UnlinkClaim provides a mock function for the type SkillRepository
+func (_mock *SkillRepository) UnlinkClaim(ctx context.Context, tx port.Tx, id domain.ClaimID) error {
+	ret := _mock.Called(ctx, tx, id)
+
+	if len(ret) == 0 {
+		panic("no return value specified for UnlinkClaim")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, port.Tx, domain.ClaimID) error); ok {
+		r0 = returnFunc(ctx, tx, id)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// SkillRepository_UnlinkClaim_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'UnlinkClaim'
+type SkillRepository_UnlinkClaim_Call struct {
+	*mock.Call
+}
+
+// UnlinkClaim is a helper method to define mock.On call
+//   - ctx context.Context
+//   - tx port.Tx
+//   - id domain.ClaimID
+func (_e *SkillRepository_Expecter) UnlinkClaim(ctx interface{}, tx interface{}, id interface{}) *SkillRepository_UnlinkClaim_Call {
+	return &SkillRepository_UnlinkClaim_Call{Call: _e.mock.On("UnlinkClaim", ctx, tx, id)}
+}
+
+func (_c *SkillRepository_UnlinkClaim_Call) Run(run func(ctx context.Context, tx port.Tx, id domain.ClaimID)) *SkillRepository_UnlinkClaim_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 port.Tx
+		if args[1] != nil {
+			arg1 = args[1].(port.Tx)
+		}
+		var arg2 domain.ClaimID
+		if args[2] != nil {
+			arg2 = args[2].(domain.ClaimID)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *SkillRepository_UnlinkClaim_Call) Return(err error) *SkillRepository_UnlinkClaim_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *SkillRepository_UnlinkClaim_Call) RunAndReturn(run func(ctx context.Context, tx port.Tx, id domain.ClaimID) error) *SkillRepository_UnlinkClaim_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // UserSkills provides a mock function for the type SkillRepository
-func (_mock *SkillRepository) UserSkills(ctx context.Context, id domain.UserID) ([]domain.UserSkill, error) {
-	ret := _mock.Called(ctx, id)
+func (_mock *SkillRepository) UserSkills(ctx context.Context, tx port.Tx, id domain.UserID) ([]domain.UserSkill, error) {
+	ret := _mock.Called(ctx, tx, id)
 
 	if len(ret) == 0 {
 		panic("no return value specified for UserSkills")
@@ -847,18 +1288,18 @@ func (_mock *SkillRepository) UserSkills(ctx context.Context, id domain.UserID) 
 
 	var r0 []domain.UserSkill
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.UserID) ([]domain.UserSkill, error)); ok {
-		return returnFunc(ctx, id)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, port.Tx, domain.UserID) ([]domain.UserSkill, error)); ok {
+		return returnFunc(ctx, tx, id)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.UserID) []domain.UserSkill); ok {
-		r0 = returnFunc(ctx, id)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, port.Tx, domain.UserID) []domain.UserSkill); ok {
+		r0 = returnFunc(ctx, tx, id)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]domain.UserSkill)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, domain.UserID) error); ok {
-		r1 = returnFunc(ctx, id)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, port.Tx, domain.UserID) error); ok {
+		r1 = returnFunc(ctx, tx, id)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -872,24 +1313,30 @@ type SkillRepository_UserSkills_Call struct {
 
 // UserSkills is a helper method to define mock.On call
 //   - ctx context.Context
+//   - tx port.Tx
 //   - id domain.UserID
-func (_e *SkillRepository_Expecter) UserSkills(ctx interface{}, id interface{}) *SkillRepository_UserSkills_Call {
-	return &SkillRepository_UserSkills_Call{Call: _e.mock.On("UserSkills", ctx, id)}
+func (_e *SkillRepository_Expecter) UserSkills(ctx interface{}, tx interface{}, id interface{}) *SkillRepository_UserSkills_Call {
+	return &SkillRepository_UserSkills_Call{Call: _e.mock.On("UserSkills", ctx, tx, id)}
 }
 
-func (_c *SkillRepository_UserSkills_Call) Run(run func(ctx context.Context, id domain.UserID)) *SkillRepository_UserSkills_Call {
+func (_c *SkillRepository_UserSkills_Call) Run(run func(ctx context.Context, tx port.Tx, id domain.UserID)) *SkillRepository_UserSkills_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 domain.UserID
+		var arg1 port.Tx
 		if args[1] != nil {
-			arg1 = args[1].(domain.UserID)
+			arg1 = args[1].(port.Tx)
+		}
+		var arg2 domain.UserID
+		if args[2] != nil {
+			arg2 = args[2].(domain.UserID)
 		}
 		run(
 			arg0,
 			arg1,
+			arg2,
 		)
 	})
 	return _c
@@ -900,7 +1347,7 @@ func (_c *SkillRepository_UserSkills_Call) Return(userSkills []domain.UserSkill,
 	return _c
 }
 
-func (_c *SkillRepository_UserSkills_Call) RunAndReturn(run func(ctx context.Context, id domain.UserID) ([]domain.UserSkill, error)) *SkillRepository_UserSkills_Call {
+func (_c *SkillRepository_UserSkills_Call) RunAndReturn(run func(ctx context.Context, tx port.Tx, id domain.UserID) ([]domain.UserSkill, error)) *SkillRepository_UserSkills_Call {
 	_c.Call.Return(run)
 	return _c
 }

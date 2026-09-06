@@ -45,12 +45,17 @@ type errorBody struct {
 //
 // A map rather than a string at each raise site, so the same code cannot
 // explain itself two different ways depending on which handler produced it.
+// Only the codes whose remedy is not obvious from the code itself carry prose.
+// "email_not_verified" says everything a client needs; spelling it out again
+// only gives the same fact two wordings to drift between.
 var messages = map[string]string{
-	service.CodeVerificationNeeded:  "Your hiring account is awaiting review. We aim to respond within 48 hours.",
-	service.CodeNoHirerAccount:      "Register an organization account before signing in with Google.",
-	service.CodeForbidden:           "Scorecards are visible to verified hiring accounts only.",
-	service.CodeEmailNotVerified:    "Google has not verified this address.",
-	service.CodeCannotShortlistSelf: "You cannot act on your own contributor account.",
+	service.CodeVerificationNeeded:   "Your hiring account is awaiting review. We aim to respond within 48 hours.",
+	service.CodeNoHirerAccount:       "Register an organization account before signing in with Google.",
+	service.CodeForbidden:            "Scorecards are visible to verified hiring accounts only.",
+	service.CodeReasonRequired:       "A rejection must carry a reason.",
+	service.CodeProjectsNotAccepted:  "A pr-review claim is scored on judgement alone. Project evidence would not contribute.",
+	service.CodeEvidenceUnchanged:    "This claim has already been evaluated with identical evidence.",
+	service.CodeReevaluationCooldown: "You have three rejected re-evaluation requests. You can request again after the cooldown ends.",
 }
 
 // statusOverrides are the codes whose HTTP status does NOT follow from their
@@ -83,6 +88,7 @@ var sentinelStatuses = []sentinelStatus{
 	{service.ErrSelf, http.StatusForbidden, service.CodeCannotShortlistSelf},
 	{service.ErrForbidden, http.StatusForbidden, service.CodeForbidden},
 	{service.ErrNotFound, http.StatusNotFound, service.CodeNotFound},
+	{service.ErrThrottled, http.StatusTooManyRequests, service.CodeReevaluationCooldown},
 	{service.ErrConflict, http.StatusConflict, service.CodeVersionConflict},
 	{service.ErrInvalid, http.StatusUnprocessableEntity, service.CodeInvalidClaim},
 }

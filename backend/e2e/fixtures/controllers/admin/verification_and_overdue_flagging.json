@@ -1,10 +1,7 @@
 {
   "name": "manual verification, alternative evidence, and overdue-shortlist flagging",
   "description": "ADR-0002: verification is manual, targets 48 hours, and must be satisfiable by a small firm with no company domain or LinkedIn page — a three-person studio hiring a contractor is exactly the customer the alternative-evidence path exists for. A scheme only large companies can pass would exclude most freelance hiring.\n\nAlso ADR-0005: an organization with 80% or more of its open shortlists past their tentative date is flagged. Nothing is blocked — blocking would punish a hirer for a candidate's silence as readily as for their own neglect.\n\nUpdated for RFC-0008 §3a. The overdue ratio counts CONFIRMED rounds only: a draft promised nothing to anyone, so counting it would flag an organization for failing to deliver on a search it never announced. Each round here is therefore confirmed before the clock advances, and Round D is deliberately left as a draft to prove a draft cannot be overdue.",
-  "seed": [
-    "principals",
-    "catalogue"
-  ],
+  "seed": ["principals", "catalogue"],
   "steps": [
     {
       "as": "anonymous",
@@ -66,7 +63,17 @@
               },
               "created_at": "<timestamp>",
               "age_hours": "<number>",
-              "proofs": []
+              "proofs": [],
+              "hirer": {
+                "id": "01920000-0000-7000-8000-00000000c002",
+                "display_name": "Pat Ferreira",
+                "email": "pat@unknown.example"
+              },
+              "organization": {
+                "id": "01920000-0000-7000-8000-00000000b003",
+                "name": "Unknown Ltd"
+              },
+              "status": "pending"
             },
             {
               "id": "<uuid>",
@@ -86,7 +93,17 @@
                   "kind": "payment_capability",
                   "notes": "<string>"
                 }
-              ]
+              ],
+              "hirer": {
+                "id": "<uuid>",
+                "display_name": "Jo Bergström",
+                "email": "jo@threepersonstudio.example"
+              },
+              "organization": {
+                "id": "<uuid>",
+                "name": "Three Person Studio"
+              },
+              "status": "pending"
             }
           ]
         }
@@ -162,7 +179,14 @@
           "reason": "No verifiable connection to the named organization.",
           "reviewed_at": "<timestamp>",
           "can_appeal": true,
-          "hirer_verified": false
+          "hirer_verified": false,
+          "organization": {
+            "id": "01920000-0000-7000-8000-00000000b003",
+            "name": "Unknown Ltd",
+            "verified": false,
+            "payment_verified": false
+          },
+          "submitted_at": "<timestamp>"
         }
       }
     },
@@ -441,7 +465,9 @@
         "body": {
           "id": "<uuid>",
           "status": "closed",
-          "closed_at": "<timestamp>"
+          "closed_at": "<timestamp>",
+          "name": "Round C",
+          "entry_count": 1
         }
       }
     },

@@ -1,12 +1,7 @@
 {
   "name": "withdrawal warns before it demotes a primary skill",
   "description": "ADR-0003: withdrawing can drop a skill below five scored PRs. The contributor is told BEFORE confirming, then the demotion is immediate. Standing never disagrees with the evidence behind it, and nobody loses a ranking without being asked. Withdrawal also releases the (PR, skill) pairs for reuse.",
-  "seed": [
-    "principals",
-    "catalogue",
-    "repositories",
-    "alice_go_primary"
-  ],
+  "seed": ["principals", "catalogue", "repositories", "alice_go_primary"],
   "steps": [
     {
       "_step": "Alice starts with Go primary at five scored PRs.",

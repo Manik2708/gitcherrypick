@@ -57,7 +57,7 @@ func assertTable(ctx context.Context, conn *pgx.Conn, table string, a DBAssertio
 		return fmt.Errorf("%q is not a valid table name", table)
 	}
 
-	where, args, err := buildWhere(a.Where, bindings, 1)
+	where, args, err := buildWhere(table, a.Where, bindings, 1)
 	if err != nil {
 		return fmt.Errorf("%s.where: %w", table, err)
 	}
@@ -97,7 +97,7 @@ func assertTable(ctx context.Context, conn *pgx.Conn, table string, a DBAssertio
 			return fmt.Errorf("%s.same_value: %q is not a valid column name", table, column)
 		}
 		var distinct int
-		query := fmt.Sprintf("SELECT count(DISTINCT %q) FROM %q%s", column, table, clause)
+		query := fmt.Sprintf("SELECT count(DISTINCT %s) FROM %q%s", columnExpr(table, column), table, clause)
 		if err := conn.QueryRow(ctx, query, args...).Scan(&distinct); err != nil {
 			return fmt.Errorf("%s.%s: %w", table, column, err)
 		}
@@ -114,7 +114,7 @@ func assertTable(ctx context.Context, conn *pgx.Conn, table string, a DBAssertio
 func assertRowPredicate(ctx context.Context, conn *pgx.Conn, table, clause string, args []any,
 	predicate map[string]any, bindings map[string]string, negate bool) error {
 
-	inner, innerArgs, err := buildWhere(predicate, bindings, len(args)+1)
+	inner, innerArgs, err := buildWhere(table, predicate, bindings, len(args)+1)
 	if err != nil {
 		return fmt.Errorf("%s: %w", table, err)
 	}
@@ -149,6 +149,64 @@ func orWhere(clause string) string {
 	return clause
 }
 
+// virtualColumns are names a fixture asserts on that no column holds.
+//
+// A fixture says what it MEANS — "this claim's skill is go", "this session
+// belongs to that principal" — while the schema stores the same fact
+// relationally, as a foreign key or as one of three mutually exclusive owner
+// columns. Resolving the name here keeps the assertion readable without
+// denormalising the schema to match it, and without a fixture having to spell
+// out a join it should not need to know about.
+var virtualColumns = map[string]string{
+	"claim_skills.skill_slug": "(SELECT slug FROM skills WHERE id = claim_skills.skill_id)",
+	"user_skills.skill_slug":  "(SELECT slug FROM skills WHERE id = user_skills.skill_id)",
+	"user_skill_pr_links.skill_slug": "(SELECT slug FROM skills " +
+		"WHERE id = user_skill_pr_links.skill_id)",
+
+	// ck_verification_single_subject: a request names a hirer OR an org, so
+	// the address is reachable either directly or through the organization's
+	// owning seat.
+	"verification_requests.hirer_email": "(SELECT email FROM hirer_accounts h " +
+		"WHERE h.id = verification_requests.hirer_account_id " +
+		"   OR h.organization_id = verification_requests.organization_id LIMIT 1)",
+
+	// ck_session_single_principal: exactly one of the three is set.
+	"sessions.principal_id": "coalesce(sessions.user_id::text, " +
+		"sessions.hirer_account_id::text, sessions.admin_account_id::text)",
+
+	// A contributor's GitHub identity lives in its own table, because one
+	// account may hold several. A fixture asserting "the user called
+	// newcomer" means the identity, not a column on users.
+	"users.github_login": "(SELECT github_login FROM user_github_identities i " +
+		"WHERE i.user_id = users.id LIMIT 1)",
+	"users.github_user_id": "(SELECT github_user_id FROM user_github_identities i " +
+		"WHERE i.user_id = users.id LIMIT 1)",
+
+	// Availability hangs off the user, and a fixture naming a GitHub id means
+	// "the person that id belongs to".
+	"user_availability.github_user_id": "(SELECT github_user_id FROM user_github_identities i " +
+		"WHERE i.user_id = user_availability.user_id LIMIT 1)",
+
+	// evaluation_jobs has no status column. A row IS outstanding work — an
+	// acked job is deleted (RFC-0004) — so the states a fixture can observe
+	// are "waiting" and "a worker is holding it".
+	"evaluation_jobs.status": "(CASE WHEN evaluation_jobs.leased_until > now() " +
+		"THEN 'leased' ELSE 'pending' END)",
+
+	// Capability is a property of the ORGANIZATION (ADR-0002): a seat is
+	// verified when its org is, whatever its own column says.
+	"hirer_accounts.verified": "(EXISTS (SELECT 1 FROM organizations o " +
+		"WHERE o.id = hirer_accounts.organization_id AND o.verified_at IS NOT NULL))",
+}
+
+// columnExpr resolves a column name to the SQL that reads it.
+func columnExpr(table, column string) string {
+	if expr, ok := virtualColumns[table+"."+column]; ok {
+		return expr
+	}
+	return fmt.Sprintf("%q", column)
+}
+
 // buildWhere turns a map into a SQL fragment and its arguments, substituting
 // {{binding}} in string values. NULL is compared with IS NULL rather than =,
 // which would never match.
@@ -156,7 +214,7 @@ func orWhere(clause string) string {
 // Column names are validated against an identifier pattern rather than quoted
 // blindly: a fixture is trusted input, but a typo producing invalid SQL fails
 // with a parse error that names nothing useful.
-func buildWhere(where map[string]any, bindings map[string]string, start int) (string, []any, error) {
+func buildWhere(table string, where map[string]any, bindings map[string]string, start int) (string, []any, error) {
 	if len(where) == 0 {
 		return "", nil, nil
 	}
@@ -180,12 +238,13 @@ func buildWhere(where map[string]any, bindings map[string]string, start int) (st
 			}
 			value = resolved
 		}
+		expr := columnExpr(table, column)
 		if value == nil {
-			clauses = append(clauses, fmt.Sprintf("%q IS NULL", column))
+			clauses = append(clauses, expr+" IS NULL")
 			continue
 		}
 		args = append(args, value)
-		clauses = append(clauses, fmt.Sprintf("%q = $%d", column, start+len(args)-1))
+		clauses = append(clauses, fmt.Sprintf("%s = $%d", expr, start+len(args)-1))
 	}
 	return strings.Join(clauses, " AND "), args, nil
 }

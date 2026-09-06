@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 
@@ -111,7 +112,26 @@ func (s *Server) githubPullRequest(w http.ResponseWriter, r *http.Request) {
 		githubNotFound(w, r)
 		return
 	}
+	if failed(payload) {
+		// The fixture declared this one unreadable. Answered as GitHub would
+		// answer it, so the adapter's error mapping runs — returning the
+		// declaration as a 200 body would instead be read as a pull request
+		// with every field zero.
+		githubNotFound(w, r)
+		return
+	}
 	writeRaw(w, http.StatusOK, payload)
+}
+
+// declaredFailure is how a fixture says a payload should not be readable.
+type declaredFailure struct {
+	Error string `json:"error"`
+}
+
+// failed reports whether a fixture declared this entry unreadable.
+func failed(payload json.RawMessage) bool {
+	var d declaredFailure
+	return json.Unmarshal(payload, &d) == nil && d.Error != ""
 }
 
 // githubReviews serves a PR's review list.

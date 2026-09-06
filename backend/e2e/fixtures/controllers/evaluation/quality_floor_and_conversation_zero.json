@@ -1,11 +1,7 @@
 {
   "name": "the quality floor catches what the named grounds miss",
   "description": "ADR-0007 §2. The nine disqualification grounds are exhaustive but will not catch everything. The floor is the backstop: mean dimension score below 5 zeroes the pair regardless of verdict, computed in Go rather than returned by the model. A meaningless contribution to a large repository must score zero however large the repository is.\n\nAlso pins ADR-0007 §7: a PR with no review discussion scores 0 on conversation_quality with no benefit of the doubt — and a zero there does NOT sink the PR, because it is one dimension of five.",
-  "seed": [
-    "principals",
-    "catalogue",
-    "repositories"
-  ],
+  "seed": ["principals", "catalogue", "repositories"],
   "steps": [
     {
       "as": "alice",
@@ -277,7 +273,7 @@
               "scores": [
                 {
                   "skill": "go",
-                  "score": 71.8
+                  "score": 71.19
                 }
               ],
               "_note": "Scores well despite conversation_quality 0. One dimension of five, weighted 0.20.",
@@ -317,9 +313,31 @@
               "scores": [
                 {
                   "skill": "go",
-                  "score": 62.1
+                  "score": 67.84
                 }
-              ]
+              ],
+              "dimensions": {
+                "substance": {
+                  "score": 61,
+                  "remark": "Bounded a renewal loop."
+                },
+                "complexity": {
+                  "score": 70,
+                  "remark": "Clock skew makes the naive fix wrong."
+                },
+                "conversation_quality": {
+                  "score": 55,
+                  "remark": "Some review, applied without much discussion."
+                },
+                "craft": {
+                  "score": 68,
+                  "remark": "Test added."
+                },
+                "skill_specificity": {
+                  "score": 82,
+                  "remark": "Squarely Go concurrency."
+                }
+              }
             }
           ],
           "skills": [
@@ -328,7 +346,9 @@
               "standing": "secondary",
               "distinct_pr_count": 2
             }
-          ]
+          ],
+          "nominated_primary": "go",
+          "submitted_at": "<timestamp>"
         }
       }
     }

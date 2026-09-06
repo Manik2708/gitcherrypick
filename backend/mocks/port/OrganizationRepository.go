@@ -41,8 +41,8 @@ func (_m *OrganizationRepository) EXPECT() *OrganizationRepository_Expecter {
 }
 
 // AcceptInvitation provides a mock function for the type OrganizationRepository
-func (_mock *OrganizationRepository) AcceptInvitation(ctx context.Context, tx port.Tx, id domain.RequestID, h *domain.Hirer, passwordHash []byte) (*domain.Hirer, error) {
-	ret := _mock.Called(ctx, tx, id, h, passwordHash)
+func (_mock *OrganizationRepository) AcceptInvitation(ctx context.Context, tx port.Tx, id domain.RequestID, h *domain.Hirer, passwordHash []byte, now time.Time) (*domain.Hirer, error) {
+	ret := _mock.Called(ctx, tx, id, h, passwordHash, now)
 
 	if len(ret) == 0 {
 		panic("no return value specified for AcceptInvitation")
@@ -50,18 +50,18 @@ func (_mock *OrganizationRepository) AcceptInvitation(ctx context.Context, tx po
 
 	var r0 *domain.Hirer
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, port.Tx, domain.RequestID, *domain.Hirer, []byte) (*domain.Hirer, error)); ok {
-		return returnFunc(ctx, tx, id, h, passwordHash)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, port.Tx, domain.RequestID, *domain.Hirer, []byte, time.Time) (*domain.Hirer, error)); ok {
+		return returnFunc(ctx, tx, id, h, passwordHash, now)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, port.Tx, domain.RequestID, *domain.Hirer, []byte) *domain.Hirer); ok {
-		r0 = returnFunc(ctx, tx, id, h, passwordHash)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, port.Tx, domain.RequestID, *domain.Hirer, []byte, time.Time) *domain.Hirer); ok {
+		r0 = returnFunc(ctx, tx, id, h, passwordHash, now)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*domain.Hirer)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, port.Tx, domain.RequestID, *domain.Hirer, []byte) error); ok {
-		r1 = returnFunc(ctx, tx, id, h, passwordHash)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, port.Tx, domain.RequestID, *domain.Hirer, []byte, time.Time) error); ok {
+		r1 = returnFunc(ctx, tx, id, h, passwordHash, now)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -79,11 +79,12 @@ type OrganizationRepository_AcceptInvitation_Call struct {
 //   - id domain.RequestID
 //   - h *domain.Hirer
 //   - passwordHash []byte
-func (_e *OrganizationRepository_Expecter) AcceptInvitation(ctx interface{}, tx interface{}, id interface{}, h interface{}, passwordHash interface{}) *OrganizationRepository_AcceptInvitation_Call {
-	return &OrganizationRepository_AcceptInvitation_Call{Call: _e.mock.On("AcceptInvitation", ctx, tx, id, h, passwordHash)}
+//   - now time.Time
+func (_e *OrganizationRepository_Expecter) AcceptInvitation(ctx interface{}, tx interface{}, id interface{}, h interface{}, passwordHash interface{}, now interface{}) *OrganizationRepository_AcceptInvitation_Call {
+	return &OrganizationRepository_AcceptInvitation_Call{Call: _e.mock.On("AcceptInvitation", ctx, tx, id, h, passwordHash, now)}
 }
 
-func (_c *OrganizationRepository_AcceptInvitation_Call) Run(run func(ctx context.Context, tx port.Tx, id domain.RequestID, h *domain.Hirer, passwordHash []byte)) *OrganizationRepository_AcceptInvitation_Call {
+func (_c *OrganizationRepository_AcceptInvitation_Call) Run(run func(ctx context.Context, tx port.Tx, id domain.RequestID, h *domain.Hirer, passwordHash []byte, now time.Time)) *OrganizationRepository_AcceptInvitation_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -105,12 +106,17 @@ func (_c *OrganizationRepository_AcceptInvitation_Call) Run(run func(ctx context
 		if args[4] != nil {
 			arg4 = args[4].([]byte)
 		}
+		var arg5 time.Time
+		if args[5] != nil {
+			arg5 = args[5].(time.Time)
+		}
 		run(
 			arg0,
 			arg1,
 			arg2,
 			arg3,
 			arg4,
+			arg5,
 		)
 	})
 	return _c
@@ -121,28 +127,30 @@ func (_c *OrganizationRepository_AcceptInvitation_Call) Return(hirer *domain.Hir
 	return _c
 }
 
-func (_c *OrganizationRepository_AcceptInvitation_Call) RunAndReturn(run func(ctx context.Context, tx port.Tx, id domain.RequestID, h *domain.Hirer, passwordHash []byte) (*domain.Hirer, error)) *OrganizationRepository_AcceptInvitation_Call {
+func (_c *OrganizationRepository_AcceptInvitation_Call) RunAndReturn(run func(ctx context.Context, tx port.Tx, id domain.RequestID, h *domain.Hirer, passwordHash []byte, now time.Time) (*domain.Hirer, error)) *OrganizationRepository_AcceptInvitation_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // CreateInvitation provides a mock function for the type OrganizationRepository
-func (_mock *OrganizationRepository) CreateInvitation(ctx context.Context, tx port.Tx, orgID domain.OrganizationID, email string, role domain.OrgRole, invitedBy domain.HirerID, tokenHash []byte, expiresAt time.Time) (domain.RequestID, error) {
+func (_mock *OrganizationRepository) CreateInvitation(ctx context.Context, tx port.Tx, orgID domain.OrganizationID, email string, role domain.OrgRole, invitedBy domain.HirerID, tokenHash []byte, expiresAt time.Time) (*port.Invitation, error) {
 	ret := _mock.Called(ctx, tx, orgID, email, role, invitedBy, tokenHash, expiresAt)
 
 	if len(ret) == 0 {
 		panic("no return value specified for CreateInvitation")
 	}
 
-	var r0 domain.RequestID
+	var r0 *port.Invitation
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, port.Tx, domain.OrganizationID, string, domain.OrgRole, domain.HirerID, []byte, time.Time) (domain.RequestID, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, port.Tx, domain.OrganizationID, string, domain.OrgRole, domain.HirerID, []byte, time.Time) (*port.Invitation, error)); ok {
 		return returnFunc(ctx, tx, orgID, email, role, invitedBy, tokenHash, expiresAt)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, port.Tx, domain.OrganizationID, string, domain.OrgRole, domain.HirerID, []byte, time.Time) domain.RequestID); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, port.Tx, domain.OrganizationID, string, domain.OrgRole, domain.HirerID, []byte, time.Time) *port.Invitation); ok {
 		r0 = returnFunc(ctx, tx, orgID, email, role, invitedBy, tokenHash, expiresAt)
 	} else {
-		r0 = ret.Get(0).(domain.RequestID)
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*port.Invitation)
+		}
 	}
 	if returnFunc, ok := ret.Get(1).(func(context.Context, port.Tx, domain.OrganizationID, string, domain.OrgRole, domain.HirerID, []byte, time.Time) error); ok {
 		r1 = returnFunc(ctx, tx, orgID, email, role, invitedBy, tokenHash, expiresAt)
@@ -218,12 +226,12 @@ func (_c *OrganizationRepository_CreateInvitation_Call) Run(run func(ctx context
 	return _c
 }
 
-func (_c *OrganizationRepository_CreateInvitation_Call) Return(requestID domain.RequestID, err error) *OrganizationRepository_CreateInvitation_Call {
-	_c.Call.Return(requestID, err)
+func (_c *OrganizationRepository_CreateInvitation_Call) Return(invitation *port.Invitation, err error) *OrganizationRepository_CreateInvitation_Call {
+	_c.Call.Return(invitation, err)
 	return _c
 }
 
-func (_c *OrganizationRepository_CreateInvitation_Call) RunAndReturn(run func(ctx context.Context, tx port.Tx, orgID domain.OrganizationID, email string, role domain.OrgRole, invitedBy domain.HirerID, tokenHash []byte, expiresAt time.Time) (domain.RequestID, error)) *OrganizationRepository_CreateInvitation_Call {
+func (_c *OrganizationRepository_CreateInvitation_Call) RunAndReturn(run func(ctx context.Context, tx port.Tx, orgID domain.OrganizationID, email string, role domain.OrgRole, invitedBy domain.HirerID, tokenHash []byte, expiresAt time.Time) (*port.Invitation, error)) *OrganizationRepository_CreateInvitation_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -31,6 +31,10 @@ type AuthService struct {
 	search     port.SearchRepository
 	tx         port.TxManager
 	clock      port.Clock
+
+	// rubric is the version this process scores under. A scorecard is only
+	// comparable within one version (ADR-0005), so every card says which.
+	rubric string
 }
 
 // NewAuthService wires authentication.
@@ -48,10 +52,11 @@ func NewAuthService(
 	search port.SearchRepository,
 	tx port.TxManager,
 	clock port.Clock,
+	rubric string,
 ) *AuthService {
 	return &AuthService{users: users, hirers: hirers, admins: admins, sessions: sessions,
 		github: github, google: google, tokens: tokens, minter: minter, hasher: hasher,
-		shareLinks: shareLinks, search: search, tx: tx, clock: clock}
+		shareLinks: shareLinks, search: search, tx: tx, clock: clock, rubric: rubric}
 }
 
 // Token lifetimes from ADR-0002.
@@ -102,6 +107,15 @@ func (s *AuthService) CompleteGitHub(ctx context.Context, code, state, expectedS
 	existing, err := s.users.ByGitHubUserID(ctx, identity.GitHubUserID)
 	switch {
 	case err == nil:
+		// GitHub is the authority on the handle. Signing in is when we learn
+		// it changed, and the response reports what is true now rather than
+		// what was true at signup.
+		if identity.Login != "" && identity.Login != existing.GitHubLogin {
+			if err := s.users.RefreshGitHubLogin(ctx, identity.GitHubUserID, identity.Login); err != nil {
+				return nil, nil, false, fmt.Errorf("refreshing the github login: %w", err)
+			}
+			existing.GitHubLogin = identity.Login
+		}
 		pair, err := s.issue(ctx, principalOf(existing))
 		if err != nil {
 			return nil, nil, false, err
@@ -137,6 +151,37 @@ func (s *AuthService) CompleteGitHub(ctx context.Context, code, state, expectedS
 	return created, pair, true, nil
 }
 
+// CompleteGitHubHirer finishes the GitHub flow in the HIRER namespace.
+//
+// Never creates. A GitHub sign-in that minted a hirer would bypass
+// registration and therefore bypass the verification request — the same rule
+// the Google path follows (ADR-0002).
+func (s *AuthService) CompleteGitHubHirer(ctx context.Context, code, state, expectedState string) (*domain.Hirer, *domain.TokenPair, error) {
+	if state == "" || state != expectedState {
+		return nil, nil, fmt.Errorf("state does not match: %w", ErrInvalidCredentials)
+	}
+
+	identity, err := s.github.ExchangeCode(ctx, code)
+	if err != nil {
+		return nil, nil, fmt.Errorf("exchanging the code: %w", ErrInvalidCredentials)
+	}
+
+	hirer, err := s.hirers.ByGitHubUserID(ctx, identity.GitHubUserID)
+	if err != nil {
+		if errors.Is(err, port.ErrNotFound) {
+			return nil, nil, fmt.Errorf(
+				"register an organization account before signing in with GitHub: %w", ErrNotFound)
+		}
+		return nil, nil, fmt.Errorf("resolving the hirer: %w", err)
+	}
+
+	pair, err := s.issue(ctx, hirerPrincipalOf(hirer))
+	if err != nil {
+		return nil, nil, err
+	}
+	return hirer, pair, nil
+}
+
 // GoogleAuthorizeURL starts the hirer flow.
 func (s *AuthService) GoogleAuthorizeURL(ctx context.Context) (string, string, error) {
 	state, _, err := s.minter.Mint()
@@ -158,6 +203,13 @@ func (s *AuthService) CompleteGoogle(ctx context.Context, code, state, expectedS
 
 	identity, err := s.google.Exchange(ctx, code)
 	if err != nil {
+		// An unverified address is not a failed exchange. Google answered and
+		// named somebody; what it declined to do is vouch for the address, and
+		// the caller's remedy is to verify it rather than to sign in again.
+		if errors.Is(err, port.ErrEmailUnverified) {
+			return nil, nil, Coded(ErrInvalidCredentials, CodeEmailNotVerified,
+				"the provider has not verified this address")
+		}
 		return nil, nil, fmt.Errorf("exchanging the code: %w", ErrInvalidCredentials)
 	}
 
@@ -179,41 +231,40 @@ func (s *AuthService) CompleteGoogle(ctx context.Context, code, state, expectedS
 
 // RegisterHirer creates the organization, the seat and the verification
 // request.
-func (s *AuthService) RegisterHirer(ctx context.Context, req port.RegisterHirerRequest) (*domain.Hirer, *domain.TokenPair, error) {
+func (s *AuthService) RegisterHirer(ctx context.Context, req port.RegisterHirerRequest) (*port.HirerRegistration, error) {
 	hash, err := s.hasher.Hash(req.Password)
 	if err != nil {
-		return nil, nil, fmt.Errorf("hashing the password: %w", err)
+		return nil, fmt.Errorf("hashing the password: %w", err)
 	}
 
-	var (
-		created *domain.Hirer
-		pair    *domain.TokenPair
-	)
+	// No session is started. Registration queues a review, and until that
+	// review lands the account can do nothing a token would let it do
+	// (ADR-0002) — so issuing one would mint a credential whose only property
+	// is that it has to be revoked later.
+	var registration *port.HirerRegistration
 	err = s.tx.InTx(ctx, func(ctx context.Context, tx port.Tx) error {
 		var err error
-		created, err = s.hirers.Register(ctx, tx,
-			&domain.Hirer{
+		registration, err = s.hirers.Register(ctx, tx, port.NewHirerAccount{
+			Hirer: &domain.Hirer{
 				Email: req.Email, DisplayName: req.DisplayName,
 				AuthProvider: domain.ProviderEmail,
 			},
-			&domain.Organization{
+			Organization: &domain.Organization{
 				Name: req.OrganizationName, Slug: slugify(req.OrganizationName),
 				Website: req.Website, LinkedInURL: req.LinkedInURL,
 			},
-			hash)
-		if err != nil {
-			return err
-		}
-		pair, err = s.startSession(ctx, tx, hirerPrincipalOf(created))
+			PasswordHash: hash,
+			Proofs:       req.Proofs,
+		})
 		return err
 	})
 	if err != nil {
 		if errors.Is(err, port.ErrConflict) {
-			return nil, nil, fmt.Errorf("that email or organization is taken: %w", ErrConflict)
+			return nil, fmt.Errorf("that email or organization is taken: %w", ErrConflict)
 		}
-		return nil, nil, fmt.Errorf("registering: %w", err)
+		return nil, fmt.Errorf("registering: %w", err)
 	}
-	return created, pair, nil
+	return registration, nil
 }
 
 // LoginHirer signs in through the email provider.
@@ -283,11 +334,26 @@ func (s *AuthService) Refresh(ctx context.Context, refreshToken string) (*domain
 	hash := s.minter.Hash(refreshToken)
 
 	var pair *domain.TokenPair
+
+	// Reuse is detected inside the transaction and REPORTED after it commits.
+	// Returning the error from the callback would roll back the revocation it
+	// just performed, leaving the compromised family alive — the one outcome
+	// detecting reuse exists to prevent.
+	var reuse error
+
 	err := s.tx.InTx(ctx, func(ctx context.Context, tx port.Tx) error {
 		session, err := s.sessions.ByRefreshTokenHash(ctx, tx, hash)
 		if err != nil {
 			return Coded(ErrInvalidCredentials, CodeInvalidRefreshToken,
 				"no session holds that refresh token")
+		}
+
+		// A token that is both spent AND revoked was retired by its own
+		// holder logging out. Nothing was compromised and nothing is
+		// collateral: the token is simply no longer a token.
+		if session.UsedAt != nil && session.RevokedAt != nil {
+			return Coded(ErrInvalidCredentials, CodeInvalidRefreshToken,
+				"session %s was closed at %s", session.ID, session.RevokedAt)
 		}
 
 		// REUSE. Revoke the family and refuse — in the same transaction, so a
@@ -297,9 +363,10 @@ func (s *AuthService) Refresh(ctx context.Context, refreshToken string) (*domain
 			if err := s.sessions.RevokeFamily(ctx, tx, session.FamilyID); err != nil {
 				return fmt.Errorf("revoking the compromised family: %w", err)
 			}
-			return Coded(ErrInvalidCredentials, CodeTokenReuseDetected,
+			reuse = Coded(ErrInvalidCredentials, CodeTokenReuseDetected,
 				"refresh token %s was already spent; family %s revoked",
 				session.ID, session.FamilyID)
+			return nil
 		}
 
 		// Revoked is reported separately from expired-or-unknown because it is
@@ -333,7 +400,7 @@ func (s *AuthService) Refresh(ctx context.Context, refreshToken string) (*domain
 		// re-read the account: the session row is the authority on who this
 		// family belongs to, and it cannot change during rotation.
 		access, err := s.tokens.Issue(ctx, port.AccessClaims{
-			Subject: session.PrincipalID, Kind: session.Kind,
+			Subject: session.PrincipalID, Kind: session.Kind, Family: session.FamilyID,
 		}, AccessTokenTTL)
 		if err != nil {
 			return fmt.Errorf("issuing the access token: %w", err)
@@ -352,6 +419,9 @@ func (s *AuthService) Refresh(ctx context.Context, refreshToken string) (*domain
 		}
 		return nil, err
 	}
+	if reuse != nil {
+		return nil, reuse
+	}
 	return pair, nil
 }
 
@@ -369,6 +439,19 @@ func (s *AuthService) Refresh(ctx context.Context, refreshToken string) (*domain
 func (s *AuthService) ResolvePrincipal(ctx context.Context, claims port.AccessClaims) (*domain.Principal, error) {
 	if claims.Subject == "" {
 		return nil, fmt.Errorf("token carries no subject: %w", ErrInvalidCredentials)
+	}
+
+	// A signed-out family ends its access tokens with it. Fifteen minutes of
+	// residual authority after a deliberate logout is not a logout (ADR-0002).
+	if claims.Family != "" {
+		live, err := s.sessions.FamilyLive(ctx, claims.Family)
+		if err != nil {
+			return nil, fmt.Errorf("checking the session family: %w", err)
+		}
+		if !live {
+			return nil, Coded(ErrInvalidCredentials, CodeSessionRevoked,
+				"session family %s is closed", claims.Family)
+		}
 	}
 
 	switch claims.Kind {
@@ -429,7 +512,7 @@ func (s *AuthService) Logout(ctx context.Context, p domain.Principal) error {
 		return fmt.Errorf("resolving the session family: %w", err)
 	}
 	return s.tx.InTx(ctx, func(ctx context.Context, tx port.Tx) error {
-		return s.sessions.RevokeFamily(ctx, tx, familyID)
+		return s.sessions.CloseFamily(ctx, tx, familyID)
 	})
 }
 
@@ -517,19 +600,19 @@ func (s *AuthService) PublicScorecard(ctx context.Context, token string) (*domai
 	id, err := s.shareLinks.ResolveToken(ctx, s.minter.Hash(token))
 	if err != nil {
 		// A revoked link and a token that never existed are the same answer.
-		return nil, ErrNotFound
+		return nil, Coded(ErrNotFound, CodeScorecardNotFound, "no such scorecard")
 	}
 
 	// The hirer id is empty: AssertNotSelf has nobody to compare against on an
 	// unauthenticated read.
 	card, err := s.search.Scorecard(ctx, "", id)
 	if err != nil {
-		return nil, ErrNotFound
+		return nil, Coded(ErrNotFound, CodeScorecardNotFound, "no such scorecard")
 	}
 
 	card.User.Rank = 0
-	card.User.GeneralistScore = nil
 	card.Email = nil
+	card.RubricVersion = s.rubric
 	for i := range card.Skills {
 		card.Skills[i].Rank = nil
 	}
@@ -573,7 +656,7 @@ func (s *AuthService) startSession(ctx context.Context, tx port.Tx, p domain.Pri
 	}
 
 	access, err := s.tokens.Issue(ctx, port.AccessClaims{
-		Subject: p.Subject(), Kind: p.Kind,
+		Subject: p.Subject(), Kind: p.Kind, Family: session.FamilyID,
 	}, AccessTokenTTL)
 	if err != nil {
 		return nil, fmt.Errorf("issuing the access token: %w", err)

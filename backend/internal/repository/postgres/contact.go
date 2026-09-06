@@ -24,12 +24,23 @@ var _ port.ContactRepository = (*ContactRepository)(nil)
 
 const contactColumns = `
 	cr.id, cr.shortlist_id, cr.user_id, cr.organization_id, cr.requested_by,
-	cr.status, cr.tentative_result_date, cr.responded_at, cr.email_released_at, cr.expires_at`
+	cr.status, cr.tentative_result_date, cr.responded_at, cr.email_released_at,
+	cr.expires_at, cr.created_at,
+	coalesce(o.name, ''), (o.verified_at IS NOT NULL), (o.payment_verified_at IS NOT NULL),
+	u.display_name, coalesce(gi.github_login, ''),
+	CASE WHEN cr.email_released_at IS NOT NULL THEN coalesce(u.email, '') ELSE '' END`
+
+// contactFrom joins the organization every contact request is about.
+const contactFrom = `
+	FROM contact_requests cr
+	LEFT JOIN organizations o ON o.id = cr.organization_id
+	JOIN users u ON u.id = cr.user_id
+	LEFT JOIN user_github_identities gi ON gi.user_id = cr.user_id`
 
 // ByID reads one request.
 func (r *ContactRepository) ByID(ctx context.Context, id domain.ContactID) (*domain.ContactRequest, error) {
 	cr, err := scanContact(r.db.pool.QueryRow(ctx,
-		`SELECT`+contactColumns+` FROM contact_requests cr WHERE cr.id = $1`, string(id)))
+		`SELECT`+contactColumns+contactFrom+` WHERE cr.id = $1`, string(id)))
 	if err != nil {
 		return nil, translate(err, fmt.Sprintf("contact request %s", id))
 	}
@@ -48,8 +59,7 @@ func (r *ContactRepository) ListForUser(ctx context.Context, id domain.UserID, s
 		filter = &v
 	}
 	return r.list(ctx, `
-		SELECT`+contactColumns+`
-		FROM contact_requests cr
+		SELECT`+contactColumns+contactFrom+`
 		WHERE cr.user_id = $1
 		  AND ($2::contact_request_status IS NULL OR cr.status = $2::contact_request_status)
 		ORDER BY cr.created_at DESC`, string(id), filter)
@@ -58,8 +68,7 @@ func (r *ContactRepository) ListForUser(ctx context.Context, id domain.UserID, s
 // ListForShortlist reads a round's requests for the hirer side.
 func (r *ContactRepository) ListForShortlist(ctx context.Context, id domain.ShortlistID) ([]domain.ContactRequest, error) {
 	return r.list(ctx, `
-		SELECT`+contactColumns+`
-		FROM contact_requests cr
+		SELECT`+contactColumns+contactFrom+`
 		WHERE cr.shortlist_id = $1
 		ORDER BY cr.created_at`, string(id))
 }
@@ -89,10 +98,22 @@ func (r *ContactRepository) Respond(ctx context.Context, t port.Tx, id domain.Co
 		    responded_at      = $3::timestamptz,
 		    email_released_at = CASE WHEN $2::contact_request_status = 'accepted' THEN $3::timestamptz END
 		WHERE cr.id = $1 AND cr.status = 'pending'
-		RETURNING`+contactColumns,
+		RETURNING cr.id, cr.shortlist_id, cr.user_id, cr.organization_id, cr.requested_by,
+		          cr.status, cr.tentative_result_date, cr.responded_at, cr.email_released_at,
+		          cr.expires_at, cr.created_at, '', false, false, '', '', ''`,
 		string(id), string(status), at))
 	if err != nil {
 		return nil, translate(err, fmt.Sprintf("responding to contact request %s", id))
+	}
+
+	// RETURNING cannot reach a joined table, so the organization is read back
+	// rather than left blank: the response to an answer shows the same company
+	// the request did.
+	if err := r.db.q(t).QueryRow(ctx,
+		`SELECT coalesce(name, ''), (verified_at IS NOT NULL), (payment_verified_at IS NOT NULL)
+		 FROM organizations WHERE id = $1`, string(cr.OrganizationID),
+	).Scan(&cr.OrganizationName, &cr.OrganizationVerified, &cr.PaymentVerified); err != nil {
+		return nil, translate(err, "reading the requesting organization")
 	}
 	return cr, nil
 }
@@ -133,7 +154,9 @@ func (r *ContactRepository) list(ctx context.Context, query string, args ...any)
 func scanContact(row rowScanner) (*domain.ContactRequest, error) {
 	var cr domain.ContactRequest
 	if err := row.Scan(&cr.ID, &cr.ShortlistID, &cr.UserID, &cr.OrganizationID, &cr.RequestedBy,
-		&cr.Status, &cr.TentativeResultDate, &cr.RespondedAt, &cr.EmailReleasedAt, &cr.ExpiresAt); err != nil {
+		&cr.Status, &cr.TentativeResultDate, &cr.RespondedAt, &cr.EmailReleasedAt,
+		&cr.ExpiresAt, &cr.CreatedAt, &cr.OrganizationName, &cr.OrganizationVerified, &cr.PaymentVerified,
+		&cr.DisplayName, &cr.GitHubLogin, &cr.Email); err != nil {
 		return nil, err
 	}
 	return &cr, nil

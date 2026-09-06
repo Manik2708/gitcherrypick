@@ -1,9 +1,13 @@
 package controller
 
 import (
+	"encoding/json"
 	"net/http"
+	"slices"
+	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -22,6 +26,33 @@ var knownFilters = map[string]struct{}{
 	"skills": {}, "min_skill_score": {}, "min_overall_score": {},
 	"min_generalist_score": {}, "availability": {}, "evidence_within_months": {},
 	"q": {}, "include_inactive": {}, "page": {}, "per_page": {},
+}
+
+// MaxPerPage bounds a page of results.
+//
+// A hirer asking for ten thousand rows is either paginating badly or scraping,
+// and either way the answer is the same.
+const MaxPerPage = 50
+
+// MaxScore is the top of every 0..100 score (ADR-0005). A filter above it
+// matches nothing, so it is a typo rather than a query.
+const MaxScore = 100
+
+// leaderboardKinds are the boards that exist.
+var leaderboardKinds = []string{"overall", "generalist", "skill"}
+
+// suggestFilter finds the filter a misspelling probably meant.
+//
+// Prefix matching rather than an edit distance: the real confusions are
+// truncations — min_generalist for min_generalist_score — and a suggestion that
+// is wrong is worse than none.
+func suggestFilter(unknown string) string {
+	for known := range knownFilters {
+		if strings.HasPrefix(known, unknown) || strings.HasPrefix(unknown, known) {
+			return known
+		}
+	}
+	return ""
 }
 
 // DiscoveryController serves search, leaderboards and scorecards.
@@ -70,7 +101,7 @@ type searchResultBody struct {
 	DisplayName     string            `json:"display_name"`
 	GitHubLogin     string            `json:"github_login"`
 	Active          bool              `json:"active"`
-	Availability    *availabilityBody `json:"availability,omitempty"`
+	Availability    any               `json:"availability,omitempty"`
 	Skills          []resultSkillBody `json:"skills"`
 	OverallScore    *float64          `json:"overall_score"`
 	GeneralistScore *float64          `json:"generalist_score"`
@@ -112,44 +143,81 @@ type leaderboardSkillBody struct {
 
 type leaderboardBody struct {
 	Kind          string                 `json:"kind"`
-	Skill         *leaderboardSkillBody  `json:"skill"`
+	Skill         *leaderboardSkillBody  `json:"skill,omitempty"`
 	RubricVersion string                 `json:"rubric_version"`
 	Entries       []leaderboardEntryBody `json:"entries"`
 }
 
 type scorecardEvidenceBody struct {
-	Repo     string  `json:"repo"`
-	PRNumber int     `json:"pr_number"`
-	Title    string  `json:"title"`
-	Score    float64 `json:"score"`
+	Repo     string    `json:"repo"`
+	PRNumber int       `json:"pr_number"`
+	MergedAt time.Time `json:"merged_at"`
+	Score    float64   `json:"score"`
 }
 
 type scorecardSkillBody struct {
-	resultSkillBody
-	DistinctPRCount int                     `json:"distinct_pr_count"`
-	Evidence        []scorecardEvidenceBody `json:"evidence"`
+	Slug            string  `json:"slug"`
+	Name            string  `json:"name"`
+	Standing        string  `json:"standing"`
+	DistinctPRCount int     `json:"distinct_pr_count"`
+	Score           float64 `json:"score"`
+	// any, not *int: an authenticated read reports the position and null when
+	// there is none, while a PUBLIC one omits the field entirely — a share
+	// link carries evidence, never a standing in a pool the reader cannot see.
+	Rank     any                     `json:"rank,omitempty"`
+	Evidence []scorecardEvidenceBody `json:"evidence"`
+}
+
+// lapsedAvailability is the detail a hirer needs about somebody who has gone
+// quiet: what they last said, when they last confirmed it, and how long ago
+// that was (ADR-0008 §1a).
+type lapsedAvailability struct {
+	Status          string     `json:"status"`
+	LastConfirmedAt *time.Time `json:"last_confirmed_at"`
+	InactiveForDays int        `json:"inactive_for_days"`
+}
+
+// scorecardUserBody identifies the contributor a scorecard describes.
+//
+// Availability is a bare STATUS while the window is live and an object once it
+// has lapsed. The asymmetry is deliberate: "how long since they were last seen"
+// is only a question worth answering about somebody who has gone quiet, and
+// putting it on every result would be noise on the ones that are current.
+//
+// Active is likewise reported only when false — its presence IS the warning.
+type scorecardUserBody struct {
+	ID           domain.UserID `json:"id,omitempty"`
+	DisplayName  string        `json:"display_name"`
+	GitHubLogin  string        `json:"github_login"`
+	Active       *bool         `json:"active,omitempty"`
+	Availability any           `json:"availability,omitempty"`
 }
 
 type scorecardBody struct {
-	UserID          domain.UserID        `json:"user_id,omitempty"`
-	DisplayName     string               `json:"display_name"`
-	GitHubLogin     string               `json:"github_login"`
+	User            scorecardUserBody    `json:"user"`
 	Skills          []scorecardSkillBody `json:"skills"`
 	OverallScore    *float64             `json:"overall_score"`
 	GeneralistScore *float64             `json:"generalist_score"`
-	RubricVersion   string               `json:"rubric_version,omitempty"`
+	RubricVersion   string               `json:"rubric_version"`
 
-	// Released only after a contact request is accepted (ADR-0002 §5).
-	Email *string `json:"email,omitempty"`
+	// Present but null until a contact request is accepted (ADR-0002 §5). An
+	// authenticated reader is told the field exists and is empty; a public
+	// share link is not told there is an address at all, so `any` keeps
+	// "withheld" and "not applicable" apart.
+	Email any `json:"email,omitempty"`
 }
 
 // saveSearchRequest stores a QUESTION.
 //
 // The field is `filters`, matching what a saved search holds: a set of filters
 // replayed later, never a result set (domain.SavedSearch.Filters).
+// Filters stays raw so an unrecognised key can be NAMED. Decoding straight
+// into a SearchQuery reports only that the body was wrong, and "your filter
+// set is invalid" does not tell a hirer that they wrote min_generalist for
+// min_generalist_score.
 type saveSearchRequest struct {
-	Name    string             `json:"name"`
-	Filters domain.SearchQuery `json:"filters"`
+	Name    string          `json:"name"`
+	Filters json.RawMessage `json:"filters"`
 }
 
 type savedSearchBody struct {
@@ -158,6 +226,43 @@ type savedSearchBody struct {
 	Filters      domain.SearchQuery   `json:"filters"`
 	Organization *orgRef              `json:"organization,omitempty"`
 	CreatedBy    domain.HirerID       `json:"created_by,omitempty"`
+	CreatedAt    time.Time            `json:"created_at"`
+}
+
+// parseFilters turns a raw filter object into a query, naming what it refused.
+//
+// Same rule as the query string: an unknown key is refused rather than
+// dropped. A saved search is worse than a one-off search to be lenient about,
+// because the mistake is stored and every replay repeats it silently.
+func parseFilters(raw json.RawMessage) (domain.SearchQuery, []fieldError, string) {
+	if len(raw) == 0 {
+		return domain.SearchQuery{}, nil, ""
+	}
+
+	var keyed map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &keyed); err != nil {
+		return domain.SearchQuery{}, nil, service.CodeInvalidFilter
+	}
+
+	var unknown []fieldError
+	for name := range keyed {
+		if _, ok := knownFilters[name]; ok {
+			continue
+		}
+		unknown = append(unknown, fieldError{
+			Field: name, Reason: "unknown_filter", DidYouMean: suggestFilter(name),
+		})
+	}
+	if len(unknown) > 0 {
+		sort.Slice(unknown, func(i, j int) bool { return unknown[i].Field < unknown[j].Field })
+		return domain.SearchQuery{}, unknown, service.CodeUnknownFilter
+	}
+
+	var q domain.SearchQuery
+	if err := json.Unmarshal(raw, &q); err != nil {
+		return domain.SearchQuery{}, nil, service.CodeInvalidFilter
+	}
+	return q, nil, ""
 }
 
 // --- handlers ----------------------------------------------------------------
@@ -168,9 +273,9 @@ func (c *DiscoveryController) search(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	query, bad := parseSearchQuery(r)
-	if bad != "" {
-		writeCode(w, http.StatusUnprocessableEntity, service.CodeUnknownFilter)
+	query, problems, code := parseSearchQuery(r)
+	if len(problems) > 0 {
+		writeFieldErrors(w, http.StatusUnprocessableEntity, code, problems)
 		return
 	}
 
@@ -194,11 +299,14 @@ func (c *DiscoveryController) leaderboard(w http.ResponseWriter, r *http.Request
 	// A skill board without a skill has nothing to rank. Reported as a FIELD
 	// error rather than a bare 422, because the caller can fix it only if they
 	// are told which parameter is missing.
+	if !slices.Contains(leaderboardKinds, string(kind)) {
+		writeFieldErrors(w, http.StatusUnprocessableEntity, service.CodeInvalidQuery,
+			[]fieldError{{Field: "kind", Reason: "unknown", Allowed: leaderboardKinds}})
+		return
+	}
 	if kind == domain.LeaderboardKind("skill") && skill == "" {
-		writeDetail(w, http.StatusUnprocessableEntity, map[string]any{
-			"error": service.CodeInvalidQuery,
-			"items": []fieldError{{Field: "skill", Reason: "required_for_kind_skill"}},
-		})
+		writeFieldErrors(w, http.StatusUnprocessableEntity, service.CodeInvalidQuery,
+			[]fieldError{{Field: "skill", Reason: "required_for_kind_skill"}})
 		return
 	}
 
@@ -263,7 +371,12 @@ func (c *DiscoveryController) savedSearches(w http.ResponseWriter, r *http.Reque
 
 	out := make([]savedSearchBody, 0, len(searches))
 	for _, s := range searches {
-		out = append(out, savedSearchBody{ID: s.ID, Name: s.Name, Filters: s.Filters, Organization: orgRefOf(p), CreatedBy: s.CreatedBy})
+		// No organization: every row in this list belongs to the caller's own
+		// org, so repeating it once per row says nothing the request did not.
+		out = append(out, savedSearchBody{
+			ID: s.ID, Name: s.Name, Filters: s.Filters,
+			CreatedBy: s.CreatedBy, CreatedAt: s.CreatedAt,
+		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"total": len(out), "saved_searches": out})
 }
@@ -284,14 +397,24 @@ func (c *DiscoveryController) saveSearch(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	saved, err := c.discovery.SaveSearch(r.Context(), p, body.Name, body.Filters)
+	filters, unknown, code := parseFilters(body.Filters)
+	if code != "" {
+		writeFieldErrors(w, http.StatusUnprocessableEntity, code, unknown)
+		return
+	}
+	if problems := scoreRangeProblems(filters); len(problems) > 0 {
+		writeFieldErrors(w, http.StatusUnprocessableEntity, service.CodeInvalidFilter, problems)
+		return
+	}
+
+	saved, err := c.discovery.SaveSearch(r.Context(), p, body.Name, filters)
 	if err != nil {
 		c.writeCapabilityError(w, p, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, savedSearchBody{
 		ID: saved.ID, Name: saved.Name, Filters: saved.Filters,
-		Organization: orgRefOf(p), CreatedBy: saved.CreatedBy,
+		Organization: orgRefOf(p), CreatedBy: saved.CreatedBy, CreatedAt: saved.CreatedAt,
 	})
 }
 
@@ -347,6 +470,13 @@ func (c *DiscoveryController) deleteSavedSearch(w http.ResponseWriter, r *http.R
 // "Get verified" is useless advice to someone who is verified and whose
 // organization is not, so the two flags travel with the refusal.
 func (c *DiscoveryController) writeCapabilityError(w http.ResponseWriter, p domain.Principal, err error) {
+	// A contributor is refused for being the wrong kind of account, which is a
+	// different fact from an unverified hirer's missing capability — and the
+	// remedy differs too: one cannot be fixed at all.
+	if p.Kind == domain.KindContributor {
+		writeCode(w, http.StatusForbidden, service.CodeHirerRequired)
+		return
+	}
 	if !errorsIsCapability(err) {
 		writeError(w, err)
 		return
@@ -370,13 +500,20 @@ func (c *DiscoveryController) writeCapabilityError(w http.ResponseWriter, p doma
 //
 // Returns the offending parameter name so the caller can name it; an empty
 // string means the query is well formed.
-func parseSearchQuery(r *http.Request) (domain.SearchQuery, string) {
+func parseSearchQuery(r *http.Request) (domain.SearchQuery, []fieldError, string) {
 	values := r.URL.Query()
 
+	var unknown []fieldError
 	for name := range values {
-		if _, known := knownFilters[name]; !known {
-			return domain.SearchQuery{}, name
+		if _, known := knownFilters[name]; known {
+			continue
 		}
+		unknown = append(unknown, fieldError{
+			Field: name, Reason: "unknown_filter", DidYouMean: suggestFilter(name),
+		})
+	}
+	if len(unknown) > 0 {
+		return domain.SearchQuery{}, unknown, service.CodeUnknownFilter
 	}
 
 	q := domain.SearchQuery{
@@ -411,7 +548,41 @@ func parseSearchQuery(r *http.Request) (domain.SearchQuery, string) {
 	q.MinGeneralistScore = floatPointer(values.Get("min_generalist_score"))
 	q.EvidenceWithinMonths = intPointer(values.Get("evidence_within_months"))
 
-	return q, ""
+	var problems []fieldError
+	if raw := values.Get("per_page"); raw != "" {
+		if requested, err := strconv.Atoi(raw); err == nil && requested > MaxPerPage {
+			problems = append(problems, fieldError{
+				Field: "per_page", Reason: "above_max", Max: intPtr(MaxPerPage),
+			})
+		}
+	}
+	problems = append(problems, scoreRangeProblems(q)...)
+	if len(problems) > 0 {
+		return domain.SearchQuery{}, problems, service.CodeInvalidQuery
+	}
+	return q, nil, ""
+}
+
+// scoreRangeProblems rejects thresholds no score can reach.
+func scoreRangeProblems(q domain.SearchQuery) []fieldError {
+	var problems []fieldError
+	for field, value := range map[string]*float64{
+		"min_skill_score":      q.MinSkillScore,
+		"min_overall_score":    q.MinOverallScore,
+		"min_generalist_score": q.MinGeneralistScore,
+	} {
+		// Generalist is deliberately UNBOUNDED (ADR-0007), so only the two
+		// bounded scores have a ceiling to exceed.
+		if field == "min_generalist_score" || value == nil {
+			continue
+		}
+		if *value > MaxScore {
+			problems = append(problems, fieldError{
+				Field: field, Reason: "out_of_range", Max: intPtr(MaxScore),
+			})
+		}
+	}
+	return problems
 }
 
 func atoiDefault(raw string, fallback int) int {
@@ -463,7 +634,7 @@ func searchResultsOf(r *domain.SearchResults) searchResultsBody {
 		out.Results = append(out.Results, searchResultBody{
 			Rank: item.Rank, UserID: item.UserID, DisplayName: item.DisplayName,
 			GitHubLogin: item.GitHubLogin, Active: item.Active,
-			Availability: availabilityOf(item.Availability),
+			Availability: searchAvailability(item),
 			Skills:       resultSkillBodies(item.Skills),
 			OverallScore: item.OverallScore, GeneralistScore: item.GeneralistScore,
 		})
@@ -482,35 +653,106 @@ func scorecardOf(card *domain.Scorecard, identified bool) scorecardBody {
 	}
 
 	out := scorecardBody{
-		DisplayName:     card.User.DisplayName,
-		GitHubLogin:     card.User.GitHubLogin,
+		User: scorecardUserBody{
+			DisplayName: card.User.DisplayName,
+			GitHubLogin: card.User.GitHubLogin,
+		},
 		OverallScore:    card.User.OverallScore,
 		GeneralistScore: card.User.GeneralistScore,
 		Skills:          make([]scorecardSkillBody, 0, len(card.Skills)),
-		Email:           card.Email,
 	}
+
+	// A published share link carries presentation and no handle to query the
+	// contributor by, so the id and the rubric are for authenticated reads
+	// only (ADR-0002).
+	out.RubricVersion = card.RubricVersion
 	if identified {
-		out.UserID = card.User.UserID
-		out.RubricVersion = card.RubricVersion
+		out.User.ID = card.User.UserID
+		out.User.Active, out.User.Availability = availabilityView(card.User)
+		out.Email = card.Email
 	}
 
 	for _, s := range card.Skills {
 		skill := scorecardSkillBody{
-			resultSkillBody: resultSkillBody{
-				Slug: s.Slug, Standing: string(s.Standing),
-				Score: s.Score, Rank: s.Rank,
-			},
+			Slug: s.Slug, Name: s.Name, Standing: string(s.Standing),
+			Score:           s.Score,
 			DistinctPRCount: s.DistinctPRCount,
 			Evidence:        make([]scorecardEvidenceBody, 0, len(s.Evidence)),
 		}
-		for _, e := range s.Evidence {
+		if identified {
+			skill.Rank = s.Rank
+		}
+
+		evidence := s.Evidence
+		if !identified && len(evidence) > publicEvidenceLimit {
+			// One PR, not five. A share link is something a contributor hands
+			// to anyone, so it shows enough to be worth reading and not a full
+			// dossier the reader never proved they may see (ADR-0002).
+			evidence = evidence[:publicEvidenceLimit]
+		}
+		for _, e := range evidence {
 			skill.Evidence = append(skill.Evidence, scorecardEvidenceBody{
-				Repo: e.Repo, PRNumber: e.PRNumber, Title: e.Title, Score: e.Score,
+				Repo: e.Repo, PRNumber: e.PRNumber, MergedAt: e.MergedAt, Score: e.Score,
 			})
 		}
 		out.Skills = append(out.Skills, skill)
 	}
 	return out
+}
+
+// publicEvidenceLimit is how many scored PRs a share link shows per skill.
+const publicEvidenceLimit = 1
+
+// availabilityView renders availability at the detail the reader needs.
+//
+// While the window is live, the status alone answers the question. Once it has
+// lapsed, a hirer is deciding whether to take a bet on somebody who has gone
+// quiet, and that decision turns on HOW quiet — so the lapsed form carries the
+// last confirmation and the days since (ADR-0008 §1a).
+func availabilityView(u domain.SearchResult) (*bool, any) {
+	if u.Availability == nil {
+		return nil, nil
+	}
+	if u.Active {
+		return nil, string(u.Availability.Status)
+	}
+
+	inactive := false
+	view := lapsedAvailability{
+		Status:          string(u.Availability.Status),
+		LastConfirmedAt: &u.Availability.LastSetAt,
+	}
+	if u.InactiveForDays != nil {
+		view.InactiveForDays = *u.InactiveForDays
+	}
+	return &inactive, view
+}
+
+// searchAvailability reports availability in the shape that fits its state.
+//
+// A live window answers "until when"; a lapsed one answers "how long ago" —
+// twice, because how stale the signal is and how long they have been gone
+// differ by the 15-day window (ADR-0008 §1a). Putting all three on every
+// result would be noise on the ones that are current.
+func searchAvailability(u domain.SearchResult) any {
+	if u.Availability == nil {
+		return nil
+	}
+	if u.Active {
+		return availabilityBody{
+			Status:    string(u.Availability.Status),
+			ExpiresAt: u.Availability.ExpiresAt,
+		}
+	}
+
+	view := lapsedAvailability{
+		Status:          string(u.Availability.Status),
+		LastConfirmedAt: &u.Availability.LastSetAt,
+	}
+	if u.InactiveForDays != nil {
+		view.InactiveForDays = *u.InactiveForDays
+	}
+	return view
 }
 
 // errorsIsCapability reports a refusal that a hirer can act on by getting

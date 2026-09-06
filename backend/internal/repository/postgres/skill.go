@@ -2,10 +2,12 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/Manik2708/gitcherrypick/backend/internal/domain"
 	"github.com/Manik2708/gitcherrypick/backend/internal/port"
@@ -142,13 +144,29 @@ func (r *SkillRepository) Create(ctx context.Context, t port.Tx, s *domain.Skill
 }
 
 // UserSkills reads a contributor's standings, best first.
-func (r *SkillRepository) UserSkills(ctx context.Context, id domain.UserID) ([]domain.UserSkill, error) {
-	rows, err := r.db.pool.Query(ctx, `
-		SELECT us.user_id, us.skill_id, s.slug, us.standing, us.distinct_pr_count,
+func (r *SkillRepository) UserSkills(ctx context.Context, t port.Tx, id domain.UserID) ([]domain.UserSkill, error) {
+	// rubric_version is not a column on user_skills: it belongs to the
+	// EVALUATION that produced the score, and a sweep reaches skills one at a
+	// time, so two of a contributor's skills can legitimately sit on different
+	// versions. Reading it from the judgement keeps the two from drifting.
+	rows, err := r.db.q(t).Query(ctx, `
+		SELECT us.user_id, us.skill_id, s.slug, s.name, us.standing, us.distinct_pr_count,
 		       coalesce(us.score, 0), coalesce(us.pr_component, 0), coalesce(us.project_component, 0),
-		       us.promoted_at
+		       us.promoted_at, coalesce(judged.rubric_version, '')
 		FROM user_skills us
 		JOIN skills s ON s.id = us.skill_id
+		LEFT JOIN LATERAL (
+		    SELECT e.rubric_version
+		    FROM pr_skill_scores pss
+		    JOIN evaluations e ON e.id = pss.evaluation_id
+		    WHERE pss.skill_id = us.skill_id AND e.status = 'succeeded'
+		      AND EXISTS (
+		          SELECT 1 FROM claims c
+		          WHERE c.id = e.claim_id AND c.user_id = us.user_id
+		      )
+		    ORDER BY e.completed_at DESC NULLS LAST
+		    LIMIT 1
+		) judged ON true
 		WHERE us.user_id = $1
 		ORDER BY us.score DESC NULLS LAST, s.slug`, string(id))
 	if err != nil {
@@ -159,8 +177,8 @@ func (r *SkillRepository) UserSkills(ctx context.Context, id domain.UserID) ([]d
 	var out []domain.UserSkill
 	for rows.Next() {
 		var us domain.UserSkill
-		if err := rows.Scan(&us.UserID, &us.SkillID, &us.Slug, &us.Standing, &us.DistinctPRCount,
-			&us.Score, &us.PRComponent, &us.ProjectComponent, &us.PromotedAt); err != nil {
+		if err := rows.Scan(&us.UserID, &us.SkillID, &us.Slug, &us.Name, &us.Standing, &us.DistinctPRCount,
+			&us.Score, &us.PRComponent, &us.ProjectComponent, &us.PromotedAt, &us.RubricVersion); err != nil {
 			return nil, translate(err, "scanning user skill")
 		}
 		out = append(out, us)
@@ -196,7 +214,7 @@ func (r *SkillRepository) LinkPairs(ctx context.Context, t port.Tx, links []port
 }
 
 // SetLinkStatus moves links to scored or rejected once a judgement lands.
-func (r *SkillRepository) SetLinkStatus(ctx context.Context, t port.Tx, links []port.PRLink, status domain.PRLinkStatus) error {
+func (r *SkillRepository) SetLinkStatus(ctx context.Context, t port.Tx, links []port.PRLink, status domain.PRLinkStatus, reason *domain.RejectionReason) error {
 	if len(links) == 0 {
 		return nil
 	}
@@ -204,13 +222,23 @@ func (r *SkillRepository) SetLinkStatus(ctx context.Context, t port.Tx, links []
 	for _, l := range links {
 		if _, err := q.Exec(ctx, `
 			UPDATE user_skill_pr_links
-			SET status = $6, resolved_at = now()
+			SET status = $6, rejection_reason = $7::skill_rejection_reason, resolved_at = now()
 			WHERE user_id = $1 AND skill_id = $2 AND repo_owner = $3 AND repo_name = $4 AND pr_number = $5`,
-			string(l.UserID), string(l.SkillID), l.RepoOwner, l.RepoName, l.PRNumber, string(status)); err != nil {
+			string(l.UserID), string(l.SkillID), l.RepoOwner, l.RepoName, l.PRNumber,
+			string(status), nullableReason(reason)); err != nil {
 			return translate(err, fmt.Sprintf("setting link status for %s/%s#%d", l.RepoOwner, l.RepoName, l.PRNumber))
 		}
 	}
 	return nil
+}
+
+// nullableReason keeps an unrejected link's reason NULL rather than ”.
+func nullableReason(r *domain.RejectionReason) *string {
+	if r == nil {
+		return nil
+	}
+	s := string(*r)
+	return &s
 }
 
 // RecomputeStanding derives standing from the count of DISTINCT SCORED PRs.
@@ -227,6 +255,26 @@ func (r *SkillRepository) SetLinkStatus(ctx context.Context, t port.Tx, links []
 // records that a promotion happened, and a later withdrawal does not unmake
 // the fact.
 func (r *SkillRepository) RecomputeStanding(ctx context.Context, t port.Tx, id domain.UserID, skillID domain.SkillID) (*domain.UserSkill, error) {
+	// No surviving evidence means no standing. The row is DELETED rather than
+	// left at zero: a row saying "secondary, 0 PRs" asserts the contributor
+	// holds the skill, which is exactly what withdrawing the last claim
+	// stopped being true.
+	var remaining int
+	if err := r.db.q(t).QueryRow(ctx, `
+		SELECT count(*) FROM user_skill_pr_links
+		WHERE user_id = $1 AND skill_id = $2 AND status = 'scored'`,
+		string(id), string(skillID)).Scan(&remaining); err != nil {
+		return nil, translate(err, "counting surviving evidence")
+	}
+	if remaining == 0 {
+		if _, err := r.db.q(t).Exec(ctx,
+			`DELETE FROM user_skills WHERE user_id = $1 AND skill_id = $2`,
+			string(id), string(skillID)); err != nil {
+			return nil, translate(err, "dropping an unevidenced standing")
+		}
+		return nil, nil
+	}
+
 	var us domain.UserSkill
 	err := r.db.q(t).QueryRow(ctx, `
 		WITH scored AS (
@@ -256,6 +304,151 @@ func (r *SkillRepository) RecomputeStanding(ctx context.Context, t port.Tx, id d
 		return nil, translate(err, fmt.Sprintf("recomputing standing for %s/%s", id, skillID))
 	}
 	return &us, nil
+}
+
+// LinkJudgedEvidence attaches the PRs already judged against one skill.
+//
+// Driven from pr_skill_scores rather than from the claim's evidence: a PR the
+// model disqualified for this skill has no score row, and attaching it would
+// credit the contributor with evidence that did not survive.
+func (r *SkillRepository) LinkJudgedEvidence(ctx context.Context, t port.Tx, id domain.UserID,
+	claimID domain.ClaimID, skillID domain.SkillID) error {
+
+	if _, err := r.db.q(t).Exec(ctx, `
+		INSERT INTO user_skill_pr_links
+		    (user_id, skill_id, repo_owner, repo_name, pr_number, claim_id, status)
+		SELECT $1, $2, s.repo_owner, s.repo_name, s.pr_number, $3, 'scored'
+		FROM pr_skill_scores s
+		JOIN evaluations e ON e.id = s.evaluation_id
+		WHERE e.claim_id = $3 AND s.skill_id = $2
+		ON CONFLICT (user_id, skill_id, repo_owner, repo_name, pr_number) DO NOTHING`,
+		string(id), string(skillID), string(claimID)); err != nil {
+		return translate(err, "attaching judged evidence")
+	}
+	return nil
+}
+
+// SetSkillScore writes a skill's score and its components.
+func (r *SkillRepository) SetSkillScore(ctx context.Context, t port.Tx, id domain.UserID,
+	skillID domain.SkillID, score, prComponent, projectComponent float64) error {
+
+	// NULL, not zero, when nothing survived. ck_user_skill_score_range forbids
+	// a stored zero precisely because it would claim a measurement: a skill
+	// whose every PR was disqualified has not been scored low, it has not been
+	// scored at all (ADR-0007).
+	var stored *float64
+	if score > 0 {
+		stored = &score
+	}
+
+	if _, err := r.db.q(t).Exec(ctx, `
+		UPDATE user_skills
+		SET score = $3, pr_component = $4, project_component = $5, updated_at = now()
+		WHERE user_id = $1 AND skill_id = $2`,
+		string(id), string(skillID), stored, prComponent, projectComponent); err != nil {
+		return translate(err, fmt.Sprintf("scoring skill %s for %s", skillID, id))
+	}
+	return nil
+}
+
+// UnlinkClaim drops every link a claim holds, in the withdrawing transaction.
+func (r *SkillRepository) UnlinkClaim(ctx context.Context, t port.Tx, id domain.ClaimID) error {
+	if _, err := r.db.q(t).Exec(ctx,
+		`DELETE FROM user_skill_pr_links WHERE claim_id = $1`, string(id)); err != nil {
+		return translate(err, fmt.Sprintf("releasing evidence for claim %s", id))
+	}
+	return nil
+}
+
+// ConflictingPairs reports which triples another claim already holds.
+//
+// Scoped to the SAME user: the uniqueness rule is per contributor, because two
+// people may each evidence the same public PR for the same skill — what is
+// forbidden is one person spending it twice (ADR-0007).
+func (r *SkillRepository) ConflictingPairs(ctx context.Context, links []port.PRLink) ([]port.PairConflict, error) {
+	var out []port.PairConflict
+
+	for _, l := range links {
+		var c port.PairConflict
+		err := r.db.pool.QueryRow(ctx, `
+			SELECT l.claim_id, s.slug, s.name
+			FROM user_skill_pr_links l
+			JOIN skills s ON s.id = l.skill_id
+			WHERE l.user_id = $1 AND l.skill_id = $2
+			  AND l.repo_owner = $3 AND l.repo_name = $4 AND l.pr_number = $5
+			  AND l.claim_id <> $6
+			LIMIT 1`,
+			string(l.UserID), string(l.SkillID), l.RepoOwner, l.RepoName, l.PRNumber,
+			string(l.ClaimID),
+		).Scan(&c.ClaimID, &c.SkillSlug, &c.SkillName)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				continue
+			}
+			return nil, translate(err, "checking for a conflicting evidence pair")
+		}
+		c.Link = l
+		out = append(out, c)
+	}
+	return out, nil
+}
+
+// RequestByID reads one catalogue request whatever its state.
+func (r *SkillRepository) RequestByID(ctx context.Context, id domain.RequestID) (*port.SkillRequest, error) {
+	var s port.SkillRequest
+	err := r.db.pool.QueryRow(ctx, `
+		SELECT sr.id, sr.user_id, u.display_name, sr.proposed_name, sr.rationale,
+		       sr.status, coalesce(sr.decision_reason, ''), sr.created_at, sr.reviewed_at
+		FROM skill_requests sr
+		JOIN users u ON u.id = sr.user_id
+		WHERE sr.id = $1`, string(id),
+	).Scan(&s.ID, &s.RequestedBy.ID, &s.RequestedBy.DisplayName, &s.ProposedName,
+		&s.Rationale, &s.Status, &s.Reason, &s.CreatedAt, &s.ReviewedAt)
+	if err != nil {
+		return nil, translate(err, fmt.Sprintf("skill request %s", id))
+	}
+	return &s, nil
+}
+
+// CollidesWith reports an exact clash between a proposed entry and the
+// catalogue.
+//
+// Terms are checked in the order the admin supplied them — slug first, then
+// aliases — so the reported collision is the first one they would fix.
+func (r *SkillRepository) CollidesWith(ctx context.Context, slug string, aliases []string) (*port.SkillCollision, error) {
+	terms := make([]string, 0, len(aliases)+1)
+	if slug != "" {
+		terms = append(terms, slug)
+	}
+	terms = append(terms, aliases...)
+
+	for i, term := range terms {
+		var (
+			collision    port.SkillCollision
+			matchedAlias bool
+		)
+		err := r.db.pool.QueryRow(ctx, `
+			SELECT s.id, s.slug, s.name, coalesce(s.category, ''), a.alias IS NOT NULL
+			FROM skills s
+			LEFT JOIN skill_aliases a ON a.skill_id = s.id AND a.alias::text = $1
+			WHERE s.slug = $1 OR a.alias::text = $1
+			ORDER BY (s.slug = $1) DESC
+			LIMIT 1`, term,
+		).Scan(&collision.Skill.ID, &collision.Skill.Slug, &collision.Skill.Name,
+			&collision.Skill.Category, &matchedAlias)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				continue
+			}
+			return nil, translate(err, fmt.Sprintf("checking %q against the catalogue", term))
+		}
+
+		collision.Term = term
+		collision.TermIsAlias = slug != "" && i > 0
+		collision.MatchedAlias = matchedAlias
+		return &collision, nil
+	}
+	return nil, nil
 }
 
 // MatchSkill finds the catalogue entry a proposed name duplicates.
@@ -318,7 +511,7 @@ func (r *SkillRepository) RequestsSince(ctx context.Context, userID domain.UserI
 	var out []port.SkillRequest
 	for rows.Next() {
 		var s port.SkillRequest
-		if err := rows.Scan(&s.ID, &s.UserID, &s.ProposedName, &s.Rationale,
+		if err := rows.Scan(&s.ID, &s.RequestedBy.ID, &s.ProposedName, &s.Rationale,
 			&s.Status, &s.Reason, &s.CreatedAt, &s.ReviewedAt); err != nil {
 			return nil, translate(err, "scanning a skill request")
 		}
@@ -347,12 +540,15 @@ func (r *SkillRepository) PendingRequests(ctx context.Context, status string) ([
 	if status == "" {
 		status = "pending"
 	}
+	// Joined, unlike the rate-limit read below: an admin deciding whether to
+	// add a skill is weighing who is asking, and a uuid does not answer that.
 	rows, err := r.db.pool.Query(ctx, `
-		SELECT id, user_id, proposed_name, rationale, status,
-		       coalesce(decision_reason, ''), created_at, reviewed_at
-		FROM skill_requests
-		WHERE status = $1::skill_request_status
-		ORDER BY created_at`, status)
+		SELECT sr.id, sr.user_id, u.display_name, sr.proposed_name, sr.rationale,
+		       sr.status, coalesce(sr.decision_reason, ''), sr.created_at, sr.reviewed_at
+		FROM skill_requests sr
+		JOIN users u ON u.id = sr.user_id
+		WHERE sr.status = $1::skill_request_status
+		ORDER BY sr.created_at`, status)
 	if err != nil {
 		return nil, translate(err, "listing skill requests")
 	}
@@ -361,8 +557,9 @@ func (r *SkillRepository) PendingRequests(ctx context.Context, status string) ([
 	var out []port.SkillRequest
 	for rows.Next() {
 		var sr port.SkillRequest
-		if err := rows.Scan(&sr.ID, &sr.UserID, &sr.ProposedName, &sr.Rationale,
-			&sr.Status, &sr.Reason, &sr.CreatedAt, &sr.ReviewedAt); err != nil {
+		if err := rows.Scan(&sr.ID, &sr.RequestedBy.ID, &sr.RequestedBy.DisplayName,
+			&sr.ProposedName, &sr.Rationale, &sr.Status, &sr.Reason,
+			&sr.CreatedAt, &sr.ReviewedAt); err != nil {
 			return nil, translate(err, "scanning skill request")
 		}
 		out = append(out, sr)

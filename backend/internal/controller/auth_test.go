@@ -312,24 +312,71 @@ func TestLogoutIsAlways204(t *testing.T) {
 	require.Empty(t, got.Body)
 }
 
-func TestLogoutRequiresCredentials(t *testing.T) {
+// TestLogoutWithoutCredentialsIsStillLoggedOut pins the idempotence.
+//
+// A sign-out with no session succeeds and does nothing. Refusing it would tell
+// the caller whether the token they presented was live, which is exactly what
+// an unauthenticated endpoint must not reveal (ADR-0002).
+func TestLogoutWithoutCredentialsIsStillLoggedOut(t *testing.T) {
 	h := newHarness(t)
 
 	got := h.do(t, http.MethodPost, "/auth/logout", "", "")
-	require.Equal(t, http.StatusUnauthorized, got.Status)
+	require.Equal(t, http.StatusNoContent, got.Status)
+	require.Empty(t, got.Body)
 }
 
 func TestRegisterHirerIsCreated(t *testing.T) {
 	h := newHarness(t)
 	h.auth.EXPECT().RegisterHirer(mock.Anything, mock.MatchedBy(func(req port.RegisterHirerRequest) bool {
-		return req.Email == "new@corp.example" && req.OrganizationName == "New Corp"
-	})).Return(&domain.Hirer{
-		ID: hankID, DisplayName: "New Hirer", Email: "new@corp.example",
-		Organization: &domain.Organization{ID: orgID, Name: "New Corp"},
-	}, tokenPair(), nil)
+		return req.Email == "new@corp.example" && req.OrganizationName == "New Corp" &&
+			len(req.Proofs) == 1 && req.Proofs[0].Kind == domain.ProofWorkEmailDomain
+	})).Return(&port.HirerRegistration{
+		Hirer: &domain.Hirer{
+			ID: hankID, DisplayName: "New Hirer", Email: "new@corp.example",
+			Organization: &domain.Organization{ID: orgID, Name: "New Corp"},
+		},
+		VerificationRequest: &port.VerificationRequest{
+			ID: domain.RequestID("01920000-0000-7000-8000-00000000ae01"), Status: "pending",
+		},
+	}, nil)
 
 	got := h.do(t, http.MethodPost, "/auth/hirer/register", "",
 		`{"email":"new@corp.example","password":"pw","display_name":"New Hirer",
-		  "organization_name":"New Corp","website":"","linkedin_url":""}`)
+		  "organization":{"name":"New Corp"},
+		  "proofs":[{"kind":"work_email_domain","value":"corp.example"}]}`)
 	require.Equal(t, http.StatusCreated, got.Status)
+
+	var body registeredHirerResponse
+	got.decode(t, &body)
+	require.Equal(t, "hirer", body.Kind)
+	require.False(t, body.Verified)
+	require.Equal(t, "pending", body.VerificationRequest.Status)
+	require.NotContains(t, got.Body, "access_token",
+		"registration queues a review; it does not sign anyone in")
+}
+
+// registeredHirerResponse is the 201 a registration returns.
+type registeredHirerResponse struct {
+	ID                  string                     `json:"id"`
+	Kind                string                     `json:"kind"`
+	Verified            bool                       `json:"verified"`
+	VerificationRequest queuedVerificationResponse `json:"verification_request"`
+}
+
+type queuedVerificationResponse struct {
+	ID     string `json:"id"`
+	Status string `json:"status"`
+}
+
+func TestRegisterHirerRejectsAnUnknownProofKind(t *testing.T) {
+	// The registrant is told WHICH proof to fix. An enum violation from the
+	// database would tell them only that something was wrong.
+	h := newHarness(t)
+
+	got := h.do(t, http.MethodPost, "/auth/hirer/register", "",
+		`{"email":"new@corp.example","password":"pw","display_name":"New Hirer",
+		  "organization":{"name":"New Corp"},
+		  "proofs":[{"kind":"vibes","notes":"trust me"}]}`)
+	require.Equal(t, http.StatusUnprocessableEntity, got.Status)
+	require.Equal(t, service.CodeInvalidRegistration, got.errorCode(t))
 }

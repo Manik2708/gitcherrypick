@@ -112,7 +112,7 @@ func principalFrom(ctx context.Context) (domain.Principal, bool) {
 func require(w http.ResponseWriter, r *http.Request, kind domain.PrincipalKind) (domain.Principal, bool) {
 	p, ok := principalFrom(r.Context())
 	if !ok {
-		writeCode(w, http.StatusUnauthorized, service.CodeAuthRequired)
+		writeCode(w, http.StatusUnauthorized, service.CodeUnauthenticated)
 		return domain.Principal{}, false
 	}
 	if p.Kind != kind {
@@ -127,7 +127,7 @@ func require(w http.ResponseWriter, r *http.Request, kind domain.PrincipalKind) 
 func requireAny(w http.ResponseWriter, r *http.Request) (domain.Principal, bool) {
 	p, ok := principalFrom(r.Context())
 	if !ok {
-		writeCode(w, http.StatusUnauthorized, service.CodeAuthRequired)
+		writeCode(w, http.StatusUnauthorized, service.CodeUnauthenticated)
 		return domain.Principal{}, false
 	}
 	return p, true

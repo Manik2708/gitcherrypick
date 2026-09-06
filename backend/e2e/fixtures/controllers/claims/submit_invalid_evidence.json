@@ -1,11 +1,7 @@
 {
   "name": "validation names the specific failing item",
   "description": "ADR-0003: a claim failing validation is rejected NAMING the failing item, not with a generic error. The contributor is doing curation work and a vague rejection wastes it. Four distinct failures in one claim, so the error must carry all of them rather than stopping at the first.",
-  "seed": [
-    "principals",
-    "catalogue",
-    "repositories"
-  ],
+  "seed": ["principals", "catalogue", "repositories"],
   "steps": [
     {
       "as": "alice",

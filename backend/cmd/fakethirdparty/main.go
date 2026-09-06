@@ -39,6 +39,7 @@ func command() *cobra.Command {
 	var (
 		addr    string
 		selfURL string
+		pinned  string
 	)
 
 	cmd := &cobra.Command{
@@ -51,11 +52,15 @@ func command() *cobra.Command {
 			if selfURL == "" {
 				selfURL = "http://" + addr
 			}
-			return run(cmd.Context(), addr, selfURL)
+			return run(cmd.Context(), addr, selfURL, pinned)
 		},
 	}
 
 	cmd.Flags().StringVar(&addr, "addr", "127.0.0.1:8081", "address to listen on")
+	cmd.Flags().StringVar(&pinned, "now", "",
+		"RFC3339 instant to start the clock at; defaults to the host's clock. "+
+			"Pinning it is what makes a suite whose fixtures carry absolute dates "+
+			"produce the same result on every calendar day")
 	cmd.Flags().StringVar(&selfURL, "self-url", "",
 		"absolute base URL clients reach this server at; defaults to http://<addr>. "+
 			"OIDC discovery must advertise absolute endpoints, so the server has to know its own address")
@@ -63,13 +68,26 @@ func command() *cobra.Command {
 	return cmd
 }
 
-func run(ctx context.Context, addr, selfURL string) error {
+func run(ctx context.Context, addr, selfURL, pinned string) error {
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	store := NewStore()
+	if pinned != "" {
+		at, err := time.Parse(time.RFC3339, pinned)
+		if err != nil {
+			return fmt.Errorf("parsing --now %q: %w", pinned, err)
+		}
+		// A NEGATIVE offset, which /_clock/advance would refuse. The rule it
+		// enforces is that time cannot run backwards DURING a run; where the
+		// run starts is configuration, and pinning it is the only way a
+		// fixture asserting 2026-08-17 means the same thing every day.
+		store.PinTo(at)
+	}
+
 	srv := &http.Server{
 		Addr:              addr,
-		Handler:           NewServer(NewStore(), selfURL).Handler(),
+		Handler:           NewServer(store, selfURL).Handler(),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 

@@ -309,7 +309,7 @@ func TestClaimServiceWithdraw(t *testing.T) {
 		claim := validClaim()
 
 		f.claims.EXPECT().ByID(mock.Anything, claimID).Return(claim, nil)
-		f.skills.EXPECT().UserSkills(mock.Anything, userID).Return([]domain.UserSkill{{
+		f.skills.EXPECT().UserSkills(mock.Anything, mock.Anything, userID).Return([]domain.UserSkill{{
 			UserID: userID, SkillID: goSkillID, Slug: "go",
 			Standing: domain.Primary, DistinctPRCount: 5, Score: 64.2,
 		}}, nil)
@@ -326,13 +326,18 @@ func TestClaimServiceWithdraw(t *testing.T) {
 		claim := validClaim()
 		claim.PREvidence = claim.PREvidence[:2]
 
-		f.claims.EXPECT().ByID(mock.Anything, claimID).Return(claim, nil).Twice()
-		f.skills.EXPECT().UserSkills(mock.Anything, userID).Return([]domain.UserSkill{{
+		f.claims.EXPECT().ByID(mock.Anything, claimID).Return(claim, nil)
+		f.skills.EXPECT().UserSkills(mock.Anything, mock.Anything, userID).Return([]domain.UserSkill{{
 			UserID: userID, SkillID: goSkillID, Slug: "go",
 			Standing: domain.Primary, DistinctPRCount: 9,
 		}}, nil)
 		f.claims.EXPECT().SetStatus(mock.Anything, mock.Anything, claimID, domain.ClaimWithdrawn).
 			Return(nil)
+		// Standing is recomputed even though nothing demotes: the links are
+		// released either way, so a count left alone would disagree with the
+		// links table.
+		f.skills.EXPECT().RecomputeStanding(mock.Anything, mock.Anything, userID, goSkillID).
+			Return(&domain.UserSkill{}, nil)
 
 		if _, err := f.svc.Withdraw(ctx(t), userID, claimID, false); err != nil {
 			t.Fatalf("expected no confirmation needed, got %v", err)
@@ -344,7 +349,7 @@ func TestClaimServiceWithdraw(t *testing.T) {
 		claim := validClaim()
 
 		f.claims.EXPECT().ByID(mock.Anything, claimID).Return(claim, nil)
-		f.skills.EXPECT().UserSkills(mock.Anything, userID).Return([]domain.UserSkill{
+		f.skills.EXPECT().UserSkills(mock.Anything, mock.Anything, userID).Return([]domain.UserSkill{
 			{UserID: userID, SkillID: goSkillID, Slug: "go",
 				Standing: domain.Primary, DistinctPRCount: 5},
 			{UserID: userID, SkillID: "other-skill", Slug: "kubernetes",
@@ -358,8 +363,13 @@ func TestClaimServiceWithdraw(t *testing.T) {
 		if len(demoting) != 1 {
 			t.Fatalf("expected exactly 1 demotion, got %d", len(demoting))
 		}
-		if demoting[0].Slug != "go" {
-			t.Errorf("expected 'go', got %q", demoting[0].Slug)
+		if demoting[0].Skill.Slug != "go" {
+			t.Errorf("expected 'go', got %q", demoting[0].Skill.Slug)
+		}
+		// The count AFTER the claim's evidence is removed, which is the number
+		// that justifies the warning.
+		if demoting[0].DistinctPRCountAfter != 0 {
+			t.Errorf("expected 0 PRs remaining, got %d", demoting[0].DistinctPRCountAfter)
 		}
 	})
 }
@@ -376,6 +386,7 @@ type claimFixture struct {
 	svc    *service.ClaimService
 	claims *mocks.ClaimRepository
 	skills *mocks.SkillRepository
+	evals  *mocks.EvaluationRepository
 	users  *mocks.UserRepository
 	github *mocks.GitHubClient
 	broker *mocks.Broker
@@ -390,6 +401,7 @@ func newClaimFixture(t *testing.T) *claimFixture {
 	t.Helper()
 	f := &claimFixture{
 		claims: mocks.NewClaimRepository(t),
+		evals:  mocks.NewEvaluationRepository(t),
 		skills: mocks.NewSkillRepository(t),
 		users:  mocks.NewUserRepository(t),
 		github: mocks.NewGitHubClient(t),
@@ -401,6 +413,28 @@ func newClaimFixture(t *testing.T) *claimFixture {
 
 	f.clock.EXPECT().Now().Return(f.now).Maybe()
 
+	// Never judged before, unless a case says otherwise. Submit compares the
+	// evidence against the last judgement's fingerprint, so every submit test
+	// would otherwise have to declare it.
+	f.claims.EXPECT().EvaluatedFingerprint(mock.Anything, mock.Anything).
+		Return("", nil).Maybe()
+
+	// No pair conflicts unless a case says otherwise. The check runs on every
+	// submit that gets past the local validations, so every submit test would
+	// otherwise have to declare it.
+	f.skills.EXPECT().ConflictingPairs(mock.Anything, mock.Anything).
+		Return(nil, nil).Maybe()
+
+	// Withdrawal releases the claim's links before recomputing standing, so
+	// every withdrawal test would otherwise have to declare it.
+	f.skills.EXPECT().UnlinkClaim(mock.Anything, mock.Anything, mock.Anything).
+		Return(nil).Maybe()
+
+	// Withdrawal rewrites the user-level numbers from what survives, so every
+	// withdrawal test would otherwise have to declare it.
+	f.users.EXPECT().SetUserScores(mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything).Return(nil).Maybe()
+
 	// A real InTx: it runs the closure and records whether it would commit, so
 	// a test can assert on atomicity rather than on the mock being called.
 	f.tx.EXPECT().InTx(mock.Anything, mock.Anything).
@@ -410,7 +444,7 @@ func newClaimFixture(t *testing.T) *claimFixture {
 			return err
 		}).Maybe()
 
-	f.svc = service.NewClaimService(f.claims, f.skills, f.users, f.github, f.broker, f.tx, f.clock)
+	f.svc = service.NewClaimService(f.claims, f.skills, f.evals, f.users, f.github, f.broker, f.tx, f.clock)
 	return f
 }
 

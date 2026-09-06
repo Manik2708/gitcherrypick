@@ -3,6 +3,7 @@ package e2e
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -128,8 +129,20 @@ func runCase(t *testing.T, ctx context.Context, pool *pgxpool.Pool, ddl []string
 	for i, step := range c.Steps {
 		label := fmt.Sprintf("step %d: %s %s", i, step.Request.Method, step.Request.Path)
 
+		// A replay is resolved against the database BEFORE the step runs —
+		// including a pseudo step, which is where a sweep is drained. What
+		// the model said last time is stored, not written in the fixture.
+		if wantsReplay(step.Fake) {
+			judgements, err := replayJudgements(ctx, pool, schema)
+			if err != nil {
+				t.Errorf("%s: %v", label, err)
+				return
+			}
+			step.Fake.AI = judgements
+		}
+
 		if step.Request.IsPseudo() {
-			if err := runPseudo(ctx, t, control, sessions, client, bindings, step); err != nil {
+			if err := runPseudo(ctx, t, control, sessions, client, bindings, step, schema); err != nil {
 				t.Errorf("%s: %v", label, err)
 				return
 			}
@@ -138,12 +151,16 @@ func runCase(t *testing.T, ctx context.Context, pool *pgxpool.Pool, ddl []string
 
 		path, err := resolve(step.Request.Path, bindings)
 		if err != nil {
-			t.Errorf("%s: %v", label, err)
+			// A request that never got an answer — a crashed process, most
+			// often — leaves the reason only in the server's own log.
+			t.Errorf("%s: %v\napi log:\n%s", label, err, api.Log())
 			return
 		}
 		body, err := resolveJSON(step.Request.Body, bindings)
 		if err != nil {
-			t.Errorf("%s: %v", label, err)
+			// A request that never got an answer — a crashed process, most
+			// often — leaves the reason only in the server's own log.
+			t.Errorf("%s: %v\napi log:\n%s", label, err, api.Log())
 			return
 		}
 
@@ -158,13 +175,17 @@ func runCase(t *testing.T, ctx context.Context, pool *pgxpool.Pool, ddl []string
 
 		session, err := sessions.For(ctx, client, step.As)
 		if err != nil {
-			t.Errorf("%s: %v", label, err)
+			// A request that never got an answer — a crashed process, most
+			// often — leaves the reason only in the server's own log.
+			t.Errorf("%s: %v\napi log:\n%s", label, err, api.Log())
 			return
 		}
 
-		status, respBody, err := send(ctx, client, step, path, body, session)
+		status, respBody, err := send(ctx, client, step, path, body, session, bindings)
 		if err != nil {
-			t.Errorf("%s: %v", label, err)
+			// A request that never got an answer — a crashed process, most
+			// often — leaves the reason only in the server's own log.
+			t.Errorf("%s: %v\napi log:\n%s", label, err, api.Log())
 			// One unreachable request makes every later step meaningless.
 			return
 		}
@@ -177,20 +198,34 @@ func runCase(t *testing.T, ctx context.Context, pool *pgxpool.Pool, ddl []string
 				detail = "\napi log:\n" + api.Log()
 			}
 			t.Errorf("%s: expected status %d, got %d\nbody: %s%s",
-				label, step.Expect.Status, status, truncate(string(respBody)), detail)
+				label, step.Expect.Status, status, truncateLong(string(respBody)), detail)
 		}
-		if diff := Compare(step.Expect.Body, respBody); diff != "" {
-			t.Errorf("%s: body does not match the snapshot\n%s", label, diff)
+		// `body: null` means "no body", which is what a 204 has. Comparing an
+		// absent snapshot against an empty response as JSON would fail on the
+		// parse rather than on anything the fixture asserts.
+		if len(step.Expect.Body) == 0 || string(step.Expect.Body) == "null" {
+			respBody = nil
+		}
+		if diff := Compare(step.Expect.Body, respBody); diff != "" && len(respBody) > 0 {
+			// The body is printed alongside the diff. A diff naming a field
+			// tells you WHAT differs; only the body tells you what to write
+			// instead, and reconstructing it by hand is where fixture
+			// corrections go wrong.
+			t.Errorf("%s: body does not match the snapshot\n%s\n        actual: %s",
+				label, diff, truncateLong(string(respBody)))
 		}
 		if err := AssertDB(ctx, pool, schema, step.Expect.DB, bindings); err != nil {
 			t.Errorf("%s: %v", label, err)
 		}
 
 		bind(bindings, step, respBody)
+		adoptSession(sessions, principals, step, respBody)
 	}
 }
 
-func send(ctx context.Context, client *http.Client, step Step, path string, body []byte, session *Session) (int, []byte, error) {
+func send(ctx context.Context, client *http.Client, step Step, path string, body []byte, session *Session, bindings map[string]string) (int, []byte, error) {
+	body = withOwnRefreshToken(step, path, body, session)
+
 	var reader io.Reader
 	if len(body) > 0 && string(body) != "null" {
 		reader = bytes.NewReader(body)
@@ -203,8 +238,15 @@ func send(ctx context.Context, client *http.Client, step Step, path string, body
 	if reader != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
+	// Headers carry bindings too. A step that presents a token captured
+	// earlier — the only way to act as a principal the seed never created —
+	// writes it as {{binding}} exactly as a body would.
 	for k, v := range step.Request.Headers {
-		req.Header.Set(k, v)
+		resolved, err := resolve(v, bindings)
+		if err != nil {
+			return 0, nil, fmt.Errorf("header %s: %w", k, err)
+		}
+		req.Header.Set(k, resolved)
 	}
 	if session != nil {
 		// A real bearer token from a real sign-in. There is no test-only
@@ -389,4 +431,33 @@ func applyDDL(ctx context.Context, pool *pgxpool.Pool, schema string, statements
 		}
 	}
 	return nil
+}
+
+// withOwnRefreshToken supplies the caller's own refresh token when a step does
+// not name one.
+//
+// `as: alice` means "acting as alice's client", and alice's client holds her
+// refresh token as surely as it holds her access token — which this runner
+// already presents as a bearer header. A step that names a token explicitly is
+// left alone: that is how the rotation fixture replays a spent one.
+func withOwnRefreshToken(step Step, path string, body []byte, session *Session) []byte {
+	if session == nil || step.Request.Method != http.MethodPost || path != "/auth/refresh" {
+		return body
+	}
+	if len(body) > 0 && string(body) != "null" {
+		return body
+	}
+
+	encoded, err := json.Marshal(refreshBody{RefreshToken: session.RefreshToken})
+	if err != nil {
+		// Marshalling one string field cannot fail; the original body keeps
+		// the failure inside the assertion rather than the harness.
+		return body
+	}
+	return encoded
+}
+
+// refreshBody is the rotation request, as ADR-0002 defines it.
+type refreshBody struct {
+	RefreshToken string `json:"refresh_token"`
 }

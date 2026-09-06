@@ -23,13 +23,31 @@ const (
 
 // SkillService is the contributor's view of the catalogue.
 type SkillService struct {
-	skills port.SkillRepository
-	clock  port.Clock
+	skills  port.SkillRepository
+	users   port.UserRepository
+	reevals port.ReevaluationRepository
+	claims  port.ClaimRepository
+	evals   port.EvaluationRepository
+	clock   port.Clock
+
+	// rubric is the configured default, used only until a sweep records one.
+	// What the platform scores under NOW is read, not configured (RFC-0015):
+	// a sweep moves it while processes are running.
+	rubric string
 }
 
 // NewSkillService wires the catalogue.
-func NewSkillService(skills port.SkillRepository, clock port.Clock) *SkillService {
-	return &SkillService{skills: skills, clock: clock}
+func NewSkillService(
+	skills port.SkillRepository,
+	users port.UserRepository,
+	reevals port.ReevaluationRepository,
+	claims port.ClaimRepository,
+	evals port.EvaluationRepository,
+	clock port.Clock,
+	rubricVersion string,
+) *SkillService {
+	return &SkillService{skills: skills, users: users, reevals: reevals,
+		claims: claims, evals: evals, clock: clock, rubric: rubricVersion}
 }
 
 var _ port.SkillService = (*SkillService)(nil)
@@ -118,11 +136,73 @@ func (s *SkillService) withinRequestLimit(ctx context.Context, id domain.UserID)
 		})
 }
 
-// MySkills reads the caller's own standings.
-func (s *SkillService) MySkills(ctx context.Context, id domain.UserID) ([]domain.UserSkill, error) {
-	out, err := s.skills.UserSkills(ctx, id)
+// MySkills reads the caller's own standings, with the context a score needs.
+//
+// A bare number is not readable on its own: 64.2 under a superseded rubric is
+// not comparable with 64.2 under the current one, and a contributor looking at
+// a score they disagree with needs to know whether they have already disputed
+// it.
+func (s *SkillService) MySkills(ctx context.Context, id domain.UserID) (*port.SkillStanding, error) {
+	skills, err := s.skills.UserSkills(ctx, nil, id)
 	if err != nil {
 		return nil, fmt.Errorf("reading skills: %w", err)
+	}
+
+	active, err := s.evals.ActiveRubricVersion(ctx, s.rubric)
+	if err != nil {
+		return nil, fmt.Errorf("reading the active rubric version: %w", err)
+	}
+
+	// The version reported is the one these SCORES carry, not the one the
+	// platform has moved to. A contributor mid-sweep is looking at v1 numbers,
+	// and labelling them v2 would claim they had been re-judged.
+	out := &port.SkillStanding{Skills: skills, RubricVersion: active, ActiveRubricVersion: active}
+
+	// Stale if ANY skill lags. One superseded skill makes the user-level
+	// numbers incomparable, because they are computed across all of them.
+	for _, skill := range skills {
+		if skill.RubricVersion == "" {
+			continue
+		}
+		out.RubricVersion = skill.RubricVersion
+		if skill.RubricVersion != active {
+			out.Stale = true
+			break
+		}
+	}
+
+	contributor, err := s.users.ByID(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("reading the contributor: %w", err)
+	}
+	out.OverallScore = contributor.OverallScore
+	out.GeneralistScore = contributor.GeneralistScore
+
+	// In progress covers both routes back into the queue: a dispute the
+	// contributor raised, and a sweep that re-queued their claim without
+	// their asking. From where they are standing the two are the same fact —
+	// these numbers are about to change.
+	pending, err := s.reevals.Pending(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("reading open disputes: %w", err)
+	}
+	for _, request := range pending {
+		if request.UserID == id {
+			out.ReevaluationInProgress = true
+			break
+		}
+	}
+	if !out.ReevaluationInProgress {
+		claims, err := s.claims.ListByUser(ctx, id)
+		if err != nil {
+			return nil, fmt.Errorf("reading claims: %w", err)
+		}
+		for _, c := range claims {
+			if c.Status == domain.ClaimQueued {
+				out.ReevaluationInProgress = true
+				break
+			}
+		}
 	}
 	return out, nil
 }

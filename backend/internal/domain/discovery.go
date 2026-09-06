@@ -159,9 +159,14 @@ type Rank struct {
 	Ranked         bool
 	UnrankedReason string
 	Active         bool
-	Overall        RankPosition
-	Generalist     RankPosition
-	Skills         []SkillRank
+
+	// How long the availability window has been lapsed. Nil while it is live —
+	// the question only exists once somebody has gone quiet.
+	InactiveForDays *int
+
+	Overall    RankPosition
+	Generalist RankPosition
+	Skills     []SkillRank
 }
 
 // RankPosition is a score and where it sits. Rank is nil when the contributor
@@ -210,6 +215,8 @@ type Shortlist struct {
 	Status              ShortlistStatus
 	TentativeResultDate time.Time
 	CreatedBy           HirerID
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
 	FirstConfirmedAt    *time.Time
 	ClosedAt            *time.Time
 	Entries             []ShortlistEntry
@@ -224,10 +231,23 @@ type Shortlist struct {
 type ShortlistEntry struct {
 	ShortlistID ShortlistID
 	UserID      UserID
-	Note        string
-	AddedBy     HirerID
-	NotifiedAt  *time.Time
-	AddedAt     time.Time
+
+	// Resolved from the contributor, not stored on the entry. A hirer reading
+	// a round is looking at people; a column of uuids would send them to fetch
+	// each one.
+	DisplayName string
+	GitHubLogin string
+
+	// ContactStatus is the contributor's answer, empty until the round is
+	// confirmed and a request exists to answer. Email is released ONLY on
+	// acceptance (ADR-0005) — staging discloses nothing.
+	ContactStatus string
+	Email         string
+
+	Note       string
+	AddedBy    HirerID
+	NotifiedAt *time.Time
+	AddedAt    time.Time
 }
 
 // Removable reports whether this entry may still be deleted.
@@ -259,9 +279,25 @@ type ContactRequest struct {
 	// contributor was told survives a later edit.
 	TentativeResultDate time.Time
 
+	// The organization, resolved. A contributor decides about a COMPANY, not
+	// about the recruiter who clicked (ADR-0005), so the name and whether the
+	// company's payment is verified travel with the request — the second is
+	// the disclosure ADR-0002 §5 requires them to see before answering.
+	OrganizationName     string
+	OrganizationVerified bool
+	PaymentVerified      bool
+
+	// The contributor, resolved for the hirer's view. Email is released ONLY
+	// on acceptance (ADR-0005): a hirer sees a name and a status until the
+	// contributor says yes, which is the whole consent model.
+	DisplayName string
+	GitHubLogin string
+	Email       string
+
 	RespondedAt     *time.Time
 	EmailReleasedAt *time.Time
 	ExpiresAt       time.Time
+	CreatedAt       time.Time
 }
 
 // SavedSearch is a stored filter set, replayed AS THE CALLER. It stores a
@@ -272,4 +308,5 @@ type SavedSearch struct {
 	Name           string
 	Filters        SearchQuery
 	CreatedBy      HirerID
+	CreatedAt      time.Time
 }

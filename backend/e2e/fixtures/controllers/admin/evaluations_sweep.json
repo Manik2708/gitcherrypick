@@ -1,12 +1,7 @@
 {
   "name": "a rubric sweep re-queues the corpus and empties search until it drains",
   "description": "ADR-0007 §Endpoints: 'POST /admin/evaluations/sweep — global re-run for prompt/model change'. When the prompt, the model, or a rubric constant changes, every existing score was produced by a different function and is no longer comparable to a new one.\n\nThe consequence the fixture exists to pin is the interaction with ADR-0005's search gate, 'AND rubric_version = $active'. Bumping the active rubric makes the entire scored population fall OUT of search immediately, and back in only as re-evaluation drains. That is deliberate: a leaderboard mixing v1 and v2 scores ranks people by which version happened to judge them. Half-swept results are worse than none, so the sweep is enqueue-only and idempotent — a second call while one is running adds nothing.",
-  "seed": [
-    "principals",
-    "catalogue",
-    "repositories",
-    "scored_population"
-  ],
+  "seed": ["principals", "catalogue", "repositories", "scored_population"],
   "steps": [
     {
       "as": "hank",
@@ -39,7 +34,11 @@
               ],
               "overall_score": 64.2,
               "generalist_score": 64.2,
-              "rank": 1
+              "rank": 1,
+              "availability": {
+                "status": "<string>",
+                "expires_at": "<timestamp>"
+              }
             },
             {
               "id": "<uuid>",
@@ -56,7 +55,11 @@
               ],
               "overall_score": 60.4,
               "generalist_score": 122.7,
-              "rank": 2
+              "rank": 2,
+              "availability": {
+                "status": "<string>",
+                "expires_at": "<timestamp>"
+              }
             }
           ]
         }
@@ -153,7 +156,7 @@
           "from_rubric_version": "v1",
           "to_rubric_version": "v2",
           "reason": "Conversation-quality weight raised from 0.20 to 0.25.",
-          "claims_enqueued": 5,
+          "claims_enqueued": 1,
           "requested_by": "01920000-0000-7000-8000-00000000d001",
           "created_at": "<timestamp>"
         },
@@ -162,14 +165,14 @@
             "where": {
               "status": "pending"
             },
-            "count": 5
+            "count": 1
           },
           "claims": {
             "_note": "Every previously evaluated claim goes back to queued. Withdrawn claims are not swept — there is nothing to rank.",
             "where": {
               "status": "queued"
             },
-            "count": 5
+            "count": 1
           }
         }
       }
@@ -253,14 +256,14 @@
         "body": {
           "error": "sweep_in_progress",
           "id": "<uuid>",
-          "claims_remaining": 5
+          "claims_remaining": 1
         },
         "db": {
           "evaluation_jobs": {
             "where": {
               "status": "pending"
             },
-            "count": 5
+            "count": 1
           }
         }
       }
@@ -287,7 +290,7 @@
       "expect": {
         "status": 200,
         "body": {
-          "processed": 5,
+          "processed": 1,
           "failed": 0
         },
         "db": {
@@ -295,7 +298,7 @@
             "where": {
               "status": "evaluated"
             },
-            "count": 5
+            "count": 1
           },
           "score_snapshots": {
             "_note": "v1 snapshots are retained. A sweep supersedes scores; it does not erase the history of what was once true.",
@@ -332,13 +335,18 @@
                 {
                   "slug": "go",
                   "standing": "primary",
-                  "score": 65.1,
+                  "score": 60.19,
                   "rank": 1
                 }
               ],
-              "overall_score": 65.1,
-              "generalist_score": 65.1,
-              "rank": 1
+              "overall_score": 60.19,
+              "generalist_score": 60.19,
+              "rank": 1,
+              "availability": {
+                "status": "<string>",
+                "expires_at": "<timestamp>"
+              },
+              "_note": "Recomputed, not carried over. The seeded standing of 64.2 was written by hand and is not what its own per-PR scores produce: PRComponent over the five seeded scores times 0.85 is 60.19 (ADR-0005). The sweep re-derives it, so this is the first read that shows the evidence's real value."
             },
             {
               "id": "<uuid>",
@@ -349,13 +357,17 @@
                 {
                   "slug": "go",
                   "standing": "primary",
-                  "score": 55.8,
+                  "score": 55.0,
                   "rank": 2
                 }
               ],
-              "overall_score": 61.2,
-              "generalist_score": 124.1,
-              "rank": 2
+              "overall_score": 60.4,
+              "generalist_score": 122.7,
+              "rank": 2,
+              "availability": {
+                "status": "<string>",
+                "expires_at": "<timestamp>"
+              }
             }
           ]
         }
@@ -376,14 +388,16 @@
               "slug": "go",
               "standing": "primary",
               "distinct_pr_count": 5,
-              "score": 65.1,
+              "score": 60.19,
               "rubric_version": "v2",
-              "stale": false
+              "stale": false,
+              "promoted_at": "<timestamp>"
             }
           ],
-          "overall_score": 65.1,
-          "generalist_score": 65.1,
-          "rubric_version": "v2"
+          "overall_score": 60.19,
+          "generalist_score": 60.19,
+          "rubric_version": "v2",
+          "_note": "Recomputed, not carried over. The seeded standing of 64.2 was written by hand and is not what its own per-PR scores produce: PRComponent over the five seeded scores times 0.85 is 60.19 (ADR-0005). The sweep re-derives it, so this is the first read that shows the evidence's real value."
         }
       }
     },
@@ -406,7 +420,7 @@
           "from_rubric_version": "v2",
           "to_rubric_version": "v1",
           "reason": "Rolling back.",
-          "claims_enqueued": 5,
+          "claims_enqueued": 1,
           "requested_by": "01920000-0000-7000-8000-00000000d001",
           "created_at": "<timestamp>"
         }

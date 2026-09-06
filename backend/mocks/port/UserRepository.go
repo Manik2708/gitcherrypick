@@ -381,6 +381,69 @@ func (_c *UserRepository_MarkReminded_Call) RunAndReturn(run func(ctx context.Co
 	return _c
 }
 
+// RefreshGitHubLogin provides a mock function for the type UserRepository
+func (_mock *UserRepository) RefreshGitHubLogin(ctx context.Context, githubUserID int64, login string) error {
+	ret := _mock.Called(ctx, githubUserID, login)
+
+	if len(ret) == 0 {
+		panic("no return value specified for RefreshGitHubLogin")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, int64, string) error); ok {
+		r0 = returnFunc(ctx, githubUserID, login)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// UserRepository_RefreshGitHubLogin_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RefreshGitHubLogin'
+type UserRepository_RefreshGitHubLogin_Call struct {
+	*mock.Call
+}
+
+// RefreshGitHubLogin is a helper method to define mock.On call
+//   - ctx context.Context
+//   - githubUserID int64
+//   - login string
+func (_e *UserRepository_Expecter) RefreshGitHubLogin(ctx interface{}, githubUserID interface{}, login interface{}) *UserRepository_RefreshGitHubLogin_Call {
+	return &UserRepository_RefreshGitHubLogin_Call{Call: _e.mock.On("RefreshGitHubLogin", ctx, githubUserID, login)}
+}
+
+func (_c *UserRepository_RefreshGitHubLogin_Call) Run(run func(ctx context.Context, githubUserID int64, login string)) *UserRepository_RefreshGitHubLogin_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 int64
+		if args[1] != nil {
+			arg1 = args[1].(int64)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *UserRepository_RefreshGitHubLogin_Call) Return(err error) *UserRepository_RefreshGitHubLogin_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *UserRepository_RefreshGitHubLogin_Call) RunAndReturn(run func(ctx context.Context, githubUserID int64, login string) error) *UserRepository_RefreshGitHubLogin_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // SetAvailability provides a mock function for the type UserRepository
 func (_mock *UserRepository) SetAvailability(ctx context.Context, id domain.UserID, status domain.AvailabilityStatus) (*domain.Availability, error) {
 	ret := _mock.Called(ctx, id, status)

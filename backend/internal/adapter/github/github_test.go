@@ -53,7 +53,7 @@ func TestAuthorizeURL(t *testing.T) {
 
 	// Read-only scopes. Anything broader asks a contributor to trust the
 	// platform with more than it needs.
-	require.Equal(t, "read:user user:email", parsed.Query().Get("scope"))
+	require.Equal(t, "read:user", parsed.Query().Get("scope"))
 }
 
 func TestAuthorizeURLDefaultsToRealGitHub(t *testing.T) {

@@ -306,8 +306,7 @@ func TestEveryHandlerPropagatesAServiceFailure(t *testing.T) {
 			adminPrincipal(), http.MethodPost, "/admin/verifications/" + requestID + "/decide",
 			`{"decision":"approved"}`,
 			func(h *harness) {
-				h.admin.EXPECT().DecideVerification(mock.Anything, mock.Anything, mock.Anything,
-					mock.Anything, mock.Anything).Return(errBoom)
+				h.admin.EXPECT().DecideVerification(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errBoom)
 			},
 		},
 		"admin skill requests": {
@@ -328,7 +327,7 @@ func TestEveryHandlerPropagatesAServiceFailure(t *testing.T) {
 		"admin reevaluations": {
 			adminPrincipal(), http.MethodGet, "/admin/reevaluations", "",
 			func(h *harness) {
-				h.admin.EXPECT().PendingReevaluations(mock.Anything, mock.Anything).
+				h.admin.EXPECT().Reevaluations(mock.Anything, mock.Anything, mock.Anything).
 					Return(nil, errBoom)
 			},
 		},
@@ -342,10 +341,10 @@ func TestEveryHandlerPropagatesAServiceFailure(t *testing.T) {
 		},
 		"admin sweep": {
 			adminPrincipal(), http.MethodPost, "/admin/evaluations/sweep",
-			`{"to_version":"v2","reason":"weights"}`,
+			`{"rubric_version":"v2","reason":"weights"}`,
 			func(h *harness) {
 				h.evaluation.EXPECT().Sweep(mock.Anything, mock.Anything, mock.Anything,
-					mock.Anything).Return(0, errBoom)
+					mock.Anything).Return(nil, errBoom)
 			},
 		},
 		"skill search": {
@@ -382,9 +381,9 @@ func TestEveryHandlerPropagatesAServiceFailure(t *testing.T) {
 		},
 		"hirer register": {
 			domain.Principal{}, http.MethodPost, "/auth/hirer/register",
-			`{"email":"a@b.c","password":"pw","display_name":"A","organization_name":"O","website":"","linkedin_url":""}`,
+			`{"email":"a@b.c","password":"pw","display_name":"A","organization":{"name":"O"}}`,
 			func(h *harness) {
-				h.auth.EXPECT().RegisterHirer(mock.Anything, mock.Anything).Return(nil, nil, errBoom)
+				h.auth.EXPECT().RegisterHirer(mock.Anything, mock.Anything).Return(nil, errBoom)
 			},
 		},
 		"admin login": {
@@ -648,7 +647,9 @@ func TestSuccessfulWritesAcrossTheSurface(t *testing.T) {
 		h := newHarness(t)
 		h.signIn("admin-token", adminPrincipal())
 		h.admin.EXPECT().DecideVerification(mock.Anything, mock.Anything,
-			domain.RequestID(requestID), true, "looks legitimate").Return(nil)
+			domain.RequestID(requestID), domain.VerificationDecision{
+				Approve: true, Reason: "looks legitimate",
+			}).Return(nil)
 
 		got := h.do(t, http.MethodPost, "/admin/verifications/"+requestID+"/decide", "admin-token",
 			`{"decision":"approved","reason":"looks legitimate"}`)
@@ -708,8 +709,12 @@ func TestSuccessfulWritesAcrossTheSurface(t *testing.T) {
 		got := h.do(t, http.MethodGet, "/contributors/"+aliceID+"/scorecard", "hank-token", "")
 		require.Equal(t, http.StatusOK, got.Status)
 
+		// The contributor is nested under `user`, the same as everywhere else
+		// a person appears in a hirer-facing body.
 		var body struct {
-			UserID string  `json:"user_id"`
+			User struct {
+				ID string `json:"id"`
+			} `json:"user"`
 			Email  *string `json:"email"`
 			Skills []struct {
 				Slug            string `json:"slug"`
@@ -720,7 +725,7 @@ func TestSuccessfulWritesAcrossTheSurface(t *testing.T) {
 			} `json:"skills"`
 		}
 		got.decode(t, &body)
-		require.Equal(t, aliceID, body.UserID, "an authenticated scorecard is identified")
+		require.Equal(t, aliceID, body.User.ID, "an authenticated scorecard is identified")
 		require.NotNil(t, body.Email)
 		require.Equal(t, 5, body.Skills[0].DistinctPRCount)
 		require.Len(t, body.Skills[0].Evidence, 1)

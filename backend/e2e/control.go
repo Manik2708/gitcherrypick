@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 )
 
 // How the suite controls the world outside the API.
@@ -112,7 +113,11 @@ func (c *Control) LoadCase(ctx context.Context, p Principals, seeds []string, th
 			return fmt.Errorf("decoding the fixture's third_party block: %w", err)
 		}
 		for provider, block := range declared {
-			merged, err := mergeJSON(state[provider], block)
+			translated, err := translateOAuth(provider, block)
+			if err != nil {
+				return err
+			}
+			merged, err := mergeJSON(state[provider], translated)
 			if err != nil {
 				return fmt.Errorf("merging third_party.%s: %w", provider, err)
 			}
@@ -141,12 +146,16 @@ func (c *Control) ApplyFake(ctx context.Context, f *Fake) error {
 
 	changed := false
 	for provider, block := range map[string]json.RawMessage{
-		"github": f.GitHub, "google": f.Google, "anthropic": f.AI,
+		"github": f.GitHub, "google": f.Google, "ai": f.AI,
 	} {
 		if len(block) == 0 {
 			continue
 		}
-		merged, err := mergeJSON(c.state[provider], block)
+		translated, err := translateOAuth(provider, block)
+		if err != nil {
+			return err
+		}
+		merged, err := mergeJSON(c.state[provider], translated)
 		if err != nil {
 			return fmt.Errorf("merging fake.%s: %w", provider, err)
 		}
@@ -166,8 +175,21 @@ func (c *Control) AdvanceClock(ctx context.Context, duration string) error {
 	if err != nil {
 		return fmt.Errorf("encoding the clock advance: %w", err)
 	}
-	return c.post(ctx, "/_clock/advance", body, nil)
+	if err := c.post(ctx, "/_clock/advance", body, nil); err != nil {
+		return err
+	}
+
+	// Wait for the API to notice. Its clock is POLLED (ADR-0012), so the
+	// advance is not visible the instant this call returns — and a fixture
+	// that advanced past a lock and immediately tested it would race the
+	// poll, passing or failing on timing rather than on the rule.
+	time.Sleep(clockSettle)
+	return nil
 }
+
+// clockSettle is comfortably more than the adapter's poll interval, so an
+// advance is always observed before the next step runs.
+const clockSettle = 300 * time.Millisecond
 
 // SentEmails returns every message the API sent since the last LoadCase.
 func (c *Control) SentEmails(ctx context.Context) ([]SentEmail, error) {
@@ -180,19 +202,56 @@ func (c *Control) SentEmails(ctx context.Context) ([]SentEmail, error) {
 
 // applyClock honours the two spellings the fixture format allows.
 //
-// `set` is rejected rather than approximated: the clock only moves forward
-// (ADR-0012), and a fixture that set an absolute time could un-expire a lock it
-// had already passed.
+// `set` is turned into the advance that reaches it. The clock only moves
+// forward (ADR-0012), so a target already in the past is refused rather than
+// approximated — that would un-expire a lock the case had already passed.
 func (c *Control) applyClock(ctx context.Context, clock *ClockFake) error {
 	switch {
 	case clock.Advance != "":
 		return c.AdvanceClock(ctx, clock.Advance)
 	case clock.Set != "":
-		return fmt.Errorf(
-			"fake.clock.set is not supported: the clock only moves forward (ADR-0012), "+
-				"so express %q as an advance", clock.Set)
+		return c.SetClock(ctx, clock.Set)
 	}
 	return nil
+}
+
+// SetClock advances to an absolute instant.
+//
+// Some windows read better as a date than as a duration — "the first of
+// September", when what matters is that a shortlist's result date has passed.
+// The advance is computed from where the clock actually is, so the two
+// spellings cannot drift apart.
+func (c *Control) SetClock(ctx context.Context, target string) error {
+	at, err := time.Parse(time.RFC3339, target)
+	if err != nil {
+		return fmt.Errorf("fake.clock.set %q is not an RFC3339 instant: %w", target, err)
+	}
+
+	now, err := c.Now(ctx)
+	if err != nil {
+		return err
+	}
+	by := at.Sub(now)
+	if by < 0 {
+		return fmt.Errorf(
+			"fake.clock.set %q is before the current clock %s: time only moves forward (ADR-0012)",
+			target, now.Format(time.RFC3339))
+	}
+	return c.AdvanceClock(ctx, by.String())
+}
+
+// Now reads the clock the API is running on.
+func (c *Control) Now(ctx context.Context) (time.Time, error) {
+	var offset clockOffsetBody
+	if err := c.get(ctx, "/_clock", &offset); err != nil {
+		return time.Time{}, err
+	}
+	return EpochTime().Add(time.Duration(offset.OffsetSeconds * float64(time.Second))), nil
+}
+
+// clockOffsetBody is what the clock endpoint reports.
+type clockOffsetBody struct {
+	OffsetSeconds float64 `json:"offset_seconds"`
 }
 
 func (c *Control) push(ctx context.Context) error {

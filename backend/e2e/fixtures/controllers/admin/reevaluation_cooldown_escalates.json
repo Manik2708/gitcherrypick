@@ -1,12 +1,7 @@
 {
   "name": "re-evaluation requests, escalating cooldown, and the labelled set",
   "description": "ADR-0007 §6. Three rejections trigger a 28-day cooldown; the counter resets when it expires and the NEXT cooldown doubles — 28, 56, 112, 224, capped at 365. Doubling costs an honest contributor who misjudged once almost nothing while making systematic disputing progressively pointless. The cap is deliberate: past about a year a cooldown is a ban, and a ban should be an admin decision with a reason rather than a counter reaching a large number.\n\nCritically, ACCEPTED requests neither reset nor increment the counter. A contributor who is repeatedly right is never throttled — and they are exactly the population whose disputes are worth most, because each accepted one is a human-ranked disagreement on real evidence: the labelled set calibration said could not exist before launch.",
-  "seed": [
-    "principals",
-    "catalogue",
-    "repositories",
-    "alice_go_primary"
-  ],
+  "seed": ["principals", "catalogue", "repositories", "alice_go_primary"],
   "steps": [
     {
       "as": "alice",

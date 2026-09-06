@@ -21,7 +21,7 @@ func TestNoCredentialsIsUnauthenticated(t *testing.T) {
 
 	got := h.do(t, http.MethodGet, "/me", "", "")
 	require.Equal(t, http.StatusUnauthorized, got.Status)
-	require.Equal(t, service.CodeAuthRequired, got.errorCode(t))
+	require.Equal(t, service.CodeUnauthenticated, got.errorCode(t))
 }
 
 func TestWrongAccountTypeIsForbiddenNotUnauthorized(t *testing.T) {
@@ -73,7 +73,7 @@ func TestForgedTokenIsTreatedAsAbsent(t *testing.T) {
 
 	got := h.do(t, http.MethodGet, "/me", "forged", "")
 	require.Equal(t, http.StatusUnauthorized, got.Status)
-	require.Equal(t, service.CodeAuthRequired, got.errorCode(t))
+	require.Equal(t, service.CodeUnauthenticated, got.errorCode(t))
 }
 
 func TestForgedTokenNeverCausesAnAccountLookup(t *testing.T) {
@@ -100,7 +100,7 @@ func TestDeletedAccountStopsActingImmediately(t *testing.T) {
 
 	got := h.do(t, http.MethodGet, "/admin/verifications", "ghost", "")
 	require.Equal(t, http.StatusUnauthorized, got.Status)
-	require.Equal(t, service.CodeAuthRequired, got.errorCode(t))
+	require.Equal(t, service.CodeUnauthenticated, got.errorCode(t))
 }
 
 func TestMalformedAuthorizationHeaders(t *testing.T) {

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -112,15 +113,42 @@ func firstSegment(path string) string {
 func lookup(obj map[string]any, path string) (string, bool) {
 	var node any = obj
 	for _, part := range strings.Split(path, ".") {
+		key, index, indexed := splitIndex(part)
+
 		m, ok := node.(map[string]any)
 		if !ok {
 			return "", false
 		}
-		node, ok = m[part]
+		node, ok = m[key]
 		if !ok {
 			return "", false
+		}
+
+		if indexed {
+			list, ok := node.([]any)
+			if !ok || index >= len(list) {
+				return "", false
+			}
+			node = list[index]
 		}
 	}
 	s, ok := node.(string)
 	return s, ok
+}
+
+// splitIndex reads `suggestions[0]` as the key and the position within it.
+//
+// A capture path into a list is the only way to name one of several items a
+// response returns in order — two AI suggestions, say, where neither has a
+// key the fixture could otherwise address it by.
+func splitIndex(part string) (string, int, bool) {
+	open := strings.IndexByte(part, '[')
+	if open < 0 || !strings.HasSuffix(part, "]") {
+		return part, 0, false
+	}
+	index, err := strconv.Atoi(part[open+1 : len(part)-1])
+	if err != nil || index < 0 {
+		return part, 0, false
+	}
+	return part[:open], index, true
 }

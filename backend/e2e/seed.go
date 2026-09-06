@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+
+	"github.com/Manik2708/gitcherrypick/backend/internal/repository/postgres"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/Manik2708/gitcherrypick/backend/internal/adapter/crypto"
@@ -90,7 +92,7 @@ func seedSet(ctx context.Context, conn *pgx.Conn, set string, bindings map[strin
 	case "principals":
 		return seedPrincipals(ctx, conn, bindings)
 	case "catalogue":
-		return seedCatalogue(ctx, conn)
+		return seedCatalogue(ctx, conn, bindings)
 	case "repositories":
 		// GitHub facts, served by the fake client. Nothing reaches the
 		// database, so there is nothing to insert.
@@ -119,7 +121,10 @@ func seedPrincipals(ctx context.Context, conn *pgx.Conn, bindings map[string]str
 		return err
 	}
 
-	now := time.Now().UTC()
+	// The same instant the API's clock is pinned to. Seeding relative dates
+	// from the host's clock while the API reads a pinned one would put every
+	// availability window in the wrong place.
+	now := EpochTime()
 
 	for _, c := range file.Contributors {
 		if _, err := conn.Exec(ctx,
@@ -299,7 +304,7 @@ type catalogueFile struct {
 	GlobalNorms []seedGlobalNorm `json:"global_norms"`
 }
 
-func seedCatalogue(ctx context.Context, conn *pgx.Conn) error {
+func seedCatalogue(ctx context.Context, conn *pgx.Conn, bindings map[string]string) error {
 	var file catalogueFile
 	if err := readSeed("catalogue", &file); err != nil {
 		return err
@@ -314,6 +319,12 @@ func seedCatalogue(ctx context.Context, conn *pgx.Conn) error {
 			s.ID, s.Slug, s.Name, s.Description, s.Category, s.ScoringMode); err != nil {
 			return fmt.Errorf("skill %s: %w", s.Slug, err)
 		}
+		// A fixture that needs a catalogue skill's id — to prove that
+		// accepting a DECLARED skill through the suggestion path is refused,
+		// say — has no response to capture it from. The seed is the only place
+		// that knows it.
+		bindings[s.Key+".skill_id"] = s.ID
+
 		for _, alias := range s.Aliases {
 			if _, err := conn.Exec(ctx,
 				`INSERT INTO skill_aliases (skill_id, alias) VALUES ($1, $2)`, s.ID, alias); err != nil {
@@ -385,6 +396,41 @@ type seedPREvidence struct {
 	Role     string `json:"role"`
 }
 
+// mergedAtFor resolves a seeded PR's merge date.
+//
+// Absent is an error rather than a default: a claim whose evidence has no
+// known merge date would silently pass every age filter, which is the bug this
+// lookup exists to prevent.
+func mergedAtFor(merges map[string]time.Time, repo string, prNumber int) (time.Time, error) {
+	at, ok := merges[fmt.Sprintf("%s#%d", repo, prNumber)]
+	if !ok {
+		return time.Time{}, fmt.Errorf(
+			"%s#%d has no merged_at in the repositories seed", repo, prNumber)
+	}
+	return at, nil
+}
+
+// mergeDates reads every seeded pull request's merge date.
+func mergeDates() (map[string]time.Time, error) {
+	var file repositoriesSeed
+	if err := readSeed("repositories", &file); err != nil {
+		return nil, err
+	}
+
+	out := make(map[string]time.Time, len(file.PullRequests))
+	for key, pr := range file.PullRequests {
+		if pr.MergedAt == nil {
+			continue
+		}
+		at, err := time.Parse(time.RFC3339, *pr.MergedAt)
+		if err != nil {
+			return nil, fmt.Errorf("%s merged_at: %w", key, err)
+		}
+		out[key] = at
+	}
+	return out, nil
+}
+
 // seedClaim is a pre-scored claim. Fixed ids let a fixture reference one
 // directly and make a failure read the same on every run.
 type seedClaim struct {
@@ -448,6 +494,11 @@ type scoredSet struct {
 }
 
 func seedScoredSet(ctx context.Context, conn *pgx.Conn, s scoredSet, bindings map[string]string) error {
+	merges, err := mergeDates()
+	if err != nil {
+		return err
+	}
+
 	principals, err := LoadPrincipals()
 	if err != nil {
 		return err
@@ -481,7 +532,36 @@ func seedScoredSet(ctx context.Context, conn *pgx.Conn, s scoredSet, bindings ma
 			return fmt.Errorf("claim %s: %w", c.Key, err)
 		}
 
+		// The declared skills, derived from what the claim was scored on.
+		//
+		// A real claim names its skills before submission and the evaluator
+		// scores those; seeding the scores without the declaration produces a
+		// claim that was judged on skills nobody claimed, which no run could
+		// have created. It is also what claim reads count.
+		for _, slug := range claimSkillSlugs(s.PRSkillScores, c.Key) {
+			skillID, ok := skillIDs[slug]
+			if !ok {
+				return fmt.Errorf("claim %s references unknown skill %q", c.Key, slug)
+			}
+			if _, err := conn.Exec(ctx,
+				`INSERT INTO claim_skills (id, claim_id, skill_id, origin, is_nominated_primary)
+				 VALUES (gen_random_uuid(), $1, $2, 'user_declared', $3)
+				 ON CONFLICT DO NOTHING`,
+				c.ID, skillID, slug == c.NominatedPrimary); err != nil {
+				return fmt.Errorf("claim %s skill %s: %w", c.Key, slug, err)
+			}
+		}
+
 		for _, e := range c.PREvidence {
+			// The merge date comes from the repositories seed, not from
+			// now(). It is what evidence_within_months filters on, and
+			// stamping every seeded PR as merged this instant makes an age
+			// filter incapable of excluding anything.
+			mergedAt, err := mergedAtFor(merges, e.Repo, e.PRNumber)
+			if err != nil {
+				return fmt.Errorf("claim %s evidence %d: %w", c.Key, e.Position, err)
+			}
+
 			owner, repo, err := splitRepo(e.Repo)
 			if err != nil {
 				return fmt.Errorf("claim %s position %d: %w", c.Key, e.Position, err)
@@ -490,22 +570,31 @@ func seedScoredSet(ctx context.Context, conn *pgx.Conn, s scoredSet, bindings ma
 			if _, err := conn.Exec(ctx,
 				`INSERT INTO claim_pr_evidence
 				   (id, claim_id, pr_url, repo_owner, repo_name, pr_number, position, role, verified_at, enriched_at, merged_at)
-				 VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, now(), now(), now())`,
-				c.ID, url, owner, repo, e.PRNumber, e.Position, e.Role); err != nil {
+				 VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, now(), now(), $8)`,
+				c.ID, url, owner, repo, e.PRNumber, e.Position, e.Role, mergedAt); err != nil {
 				return fmt.Errorf("claim %s evidence %d: %w", c.Key, e.Position, err)
 			}
 		}
 
 		// A scored PR needs an evaluation to hang off. Writing the scores
 		// without one would leave a shape no real run could produce.
+		//
+		// The fingerprint comes from the repository's own function rather than
+		// a stand-in, so a seeded claim resubmitted unchanged is recognised as
+		// unchanged — which a placeholder hash never could be.
+		evidence, err := postgres.Fingerprint(ctx, conn, c.ID)
+		if err != nil {
+			return fmt.Errorf("claim %s fingerprint: %w", c.Key, err)
+		}
+
 		var evaluationID string
 		if err := conn.QueryRow(ctx,
 			`INSERT INTO evaluations
 			   (id, claim_id, claim_version, rubric_version, model, prompt_version,
 			    evidence_fingerprint, trigger, status, completed_at)
 			 VALUES (gen_random_uuid(), $1, $2, 'v1', 'e2e-fake', 'v1',
-			         decode(md5($1::text), 'hex'), 'submission', 'succeeded', now())
-			 RETURNING id`, c.ID, c.Version).Scan(&evaluationID); err != nil {
+			         $3, 'submission', 'succeeded', now())
+			 RETURNING id`, c.ID, c.Version, []byte(evidence)).Scan(&evaluationID); err != nil {
 			return fmt.Errorf("claim %s evaluation: %w", c.Key, err)
 		}
 		claims[c.Key] = claimRef{claimID: c.ID, userID: uid, evaluationID: evaluationID}
@@ -565,10 +654,14 @@ func seedScoredSet(ctx context.Context, conn *pgx.Conn, s scoredSet, bindings ma
 			return fmt.Errorf("user_skills references unknown skill %q", us.Skill)
 		}
 		if _, err := conn.Exec(ctx,
+			// promoted_at is deliberately NULL. It records that a promotion
+			// was OBSERVED, and a standing that existed before step 0 was
+			// never observed being promoted — stamping it would claim an
+			// event that never happened.
 			`INSERT INTO user_skills
 			   (user_id, skill_id, distinct_pr_count, standing, score, pr_component, project_component,
-			    promoted_at, last_evaluated_at)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7, CASE WHEN $4 = 'primary' THEN now() END, now())
+			    last_evaluated_at)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, now())
 			 ON CONFLICT (user_id, skill_id) DO UPDATE
 			   SET distinct_pr_count = EXCLUDED.distinct_pr_count,
 			       standing          = EXCLUDED.standing,
@@ -653,4 +746,24 @@ func nullableTime(s string) *time.Time {
 		return nil
 	}
 	return &t
+}
+
+// claimSkillSlugs lists the distinct skills one claim was scored against, in
+// first-seen order so the seed is deterministic.
+func claimSkillSlugs(scores []seedPRSkillScore, claimKey string) []string {
+	var (
+		out  []string
+		seen = map[string]struct{}{}
+	)
+	for _, sc := range scores {
+		if sc.Claim != claimKey {
+			continue
+		}
+		if _, ok := seen[sc.Skill]; ok {
+			continue
+		}
+		seen[sc.Skill] = struct{}{}
+		out = append(out, sc.Skill)
+	}
+	return out
 }

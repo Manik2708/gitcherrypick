@@ -21,6 +21,10 @@ type DiscoveryService struct {
 	skills port.SkillRepository
 	saved  port.SavedSearchRepository
 	access port.AccessService
+
+	// rubric is the version this process scores under. A board is only
+	// meaningful within one version (ADR-0005), so every board says which.
+	rubric string
 }
 
 // NewDiscoveryService wires discovery.
@@ -29,8 +33,11 @@ func NewDiscoveryService(
 	skills port.SkillRepository,
 	saved port.SavedSearchRepository,
 	access port.AccessService,
+	rubric string,
 ) *DiscoveryService {
-	return &DiscoveryService{search: search, skills: skills, saved: saved, access: access}
+	return &DiscoveryService{
+		search: search, skills: skills, saved: saved, access: access, rubric: rubric,
+	}
 }
 
 var _ port.DiscoveryService = (*DiscoveryService)(nil)
@@ -44,7 +51,12 @@ func (s *DiscoveryService) Search(ctx context.Context, p domain.Principal, q dom
 	if err := s.access.RequireHiringCapability(ctx, p); err != nil {
 		return nil, err
 	}
-	if err := s.validateFilters(ctx, q); err != nil {
+	// Only the RANGES are checked here, not the skills. A live search that
+	// names a skill outside the catalogue returns nothing and says so in the
+	// count — which the hirer sees immediately. Saving one is different: it is
+	// replayed for months, and a typo would go on returning nothing with
+	// nobody watching, so SaveSearch validates the slugs.
+	if err := validateRanges(q); err != nil {
 		return nil, err
 	}
 
@@ -67,27 +79,47 @@ func (s *DiscoveryService) Search(ctx context.Context, p domain.Principal, q dom
 // and a recruiter would read that as "nobody has this skill" rather than "you
 // typed a skill that does not exist".
 func (s *DiscoveryService) validateFilters(ctx context.Context, q domain.SearchQuery) error {
+	if err := validateRanges(q); err != nil {
+		return err
+	}
 	for _, slug := range q.Skills {
 		if _, err := s.skills.BySlug(ctx, slug); err != nil {
 			if errors.Is(err, port.ErrNotFound) {
-				return fmt.Errorf("%q is not a skill in the catalogue: %w", slug, ErrInvalid)
+				return Coded(ErrInvalid, CodeUnknownSkill,
+					"%q is not a skill in the catalogue", slug).
+					WithDetail(map[string]any{"items": []FilterProblem{
+						{Field: "skills", Value: slug, Reason: "not_in_catalogue"},
+					}})
 			}
 			return fmt.Errorf("resolving skill %q: %w", slug, err)
 		}
 	}
 
-	// Skill and overall scores are ceiled at 100 (ADR-0007), so a higher
-	// threshold is not a narrow filter — it is an empty one, and saying so
-	// beats returning zero results.
+	return nil
+}
+
+// validateRanges rejects a threshold that could never be met.
+//
+// Skill and overall scores are ceiled at 100 (ADR-0007), so a higher threshold
+// is not a narrow filter — it is an empty one, and saying so beats returning
+// zero results. min_generalist_score is deliberately unbounded: the breadth
+// score has no ceiling (ADR-0007 §5).
+func validateRanges(q domain.SearchQuery) error {
 	if q.MinSkillScore != nil && *q.MinSkillScore > 100 {
-		return fmt.Errorf("min_skill_score is at most 100: %w", ErrInvalid)
+		return outOfRange("min_skill_score")
 	}
 	if q.MinOverallScore != nil && *q.MinOverallScore > 100 {
-		return fmt.Errorf("min_overall_score is at most 100: %w", ErrInvalid)
+		return outOfRange("min_overall_score")
 	}
-	// min_generalist_score is deliberately unbounded — the breadth score has no
-	// ceiling (ADR-0007 §5).
 	return nil
+}
+
+// outOfRange refuses a score threshold above the 0..100 ceiling.
+func outOfRange(field string) error {
+	return Coded(ErrInvalid, CodeInvalidFilter, "%s is at most 100", field).
+		WithDetail(map[string]any{"items": []FilterProblem{
+			{Field: field, Reason: "out_of_range", Max: intPtr(100)},
+		}})
 }
 
 // Leaderboard reads a board.
@@ -124,6 +156,10 @@ func (s *DiscoveryService) Leaderboard(ctx context.Context, p domain.Principal, 
 		}
 		return nil, fmt.Errorf("reading leaderboard: %w", err)
 	}
+
+	// Stamped by the SERVICE, not the repository. The active rubric is process
+	// configuration (--rubric-version), and a repository that named one would
+	// be answering a question it has no way to know the answer to.
 	return board, nil
 }
 
@@ -154,6 +190,7 @@ func (s *DiscoveryService) Scorecard(ctx context.Context, p domain.Principal, ta
 		}
 		return nil, fmt.Errorf("reading scorecard: %w", err)
 	}
+	card.RubricVersion = s.rubric
 	return card, nil
 }
 
@@ -169,6 +206,7 @@ func (s *DiscoveryService) MyRank(ctx context.Context, id domain.UserID) (*domai
 		}
 		return nil, fmt.Errorf("reading rank: %w", err)
 	}
+	rank.RubricVersion = s.rubric
 	return rank, nil
 }
 

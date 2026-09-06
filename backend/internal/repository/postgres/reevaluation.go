@@ -2,9 +2,11 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/Manik2708/gitcherrypick/backend/internal/domain"
 	"github.com/Manik2708/gitcherrypick/backend/internal/port"
@@ -46,32 +48,78 @@ func (r *ReevaluationRepository) Create(ctx context.Context, req *domain.Reevalu
 	if err != nil {
 		return nil, translate(err, "creating re-evaluation request")
 	}
+
+	// A zero cooldown row, created with the first dispute and untouched by an
+	// acceptance: being right costs nothing (ADR-0007 §6). Materialising it
+	// here rather than on the first REJECTION means the throttle state is
+	// readable from the moment a contributor starts disputing, instead of
+	// appearing only once they have been wrong.
+	if _, err := r.db.pool.Exec(ctx, `
+		INSERT INTO reevaluation_cooldowns (user_id, rejection_count, tier)
+		VALUES ($1, 0, 0)
+		ON CONFLICT (user_id) DO NOTHING`, string(req.UserID)); err != nil {
+		return nil, translate(err, "opening the cooldown record")
+	}
 	return &created, nil
 }
 
 // Pending drains the admin queue, oldest first.
 func (r *ReevaluationRepository) Pending(ctx context.Context) ([]domain.ReevaluationRequest, error) {
+	return r.ByStatus(ctx, "pending")
+}
+
+// ByStatus drains the admin queue for one status.
+//
+// An admin reviewing what they decided last week needs the same list the
+// pending queue gives them, which is why this is one query rather than a
+// pending-only read plus a separate history.
+func (r *ReevaluationRepository) ByStatus(ctx context.Context, status string) ([]domain.ReevaluationRequest, error) {
 	rows, err := r.db.pool.Query(ctx, `
-		SELECT id, claim_id, user_id, reason, status, reviewed_by, reviewed_at,
-		       coalesce(decision_note, ''), created_at
-		FROM reevaluation_requests
-		WHERE status = 'pending'
-		ORDER BY created_at`)
+		SELECT rr.id, rr.claim_id, rr.user_id, u.display_name, rr.reason, rr.status,
+		       rr.reviewed_by, rr.reviewed_at, coalesce(rr.decision_note, ''), rr.created_at
+		FROM reevaluation_requests rr
+		JOIN users u ON u.id = rr.user_id
+		WHERE rr.status = $1::reevaluation_status
+		ORDER BY rr.created_at`, status)
 	if err != nil {
-		return nil, translate(err, "listing pending re-evaluations")
+		return nil, translate(err, fmt.Sprintf("listing %s re-evaluations", status))
 	}
 	defer rows.Close()
 
 	var out []domain.ReevaluationRequest
 	for rows.Next() {
 		var req domain.ReevaluationRequest
-		if err := rows.Scan(&req.ID, &req.ClaimID, &req.UserID, &req.Reason, &req.Status,
-			&req.ReviewedBy, &req.ReviewedAt, &req.Decision, &req.CreatedAt); err != nil {
+		if err := rows.Scan(&req.ID, &req.ClaimID, &req.UserID, &req.DisplayName,
+			&req.Reason, &req.Status, &req.ReviewedBy, &req.ReviewedAt,
+			&req.Decision, &req.CreatedAt); err != nil {
 			return nil, translate(err, "scanning re-evaluation request")
 		}
 		out = append(out, req)
 	}
-	return out, translate(rows.Err(), "listing pending re-evaluations")
+	return out, translate(rows.Err(), fmt.Sprintf("listing %s re-evaluations", status))
+}
+
+// OpenRequest returns the dispute a contributor already has in flight.
+func (r *ReevaluationRepository) OpenRequest(ctx context.Context, id domain.UserID) (*domain.ReevaluationRequest, error) {
+	var req domain.ReevaluationRequest
+	err := r.db.pool.QueryRow(ctx, `
+		SELECT rr.id, rr.claim_id, rr.user_id, u.display_name, rr.reason, rr.status,
+		       rr.reviewed_by, rr.reviewed_at, coalesce(rr.decision_note, ''), rr.created_at
+		FROM reevaluation_requests rr
+		JOIN users u ON u.id = rr.user_id
+		WHERE rr.user_id = $1 AND rr.status = 'pending'
+		ORDER BY rr.created_at
+		LIMIT 1`, string(id)).
+		Scan(&req.ID, &req.ClaimID, &req.UserID, &req.DisplayName,
+			&req.Reason, &req.Status, &req.ReviewedBy, &req.ReviewedAt,
+			&req.Decision, &req.CreatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, translate(err, fmt.Sprintf("reading the open dispute for %s", id))
+	}
+	return &req, nil
 }
 
 // Decide records the outcome and, ON REJECTION ONLY, advances the cooldown.
@@ -114,7 +162,7 @@ func (r *ReevaluationRepository) Decide(ctx context.Context, t port.Tx, id domai
 	if err != nil {
 		return err
 	}
-	cooldown.RecordRejection(nowFrom(ctx))
+	cooldown.RecordRejection(r.db.now())
 
 	if _, err := q.Exec(ctx, `
 		INSERT INTO reevaluation_cooldowns (user_id, rejection_count, tier, cooldown_until, updated_at)

@@ -207,16 +207,16 @@ func (_c *AdminService_DecideSkillRequest_Call) RunAndReturn(run func(ctx contex
 }
 
 // DecideVerification provides a mock function for the type AdminService
-func (_mock *AdminService) DecideVerification(ctx context.Context, p domain.Principal, id domain.RequestID, approve bool, reason string) error {
-	ret := _mock.Called(ctx, p, id, approve, reason)
+func (_mock *AdminService) DecideVerification(ctx context.Context, p domain.Principal, id domain.RequestID, d domain.VerificationDecision) error {
+	ret := _mock.Called(ctx, p, id, d)
 
 	if len(ret) == 0 {
 		panic("no return value specified for DecideVerification")
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.Principal, domain.RequestID, bool, string) error); ok {
-		r0 = returnFunc(ctx, p, id, approve, reason)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.Principal, domain.RequestID, domain.VerificationDecision) error); ok {
+		r0 = returnFunc(ctx, p, id, d)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -232,13 +232,12 @@ type AdminService_DecideVerification_Call struct {
 //   - ctx context.Context
 //   - p domain.Principal
 //   - id domain.RequestID
-//   - approve bool
-//   - reason string
-func (_e *AdminService_Expecter) DecideVerification(ctx interface{}, p interface{}, id interface{}, approve interface{}, reason interface{}) *AdminService_DecideVerification_Call {
-	return &AdminService_DecideVerification_Call{Call: _e.mock.On("DecideVerification", ctx, p, id, approve, reason)}
+//   - d domain.VerificationDecision
+func (_e *AdminService_Expecter) DecideVerification(ctx interface{}, p interface{}, id interface{}, d interface{}) *AdminService_DecideVerification_Call {
+	return &AdminService_DecideVerification_Call{Call: _e.mock.On("DecideVerification", ctx, p, id, d)}
 }
 
-func (_c *AdminService_DecideVerification_Call) Run(run func(ctx context.Context, p domain.Principal, id domain.RequestID, approve bool, reason string)) *AdminService_DecideVerification_Call {
+func (_c *AdminService_DecideVerification_Call) Run(run func(ctx context.Context, p domain.Principal, id domain.RequestID, d domain.VerificationDecision)) *AdminService_DecideVerification_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -252,20 +251,15 @@ func (_c *AdminService_DecideVerification_Call) Run(run func(ctx context.Context
 		if args[2] != nil {
 			arg2 = args[2].(domain.RequestID)
 		}
-		var arg3 bool
+		var arg3 domain.VerificationDecision
 		if args[3] != nil {
-			arg3 = args[3].(bool)
-		}
-		var arg4 string
-		if args[4] != nil {
-			arg4 = args[4].(string)
+			arg3 = args[3].(domain.VerificationDecision)
 		}
 		run(
 			arg0,
 			arg1,
 			arg2,
 			arg3,
-			arg4,
 		)
 	})
 	return _c
@@ -276,75 +270,7 @@ func (_c *AdminService_DecideVerification_Call) Return(err error) *AdminService_
 	return _c
 }
 
-func (_c *AdminService_DecideVerification_Call) RunAndReturn(run func(ctx context.Context, p domain.Principal, id domain.RequestID, approve bool, reason string) error) *AdminService_DecideVerification_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
-// PendingReevaluations provides a mock function for the type AdminService
-func (_mock *AdminService) PendingReevaluations(ctx context.Context, p domain.Principal) ([]domain.ReevaluationRequest, error) {
-	ret := _mock.Called(ctx, p)
-
-	if len(ret) == 0 {
-		panic("no return value specified for PendingReevaluations")
-	}
-
-	var r0 []domain.ReevaluationRequest
-	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.Principal) ([]domain.ReevaluationRequest, error)); ok {
-		return returnFunc(ctx, p)
-	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.Principal) []domain.ReevaluationRequest); ok {
-		r0 = returnFunc(ctx, p)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]domain.ReevaluationRequest)
-		}
-	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, domain.Principal) error); ok {
-		r1 = returnFunc(ctx, p)
-	} else {
-		r1 = ret.Error(1)
-	}
-	return r0, r1
-}
-
-// AdminService_PendingReevaluations_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'PendingReevaluations'
-type AdminService_PendingReevaluations_Call struct {
-	*mock.Call
-}
-
-// PendingReevaluations is a helper method to define mock.On call
-//   - ctx context.Context
-//   - p domain.Principal
-func (_e *AdminService_Expecter) PendingReevaluations(ctx interface{}, p interface{}) *AdminService_PendingReevaluations_Call {
-	return &AdminService_PendingReevaluations_Call{Call: _e.mock.On("PendingReevaluations", ctx, p)}
-}
-
-func (_c *AdminService_PendingReevaluations_Call) Run(run func(ctx context.Context, p domain.Principal)) *AdminService_PendingReevaluations_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 context.Context
-		if args[0] != nil {
-			arg0 = args[0].(context.Context)
-		}
-		var arg1 domain.Principal
-		if args[1] != nil {
-			arg1 = args[1].(domain.Principal)
-		}
-		run(
-			arg0,
-			arg1,
-		)
-	})
-	return _c
-}
-
-func (_c *AdminService_PendingReevaluations_Call) Return(reevaluationRequests []domain.ReevaluationRequest, err error) *AdminService_PendingReevaluations_Call {
-	_c.Call.Return(reevaluationRequests, err)
-	return _c
-}
-
-func (_c *AdminService_PendingReevaluations_Call) RunAndReturn(run func(ctx context.Context, p domain.Principal) ([]domain.ReevaluationRequest, error)) *AdminService_PendingReevaluations_Call {
+func (_c *AdminService_DecideVerification_Call) RunAndReturn(run func(ctx context.Context, p domain.Principal, id domain.RequestID, d domain.VerificationDecision) error) *AdminService_DecideVerification_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -487,6 +413,80 @@ func (_c *AdminService_PendingVerifications_Call) Return(verificationRequests []
 }
 
 func (_c *AdminService_PendingVerifications_Call) RunAndReturn(run func(ctx context.Context, p domain.Principal) ([]port.VerificationRequest, error)) *AdminService_PendingVerifications_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// Reevaluations provides a mock function for the type AdminService
+func (_mock *AdminService) Reevaluations(ctx context.Context, p domain.Principal, status string) ([]domain.ReevaluationRequest, error) {
+	ret := _mock.Called(ctx, p, status)
+
+	if len(ret) == 0 {
+		panic("no return value specified for Reevaluations")
+	}
+
+	var r0 []domain.ReevaluationRequest
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.Principal, string) ([]domain.ReevaluationRequest, error)); ok {
+		return returnFunc(ctx, p, status)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.Principal, string) []domain.ReevaluationRequest); ok {
+		r0 = returnFunc(ctx, p, status)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]domain.ReevaluationRequest)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, domain.Principal, string) error); ok {
+		r1 = returnFunc(ctx, p, status)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// AdminService_Reevaluations_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Reevaluations'
+type AdminService_Reevaluations_Call struct {
+	*mock.Call
+}
+
+// Reevaluations is a helper method to define mock.On call
+//   - ctx context.Context
+//   - p domain.Principal
+//   - status string
+func (_e *AdminService_Expecter) Reevaluations(ctx interface{}, p interface{}, status interface{}) *AdminService_Reevaluations_Call {
+	return &AdminService_Reevaluations_Call{Call: _e.mock.On("Reevaluations", ctx, p, status)}
+}
+
+func (_c *AdminService_Reevaluations_Call) Run(run func(ctx context.Context, p domain.Principal, status string)) *AdminService_Reevaluations_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 domain.Principal
+		if args[1] != nil {
+			arg1 = args[1].(domain.Principal)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *AdminService_Reevaluations_Call) Return(reevaluationRequests []domain.ReevaluationRequest, err error) *AdminService_Reevaluations_Call {
+	_c.Call.Return(reevaluationRequests, err)
+	return _c
+}
+
+func (_c *AdminService_Reevaluations_Call) RunAndReturn(run func(ctx context.Context, p domain.Principal, status string) ([]domain.ReevaluationRequest, error)) *AdminService_Reevaluations_Call {
 	_c.Call.Return(run)
 	return _c
 }

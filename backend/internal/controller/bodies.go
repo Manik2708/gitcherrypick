@@ -2,6 +2,7 @@ package controller
 
 import (
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
@@ -16,29 +17,33 @@ import (
 // came from.
 
 // userSkillBody is a contributor's standing in one skill.
+//
+// Stale is per skill as well as per response: a sweep reaches skills one at a
+// time, so a contributor can hold one current standing and one superseded, and
+// a single top-level flag would not say which is which.
 type userSkillBody struct {
-	Slug             string  `json:"slug"`
-	Standing         string  `json:"standing"`
-	DistinctPRCount  int     `json:"distinct_pr_count"`
-	Score            float64 `json:"score"`
-	PRComponent      float64 `json:"pr_component"`
-	ProjectComponent float64 `json:"project_component"`
-	RubricVersion    string  `json:"rubric_version"`
+	Slug            string     `json:"slug"`
+	Standing        string     `json:"standing"`
+	DistinctPRCount int        `json:"distinct_pr_count"`
+	Score           float64    `json:"score"`
+	RubricVersion   string     `json:"rubric_version"`
+	Stale           bool       `json:"stale"`
+	PromotedAt      *time.Time `json:"promoted_at,omitempty"`
 }
 
-func userSkillBodies(skills []domain.UserSkill) []userSkillBody {
+func userSkillBodies(skills []domain.UserSkill, current string) []userSkillBody {
 	// Never nil: an empty list must serialize as [] rather than null, because
 	// a client iterating the result should not have to special-case one.
 	out := make([]userSkillBody, 0, len(skills))
 	for _, s := range skills {
 		out = append(out, userSkillBody{
-			Slug:             s.Slug,
-			Standing:         string(s.Standing),
-			DistinctPRCount:  s.DistinctPRCount,
-			Score:            s.Score,
-			PRComponent:      s.PRComponent,
-			ProjectComponent: s.ProjectComponent,
-			RubricVersion:    s.RubricVersion,
+			Slug:            s.Slug,
+			Standing:        string(s.Standing),
+			DistinctPRCount: s.DistinctPRCount,
+			Score:           s.Score,
+			RubricVersion:   s.RubricVersion,
+			Stale:           s.RubricVersion != "" && s.RubricVersion != current,
+			PromotedAt:      s.PromotedAt,
 		})
 	}
 	return out
@@ -65,13 +70,15 @@ type skillRankBody struct {
 }
 
 type myRankBody struct {
-	RubricVersion  string           `json:"rubric_version"`
-	Ranked         bool             `json:"ranked"`
-	UnrankedReason *string          `json:"unranked_reason"`
-	Active         bool             `json:"active"`
-	Overall        rankPositionBody `json:"overall"`
-	Generalist     rankPositionBody `json:"generalist"`
-	Skills         []skillRankBody  `json:"skills"`
+	RubricVersion   string  `json:"rubric_version"`
+	Ranked          bool    `json:"ranked"`
+	UnrankedReason  *string `json:"unranked_reason"`
+	Active          bool    `json:"active"`
+	InactiveForDays *int    `json:"inactive_for_days,omitempty"`
+
+	Overall    rankPositionBody `json:"overall"`
+	Generalist rankPositionBody `json:"generalist"`
+	Skills     []skillRankBody  `json:"skills"`
 }
 
 func rankBody(r *domain.Rank) myRankBody {
@@ -80,12 +87,13 @@ func rankBody(r *domain.Rank) myRankBody {
 	}
 
 	out := myRankBody{
-		RubricVersion: r.RubricVersion,
-		Ranked:        r.Ranked,
-		Active:        r.Active,
-		Overall:       positionBody(r.Overall),
-		Generalist:    positionBody(r.Generalist),
-		Skills:        make([]skillRankBody, 0, len(r.Skills)),
+		RubricVersion:   r.RubricVersion,
+		Ranked:          r.Ranked,
+		Active:          r.Active,
+		InactiveForDays: r.InactiveForDays,
+		Overall:         positionBody(r.Overall),
+		Generalist:      positionBody(r.Generalist),
+		Skills:          make([]skillRankBody, 0, len(r.Skills)),
 	}
 	if r.UnrankedReason != "" {
 		out.UnrankedReason = &r.UnrankedReason
@@ -107,26 +115,55 @@ func positionBody(p domain.RankPosition) rankPositionBody {
 //
 // The organization is named; the individual recruiter is not. A contributor
 // decides about a company, and RequestedBy is an internal audit field.
-type contactRequestBody struct {
-	ID                  domain.ContactID   `json:"id"`
-	ShortlistID         domain.ShortlistID `json:"shortlist_id"`
-	Status              string             `json:"status"`
-	TentativeResultDate time.Time          `json:"tentative_result_date"`
-	RespondedAt         *time.Time         `json:"responded_at"`
-	EmailReleasedAt     *time.Time         `json:"email_released_at"`
-	ExpiresAt           time.Time          `json:"expires_at"`
+// contactOrgBody is the company asking, as the contributor sees it.
+//
+// Name and payment status, and no id: a contributor decides about a company
+// they can recognise, not one they can look up.
+type contactOrgBody struct {
+	Name            string `json:"name"`
+	Verified        bool   `json:"verified"`
+	PaymentVerified bool   `json:"payment_verified"`
 }
 
+type contactRequestBody struct {
+	ID           domain.ContactID `json:"id"`
+	Organization contactOrgBody   `json:"organization"`
+	Status       string           `json:"status"`
+
+	// A DAY, not an instant: "we will decide by the 30th" is the promise that
+	// was made, and rendering it with a time attaches precision nobody offered.
+	TentativeResultDate Date `json:"tentative_result_date"`
+
+	// Disclosure is the warning ADR-0002 §5 requires when a company's payment
+	// is unverified, and null when there is nothing to warn about. Present
+	// either way, so a client renders one field rather than inferring it.
+	Disclosure *string `json:"disclosure"`
+
+	ExpiresAt time.Time `json:"expires_at"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// unverifiedPaymentDisclosure is shown before a contributor releases their
+// address to a company whose payment has not been verified.
+const unverifiedPaymentDisclosure = "This organization is hiring for the first time and has not verified payment capability."
+
 func contactBody(c domain.ContactRequest) contactRequestBody {
-	return contactRequestBody{
-		ID:                  c.ID,
-		ShortlistID:         c.ShortlistID,
+	out := contactRequestBody{
+		ID: c.ID,
+		Organization: contactOrgBody{
+			Name:     c.OrganizationName,
+			Verified: c.OrganizationVerified, PaymentVerified: c.PaymentVerified,
+		},
 		Status:              string(c.Status),
-		TentativeResultDate: c.TentativeResultDate,
-		RespondedAt:         c.RespondedAt,
-		EmailReleasedAt:     c.EmailReleasedAt,
+		TentativeResultDate: Date{Time: c.TentativeResultDate},
 		ExpiresAt:           c.ExpiresAt,
+		CreatedAt:           c.CreatedAt,
 	}
+	if !c.PaymentVerified {
+		disclosure := unverifiedPaymentDisclosure
+		out.Disclosure = &disclosure
+	}
+	return out
 }
 
 func contactBodies(requests []domain.ContactRequest) []contactRequestBody {
@@ -137,13 +174,44 @@ func contactBodies(requests []domain.ContactRequest) []contactRequestBody {
 	return out
 }
 
-// fieldError names one invalid parameter.
+// fieldError names one invalid input.
 //
-// A machine-readable field and reason, so a client can highlight the input
-// rather than parse a sentence.
+// A machine-readable field and reason so a client can highlight the offending
+// input rather than parse a sentence, plus whatever context makes the failure
+// actionable: the maximum that was exceeded, the spelling that was probably
+// meant, the other claim that already owns a pair.
+//
+// Everything but Reason is optional, because what a caller needs differs by
+// failure — "too many" needs a limit, "unknown filter" needs a suggestion, and
+// a bad evidence row needs its position rather than a field name.
 type fieldError struct {
-	Field  string `json:"field"`
-	Reason string `json:"reason"`
+	Field    string `json:"field,omitempty"`
+	Position int    `json:"position,omitempty"`
+	Reason   string `json:"reason"`
+	Message  string `json:"message,omitempty"`
+
+	Max      *int `json:"max,omitempty"`
+	Provided *int `json:"provided,omitempty"`
+
+	Allowed    []string `json:"allowed,omitempty"`
+	DidYouMean string   `json:"did_you_mean,omitempty"`
+	Value      string   `json:"value,omitempty"`
+
+	Skill              string          `json:"skill,omitempty"`
+	ConflictingClaimID *domain.ClaimID `json:"conflicting_claim_id,omitempty"`
+}
+
+// intPtr is for the optional numeric context above, which must distinguish a
+// limit of zero from no limit at all.
+func intPtr(v int) *int { return &v }
+
+// writeFieldErrors reports one or more invalid inputs.
+//
+// Every failure is reported rather than only the first: a contributor fixing a
+// claim, or a hirer fixing a query, should not have to submit repeatedly to
+// discover one problem at a time.
+func writeFieldErrors(w http.ResponseWriter, status int, code string, items []fieldError) {
+	writeDetail(w, status, map[string]any{"error": code, "items": items})
 }
 
 // resultSkillBody is a skill as it appears on a search result or scorecard.

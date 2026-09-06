@@ -67,7 +67,8 @@ func TestNilResultsDoNotPanic(t *testing.T) {
 		"cooldown": {
 			contributorPrincipal(), http.MethodGet, "/me/reevaluation-status", "",
 			func(h *harness) {
-				h.reeval.EXPECT().Status(mock.Anything, mock.Anything).Return(nil, nil)
+				h.reeval.EXPECT().Status(mock.Anything, mock.Anything).
+					Return(&domain.DisputeStanding{ClaimsEligible: []domain.ClaimID{}}, nil)
 			},
 		},
 	}
@@ -188,8 +189,8 @@ func TestGitHubCallbackUnexpectedFailure(t *testing.T) {
 func TestRejectedDecisionsReportRejected(t *testing.T) {
 	h := newHarness(t)
 	h.signIn("admin-token", adminPrincipal())
-	h.admin.EXPECT().DecideVerification(mock.Anything, mock.Anything, mock.Anything, false,
-		"no evidence").Return(nil)
+	h.admin.EXPECT().DecideVerification(mock.Anything, mock.Anything, mock.Anything,
+		domain.VerificationDecision{Reason: "no evidence"}).Return(nil)
 
 	got := h.do(t, http.MethodPost, "/admin/verifications/"+requestID+"/decide", "admin-token",
 		`{"decision":"rejected","reason":"no evidence"}`)
@@ -213,7 +214,7 @@ func TestDecisionVerbSynonyms(t *testing.T) {
 			h := newHarness(t)
 			h.signIn("admin-token", adminPrincipal())
 			h.admin.EXPECT().DecideVerification(mock.Anything, mock.Anything, mock.Anything,
-				want, mock.Anything).Return(nil)
+				domain.VerificationDecision{Approve: want, Reason: "r"}).Return(nil)
 
 			got := h.do(t, http.MethodPost, "/admin/verifications/"+requestID+"/decide",
 				"admin-token", `{"decision":"`+verb+`","reason":"r"}`)
@@ -261,16 +262,13 @@ func TestResultSkillsAreSerialized(t *testing.T) {
 	require.NotNil(t, body.Results[0].Availability)
 }
 
-func TestMalformedPRURLInAWholeClaimEdit(t *testing.T) {
-	// The whole-claim edit parses both kinds of evidence, so both rejections
-	// have to work there too.
+func TestMalformedProjectURLInAWholeClaimEdit(t *testing.T) {
+	// A malformed PROJECT url is still refused, unlike a PR one. PR evidence
+	// has an invalid_reason column to record the failure in and a submit-time
+	// check that acts on it; a project has neither, so accepting one would
+	// store a repository nothing can ever resolve.
 	h := newHarness(t)
 	h.signIn("alice-token", contributorPrincipal())
-
-	prs := h.do(t, http.MethodPut, "/claims/"+claimID, "alice-token",
-		`{"version":1,"prs":[{"position":1,"url":"nonsense"}],"projects":[],"skills":[]}`)
-	require.Equal(t, http.StatusUnprocessableEntity, prs.Status)
-	require.Equal(t, service.CodeInvalidEvidence, prs.errorCode(t))
 
 	projects := h.do(t, http.MethodPut, "/claims/"+claimID, "alice-token",
 		`{"version":1,"prs":[],"projects":[{"url":"nonsense","contribution_summary":""}],"skills":[]}`)

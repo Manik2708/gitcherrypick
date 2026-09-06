@@ -160,7 +160,11 @@ func runJob(ctx context.Context, cfg config, name string) error {
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	pool, err := pgxpool.New(ctx, cfg.databaseURL)
+	poolConfig, err := postgres.PoolConfig(cfg.databaseURL)
+	if err != nil {
+		return err
+	}
+	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)
 	if err != nil {
 		return fmt.Errorf("connecting to the database: %w", err)
 	}
@@ -172,7 +176,7 @@ func runJob(ctx context.Context, cfg config, name string) error {
 	}
 	defer closeClock()
 
-	db := postgres.New(pool)
+	db := postgres.New(pool).WithClock(now)
 	svc := service.NewJobService(
 		db.Users(), db.Shortlists(), db.Contacts(), db.Norms(), db.Hirers(),
 		resend.New(resend.Config{

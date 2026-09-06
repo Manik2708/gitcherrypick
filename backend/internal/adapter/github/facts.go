@@ -41,6 +41,16 @@ type repoPayload struct {
 	Fork            bool `json:"fork"`
 	StargazersCount int  `json:"stargazers_count"`
 	ForksCount      int  `json:"forks_count"`
+
+	// GitHub's REST API populates none of these three: the dependency graph is
+	// HTML-only, download counts belong to whichever registry the project
+	// publishes to, and the contributor count needs a separate paginated call.
+	// They are decoded anyway so a source that DOES supply them is not
+	// discarded here — and left at zero otherwise, which reach reads as
+	// absent (ADR-0005).
+	Contributors int `json:"contributors"`
+	Dependents   int `json:"dependents"`
+	Downloads    int `json:"downloads"`
 }
 
 // reviewPayload is one review on a pull request.
@@ -53,10 +63,13 @@ type reviewPayload struct {
 
 func (r repoPayload) facts() domain.RepoFacts {
 	return domain.RepoFacts{
-		Public: !r.Private,
-		Stars:  r.StargazersCount,
-		Forks:  r.ForksCount,
-		IsFork: r.Fork,
+		Public:       !r.Private,
+		Stars:        r.StargazersCount,
+		Forks:        r.ForksCount,
+		Contributors: r.Contributors,
+		Dependents:   r.Dependents,
+		Downloads:    r.Downloads,
+		IsFork:       r.Fork,
 
 		// Dependents and Downloads stay zero: GitHub's REST API exposes
 		// neither. The dependency graph is HTML-only and download counts belong
