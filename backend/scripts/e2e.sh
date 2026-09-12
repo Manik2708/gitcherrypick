@@ -158,9 +158,21 @@ export E2E_API_BINARY="${RUN_DIR}/api"
 # A throwaway Ed25519 keypair. ADR-0011 refuses to boot without one and has no
 # generate-if-absent fallback, precisely so a deployment cannot start with a key
 # nobody holds — which means the harness has to make one.
-openssl genpkey -algorithm ed25519 -out "${RUN_DIR}/signing.pem" 2>/dev/null \
-  || die "generating a signing key (needs openssl)"
-openssl pkey -in "${RUN_DIR}/signing.pem" -pubout -out "${RUN_DIR}/signing.pub" 2>/dev/null \
+# macOS ships LibreSSL as `openssl`, and LibreSSL has no ed25519. Fall back to
+# a Homebrew OpenSSL 3 before failing, so a stock Mac runs the suite rather
+# than dying with a message that does not say why. CI's Ubuntu is fine either
+# way.
+OPENSSL="$(command -v openssl || true)"
+[[ -n "${OPENSSL}" ]] || die "openssl is not installed"
+if ! "${OPENSSL}" genpkey -algorithm ed25519 -out /dev/null 2>/dev/null; then
+  for candidate in /opt/homebrew/opt/openssl@3/bin/openssl /usr/local/opt/openssl@3/bin/openssl; do
+    [[ -x "${candidate}" ]] && OPENSSL="${candidate}" && break
+  done
+fi
+
+"${OPENSSL}" genpkey -algorithm ed25519 -out "${RUN_DIR}/signing.pem" 2>/dev/null \
+  || die "generating a signing key: this openssl has no ed25519 (macOS ships LibreSSL) — brew install openssl@3"
+"${OPENSSL}" pkey -in "${RUN_DIR}/signing.pem" -pubout -out "${RUN_DIR}/signing.pub" 2>/dev/null \
   || die "deriving the public key"
 
 export E2E_SIGNING_KEY="${RUN_DIR}/signing.pem"

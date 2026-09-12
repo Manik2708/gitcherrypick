@@ -16,11 +16,37 @@ type Server struct {
 	// selfURL is what the Google discovery document advertises. Discovery has
 	// to name absolute URLs, so the server must know where a client reaches it.
 	selfURL string
+
+	// oauthCallbackURL turns this server into something a BROWSER can sign in
+	// through, by giving /login/oauth/authorize somewhere to send the user
+	// back to.
+	//
+	// Empty for the fixture suite, which never visits an authorize page — it
+	// calls the callback directly with a code it already knows. Set by dev.sh,
+	// where a person is clicking "Sign in with GitHub" and there is no real
+	// GitHub to bounce off (ADR-0010: the provider is redirected, so the
+	// redirect has to lead somewhere).
+	oauthCallbackURL string
+
+	// hirerOAuthCallbackURL is the same door for the other account type.
+	//
+	// One GitHub identity may own a contributor AND a hirer seat (ADR-0009),
+	// and the API's authorize URL carries no redirect_uri to tell them apart —
+	// a real OAuth app configures its callback once. So the sign-in page
+	// offers both, which is the distinction a person actually has to make.
+	hirerOAuthCallbackURL string
 }
 
 // NewServer builds the router.
 func NewServer(store *Store, selfURL string) *Server {
 	return &Server{store: store, selfURL: strings.TrimSuffix(selfURL, "/")}
+}
+
+// WithOAuthCallback enables the browser sign-in page.
+func (s *Server) WithOAuthCallback(contributor, hirer string) *Server {
+	s.oauthCallbackURL = strings.TrimSuffix(contributor, "/")
+	s.hirerOAuthCallbackURL = strings.TrimSuffix(hirer, "/")
+	return s
 }
 
 // Handler mounts every route.
@@ -35,6 +61,7 @@ func (s *Server) Handler() http.Handler {
 	r := chi.NewRouter()
 
 	r.Route("/github", func(r chi.Router) {
+		r.Get("/login/oauth/authorize", s.githubAuthorize)
 		r.Post("/login/oauth/access_token", s.githubAccessToken)
 		r.Get("/user", s.githubUser)
 		r.Get("/user/emails", s.githubUserEmails)

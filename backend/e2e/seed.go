@@ -25,7 +25,14 @@ import (
 // write the fixture and to read it back, and the test would pass. Seed data is
 // test infrastructure, so it goes in by the shortest honest path.
 
-const seedRoot = "fixtures/seed"
+// SeedRoot is where the seed sets live.
+//
+// A variable rather than a constant because two callers run from different
+// working directories: the suite runs from backend/e2e, and cmd/devdata runs
+// from wherever a developer invoked it. Both read the SAME files — a
+// development database seeded from a second copy would drift from the one the
+// fixtures assert against.
+var SeedRoot = "fixtures/seed"
 
 // SeededPassword is shared by every seeded account that has one.
 //
@@ -104,7 +111,7 @@ func seedSet(ctx context.Context, conn *pgx.Conn, set string, bindings map[strin
 }
 
 func readSeed(name string, into any) error {
-	raw, err := os.ReadFile(filepath.Join(seedRoot, name+".json"))
+	raw, err := os.ReadFile(filepath.Join(SeedRoot, name+".json"))
 	if err != nil {
 		return err
 	}
@@ -396,6 +403,39 @@ type seedPREvidence struct {
 	Role     string `json:"role"`
 }
 
+// seededDimension is one dimension of a seeded verdict.
+type seededDimension struct {
+	Score  int    `json:"score"`
+	Remark string `json:"remark"`
+}
+
+// seededDimensionNames are the five the rubric weighs (ADR-0005).
+var seededDimensionNames = []string{
+	"substance", "complexity", "conversation_quality", "craft", "skill_specificity",
+}
+
+// seededDimensions renders a weighted total back into the five numbers behind
+// it, flat.
+//
+// Flat because the seed knows the total and not its decomposition, and
+// inventing a spread would put numbers in the fixtures that no arithmetic
+// produced. Equal dimensions are the one decomposition that reproduces the
+// total whatever the weights are.
+func seededDimensions(quality float64) (string, error) {
+	flat := make(map[string]seededDimension, len(seededDimensionNames))
+	for _, name := range seededDimensionNames {
+		flat[name] = seededDimension{
+			Score:  int(quality + 0.5),
+			Remark: "Seeded from the recorded weighted score.",
+		}
+	}
+	encoded, err := json.Marshal(flat)
+	if err != nil {
+		return "", err
+	}
+	return string(encoded), nil
+}
+
 // mergedAtFor resolves a seeded PR's merge date.
 //
 // Absent is an error rather than a default: a claim whose evidence has no
@@ -622,13 +662,26 @@ func seedScoredSet(ctx context.Context, conn *pgx.Conn, s scoredSet, bindings ma
 			return fmt.Errorf("score for claim %s position %d: %w", sc.Claim, sc.Position, err)
 		}
 
+		// The dimensions are DERIVED from quality_q rather than written out.
+		//
+		// A seeded score records the weighted total the model reached, not the
+		// five numbers behind it. Five equal dimensions reproduce that total
+		// under any weighting, which keeps the seed arithmetically honest —
+		// and gives a claim read something to show, since the reasoning is
+		// what makes a judgement arguable rather than merely announced
+		// (ADR-0007 §6).
+		dimensions, err := seededDimensions(sc.QualityQ)
+		if err != nil {
+			return fmt.Errorf("pr_skill_score %s/%d dimensions: %w", sc.Claim, sc.Position, err)
+		}
+
 		if _, err := conn.Exec(ctx,
 			`INSERT INTO pr_skill_scores
 			   (id, evaluation_id, skill_id, repo_owner, repo_name, pr_number, position,
 			    dimension_scores, score, quality_q, reach_r, engagement_e, norms_generation)
-			 VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, '{}'::jsonb, $7, $8, $9, $10, 1)`,
+			 VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 1)`,
 			ref.evaluationID, skillID, owner, repo, prNumber, sc.Position,
-			sc.Score, sc.QualityQ, sc.ReachR, sc.Engage); err != nil {
+			dimensions, sc.Score, sc.QualityQ, sc.ReachR, sc.Engage); err != nil {
 			return fmt.Errorf("pr_skill_score %s/%d: %w", sc.Claim, sc.Position, err)
 		}
 

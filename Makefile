@@ -29,7 +29,7 @@ export PATH  := $(TOOLS):$(PATH)
 
 .PHONY: setup check check-all fmt fmt-check lint \
         go-fmt go-fmt-check go-lint go-vet go-test go-tidy-check mocks \
-        validate-fixtures validate-docs db-test e2e clean
+        validate-fixtures validate-docs db-test e2e dev up clean
 
 # --- setup -------------------------------------------------------------------
 
@@ -124,6 +124,23 @@ db-test:
 # Starts Postgres, applies the schema, runs every fixture, tears down.
 e2e:
 	$(BACKEND)/scripts/e2e.sh
+
+# A running backend to develop a client against: Postgres, the third-party
+# stand-in, and the API, seeded with the same data the fixtures use. Blocks
+# until Ctrl-C.
+#
+#   make dev
+#   make dev ARGS='--reset'   rebuild the database after a schema change
+#   make dev ARGS='--rich'    add the scored population
+dev:
+	$(BACKEND)/scripts/dev.sh $(ARGS)
+
+# The backend AND the client, ready to open in a browser. Ctrl-C stops both.
+#
+#   make up
+#   make up ARGS='--reset'   rebuild the database after a schema change
+up:
+	scripts/up.sh $(ARGS)
 
 # --- fixtures ----------------------------------------------------------------
 

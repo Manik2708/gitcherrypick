@@ -66,7 +66,7 @@ func TestSplitStatements(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := splitStatements(tt.sql)
+			got := SplitStatements(tt.sql)
 			if len(got) != len(tt.want) {
 				t.Fatalf("expected %d statement(s), got %d: %q", len(tt.want), len(got), got)
 			}

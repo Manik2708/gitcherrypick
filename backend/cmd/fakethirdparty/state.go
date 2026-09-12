@@ -165,6 +165,21 @@ func (s *Store) GitHubGrantFor(token string) (GitHubGrant, bool) {
 	return grant, ok
 }
 
+// GitHubGrants returns every loaded authorization code.
+//
+// Only the development sign-in page uses this: it needs the whole cast to
+// render a list, where every other reader resolves one code it was given.
+func (s *Store) GitHubGrants() map[string]GitHubGrant {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	out := make(map[string]GitHubGrant, len(s.state.GitHub.OAuthCodes))
+	for code, grant := range s.state.GitHub.OAuthCodes {
+		out[code] = grant
+	}
+	return out
+}
+
 // GitHubCode looks up an authorization code.
 func (s *Store) GitHubCode(code string) (GitHubGrant, bool) {
 	s.mu.RLock()

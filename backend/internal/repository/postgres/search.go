@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -590,7 +591,7 @@ func (r *SearchRepository) attachScorecardEvidence(ctx context.Context, target d
 
 	rows, err := r.db.pool.Query(ctx, `
 		SELECT s.slug, pss.repo_owner || '/' || pss.repo_name, pss.pr_number,
-		       e.title, e.merged_at, pss.score
+		       e.title, e.merged_at, pss.score, pss.dimension_scores, e.pr_url
 		FROM pr_skill_scores pss
 		JOIN skills s ON s.id = pss.skill_id
 		JOIN evaluations ev ON ev.id = pss.evaluation_id AND ev.status = 'succeeded'
@@ -611,14 +612,26 @@ func (r *SearchRepository) attachScorecardEvidence(ctx context.Context, target d
 			title    *string
 			mergedAt *time.Time
 		)
-		if err := rows.Scan(&slug, &ev.Repo, &ev.PRNumber, &title, &mergedAt, &ev.Score); err != nil {
+		var (
+			dims []byte
+			url  *string
+		)
+		if err := rows.Scan(&slug, &ev.Repo, &ev.PRNumber, &title, &mergedAt, &ev.Score, &dims, &url); err != nil {
 			return translate(err, "scanning scorecard evidence")
+		}
+		if len(dims) > 0 {
+			if err := json.Unmarshal(dims, &ev.Dimensions); err != nil {
+				return fmt.Errorf("decoding dimension scores for %s#%d: %w", ev.Repo, ev.PRNumber, err)
+			}
 		}
 		if title != nil {
 			ev.Title = *title
 		}
 		if mergedAt != nil {
 			ev.MergedAt = *mergedAt
+		}
+		if url != nil {
+			ev.URL = *url
 		}
 		bySlug[slug] = append(bySlug[slug], ev)
 	}

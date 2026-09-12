@@ -1,7 +1,12 @@
 {
   "name": "shortlisting raises a request; the email is released only on acceptance",
-  "description": "ADR-0005, and the deliberate inversion of how sourcing tools normally work. Adding someone to a shortlist does NOT disclose their email — it creates a contact request the contributor must accept. Releasing contact details on the strength of one side's interest is what makes those tools feel extractive, and the whole consent model would be hollow if a shortlist click bypassed it.\n\nThe request also discloses what we know about the hirer: sam_studio's organization was verified on identity but never on payment, so the contributor is told before deciding.\n\nUpdated for RFC-0008 §3a: adding an entry stages it privately and discloses nothing. The contact request — and therefore the disclosure this case is about — is created by confirm. That moves WHEN consent is sought without changing the rule that it must be sought.",
-  "seed": ["principals", "catalogue", "repositories", "scored_population"],
+  "description": "ADR-0005, and the deliberate inversion of how sourcing tools normally work. Adding someone to a shortlist does NOT disclose their email \u2014 it creates a contact request the contributor must accept. Releasing contact details on the strength of one side's interest is what makes those tools feel extractive, and the whole consent model would be hollow if a shortlist click bypassed it.\n\nThe request also discloses what we know about the hirer: sam_studio's organization was verified on identity but never on payment, so the contributor is told before deciding.\n\nUpdated for RFC-0008 \u00a73a: adding an entry stages it privately and discloses nothing. The contact request \u2014 and therefore the disclosure this case is about \u2014 is created by confirm. That moves WHEN consent is sought without changing the rule that it must be sought.",
+  "seed": [
+    "principals",
+    "catalogue",
+    "repositories",
+    "scored_population"
+  ],
   "steps": [
     {
       "as": "sam_studio",
@@ -41,7 +46,7 @@
         "status": 201,
         "_note": "No email in the response. A contact request was raised instead.",
         "body": {
-          "_note": "Staged, not disclosed. notified_at is null until confirm, and no address appears anywhere — releasing one is what accepting a contact request does (ADR-0008 §3a).",
+          "_note": "Staged, not disclosed. notified_at is null until confirm, and no address appears anywhere \u2014 releasing one is what accepting a contact request does (ADR-0008 \u00a73a).",
           "shortlist_id": "<uuid>",
           "user": {
             "id": "01920000-0000-7000-8000-00000000a001",
@@ -55,7 +60,7 @@
         },
         "db": {
           "contact_requests": {
-            "_note": "Zero. Staging is private — RFC-0008 §3a.",
+            "_note": "Zero. Staging is private \u2014 RFC-0008 \u00a73a.",
             "where": {
               "user_id": "01920000-0000-7000-8000-00000000a001"
             },
@@ -111,7 +116,7 @@
       },
       "expect": {
         "status": 200,
-        "_note": "The full scorecard IS visible — that is what verification buys. The email is not part of it.",
+        "_note": "The full scorecard IS visible \u2014 that is what verification buys. The email is not part of it.",
         "body": {
           "email": null,
           "overall_score": 64.2,
@@ -129,31 +134,141 @@
                   "repo": "acme/bigrepo",
                   "pr_number": 101,
                   "merged_at": "<timestamp>",
-                  "score": 79.3
+                  "score": 79.3,
+                  "dimensions": {
+                    "substance": {
+                      "score": 83,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "complexity": {
+                      "score": 83,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "conversation_quality": {
+                      "score": 83,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "craft": {
+                      "score": 83,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "skill_specificity": {
+                      "score": 83,
+                      "remark": "Seeded from the recorded weighted score."
+                    }
+                  }
                 },
                 {
                   "repo": "indie/smalllib",
                   "pr_number": 12,
                   "merged_at": "<timestamp>",
-                  "score": 64.4
+                  "score": 64.4,
+                  "dimensions": {
+                    "substance": {
+                      "score": 66,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "complexity": {
+                      "score": 66,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "conversation_quality": {
+                      "score": 66,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "craft": {
+                      "score": 66,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "skill_specificity": {
+                      "score": 66,
+                      "remark": "Seeded from the recorded weighted score."
+                    }
+                  }
                 },
                 {
                   "repo": "acme/bigrepo",
                   "pr_number": 102,
                   "merged_at": "<timestamp>",
-                  "score": 62.1
+                  "score": 62.1,
+                  "dimensions": {
+                    "substance": {
+                      "score": 63,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "complexity": {
+                      "score": 63,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "conversation_quality": {
+                      "score": 63,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "craft": {
+                      "score": 63,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "skill_specificity": {
+                      "score": 63,
+                      "remark": "Seeded from the recorded weighted score."
+                    }
+                  }
                 },
                 {
                   "repo": "acme/platform",
                   "pr_number": 55,
                   "merged_at": "<timestamp>",
-                  "score": 60.4
+                  "score": 60.4,
+                  "dimensions": {
+                    "substance": {
+                      "score": 61,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "complexity": {
+                      "score": 61,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "conversation_quality": {
+                      "score": 61,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "craft": {
+                      "score": 61,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "skill_specificity": {
+                      "score": 61,
+                      "remark": "Seeded from the recorded weighted score."
+                    }
+                  }
                 },
                 {
                   "repo": "acme/platform",
                   "pr_number": 56,
                   "merged_at": "<timestamp>",
-                  "score": 54.8
+                  "score": 54.8,
+                  "dimensions": {
+                    "substance": {
+                      "score": 56,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "complexity": {
+                      "score": 56,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "conversation_quality": {
+                      "score": 56,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "craft": {
+                      "score": 56,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "skill_specificity": {
+                      "score": 56,
+                      "remark": "Seeded from the recorded weighted score."
+                    }
+                  }
                 }
               ]
             }
@@ -190,7 +305,7 @@
               "status": "pending",
               "expires_at": "<timestamp>",
               "disclosure": "This organization is hiring for the first time and has not verified payment capability.",
-              "_note": "Not a warning against them — a fact. The contributor carries the risk of an unpaid engagement, so the contributor gets the fact and the choice.",
+              "_note": "Not a warning against them \u2014 a fact. The contributor carries the risk of an unpaid engagement, so the contributor gets the fact and the choice.",
               "created_at": "<timestamp>"
             }
           ],
@@ -301,7 +416,7 @@
         },
         "db": {
           "contact_requests": {
-            "_note": "Zero. Staging is private — RFC-0008 §3a.",
+            "_note": "Zero. Staging is private \u2014 RFC-0008 \u00a73a.",
             "where": {
               "user_id": "01920000-0000-7000-8000-00000000a001",
               "shortlist_id": "{{acme_shortlist}}"

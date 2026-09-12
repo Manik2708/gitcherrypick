@@ -30,3 +30,15 @@ npm-debug.log*
 
 # Go tool binaries installed by `make setup`
 .tools/
+
+# dev.sh's working directory: built binaries, a signing keypair and logs. The
+# key is a real private key — throwaway, but never committed.
+backend/.dev/
+.up-*.log
+
+# Stitch bearer token — a real credential, never committed.
+.stitch-token
+
+# Screenshots dropped in to report a UI problem. Scratch input for a fix, not
+# an artefact of the project — and they accumulate fast.
+frontend/problems/

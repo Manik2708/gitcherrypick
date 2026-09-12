@@ -1,7 +1,12 @@
 {
   "name": "leaderboards come in three kinds, and a scorecard is gated three ways",
-  "description": "RFC-0008 §1 and §2. search_gates_and_exclusions pins the rank gaps and the inactive toggle; this case adds kind=skill and the scorecard access rules.\n\nA scorecard is the full evidence dossier, so it is the most valuable thing a hirer can read and the thing most worth scraping. Two gates remain: hiring capability, and AssertNotSelf (the second of the three places ADR-0002 requires it).\n\nThe availability gate is NOT one of them any more — RFC-0008 §1a. A lapsed contributor's scorecard is readable and carries the same active:false block a search result does, because hiding it would mean a hirer could find someone via include_inactive and then be refused the evidence they were looking for. Only not_looking is a 404, and that is an explicit opt-out rather than a stale yes.\n\nThe leaderboard always shows everyone, inactive included, and takes no include_inactive parameter. It is the definitive global ranking; search is the actionable subset of it.",
-  "seed": ["principals", "catalogue", "repositories", "scored_population"],
+  "description": "RFC-0008 \u00a71 and \u00a72. search_gates_and_exclusions pins the rank gaps and the inactive toggle; this case adds kind=skill and the scorecard access rules.\n\nA scorecard is the full evidence dossier, so it is the most valuable thing a hirer can read and the thing most worth scraping. Two gates remain: hiring capability, and AssertNotSelf (the second of the three places ADR-0002 requires it).\n\nThe availability gate is NOT one of them any more \u2014 RFC-0008 \u00a71a. A lapsed contributor's scorecard is readable and carries the same active:false block a search result does, because hiding it would mean a hirer could find someone via include_inactive and then be refused the evidence they were looking for. Only not_looking is a 404, and that is an explicit opt-out rather than a stale yes.\n\nThe leaderboard always shows everyone, inactive included, and takes no include_inactive parameter. It is the definitive global ranking; search is the actionable subset of it.",
+  "seed": [
+    "principals",
+    "catalogue",
+    "repositories",
+    "scored_population"
+  ],
   "steps": [
     {
       "as": "hank",
@@ -11,7 +16,7 @@
       },
       "expect": {
         "status": 200,
-        "_note": "Dave's Go scores 81 — higher than anyone here — and is absent because it is SECONDARY. Standing gates the board; score orders it.",
+        "_note": "Dave's Go scores 81 \u2014 higher than anyone here \u2014 and is absent because it is SECONDARY. Standing gates the board; score orders it.",
         "body": {
           "kind": "skill",
           "skill": {
@@ -73,7 +78,11 @@
             {
               "field": "kind",
               "reason": "unknown",
-              "allowed": ["overall", "generalist", "skill"]
+              "allowed": [
+                "overall",
+                "generalist",
+                "skill"
+              ]
             }
           ]
         }
@@ -149,7 +158,7 @@
       }
     },
     {
-      "_step": "A contributor cannot read a leaderboard at all. They see only their own rank — ADR-0005.",
+      "_step": "A contributor cannot read a leaderboard at all. They see only their own rank \u2014 ADR-0005.",
       "as": "alice",
       "request": {
         "method": "GET",
@@ -176,7 +185,7 @@
       }
     },
     {
-      "_step": "GATE 1 — hiring capability. 403 rather than a redacted body.",
+      "_step": "GATE 1 \u2014 hiring capability. 403 rather than a redacted body.",
       "as": "pending_pat",
       "request": {
         "method": "GET",
@@ -223,31 +232,141 @@
                   "repo": "acme/bigrepo",
                   "pr_number": 101,
                   "merged_at": "<timestamp>",
-                  "score": 79.3
+                  "score": 79.3,
+                  "dimensions": {
+                    "substance": {
+                      "score": 83,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "complexity": {
+                      "score": 83,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "conversation_quality": {
+                      "score": 83,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "craft": {
+                      "score": 83,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "skill_specificity": {
+                      "score": 83,
+                      "remark": "Seeded from the recorded weighted score."
+                    }
+                  }
                 },
                 {
                   "repo": "indie/smalllib",
                   "pr_number": 12,
                   "merged_at": "<timestamp>",
-                  "score": 64.4
+                  "score": 64.4,
+                  "dimensions": {
+                    "substance": {
+                      "score": 66,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "complexity": {
+                      "score": 66,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "conversation_quality": {
+                      "score": 66,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "craft": {
+                      "score": 66,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "skill_specificity": {
+                      "score": 66,
+                      "remark": "Seeded from the recorded weighted score."
+                    }
+                  }
                 },
                 {
                   "repo": "acme/bigrepo",
                   "pr_number": 102,
                   "merged_at": "<timestamp>",
-                  "score": 62.1
+                  "score": 62.1,
+                  "dimensions": {
+                    "substance": {
+                      "score": 63,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "complexity": {
+                      "score": 63,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "conversation_quality": {
+                      "score": 63,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "craft": {
+                      "score": 63,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "skill_specificity": {
+                      "score": 63,
+                      "remark": "Seeded from the recorded weighted score."
+                    }
+                  }
                 },
                 {
                   "repo": "acme/platform",
                   "pr_number": 55,
                   "merged_at": "<timestamp>",
-                  "score": 60.4
+                  "score": 60.4,
+                  "dimensions": {
+                    "substance": {
+                      "score": 61,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "complexity": {
+                      "score": 61,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "conversation_quality": {
+                      "score": 61,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "craft": {
+                      "score": 61,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "skill_specificity": {
+                      "score": 61,
+                      "remark": "Seeded from the recorded weighted score."
+                    }
+                  }
                 },
                 {
                   "repo": "acme/platform",
                   "pr_number": 56,
                   "merged_at": "<timestamp>",
-                  "score": 54.8
+                  "score": 54.8,
+                  "dimensions": {
+                    "substance": {
+                      "score": 56,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "complexity": {
+                      "score": 56,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "conversation_quality": {
+                      "score": 56,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "craft": {
+                      "score": 56,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "skill_specificity": {
+                      "score": 56,
+                      "remark": "Seeded from the recorded weighted score."
+                    }
+                  }
                 }
               ]
             }
@@ -301,7 +420,7 @@
       }
     },
     {
-      "_step": "GATE 2 — AssertNotSelf. dave_hiring shares a GitHub identity with contributor dave.",
+      "_step": "GATE 2 \u2014 AssertNotSelf. dave_hiring shares a GitHub identity with contributor dave.",
       "as": "dave_hiring",
       "request": {
         "method": "GET",
@@ -347,31 +466,141 @@
                   "repo": "acme/bigrepo",
                   "pr_number": 101,
                   "merged_at": "<timestamp>",
-                  "score": 79.3
+                  "score": 79.3,
+                  "dimensions": {
+                    "substance": {
+                      "score": 83,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "complexity": {
+                      "score": 83,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "conversation_quality": {
+                      "score": 83,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "craft": {
+                      "score": 83,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "skill_specificity": {
+                      "score": 83,
+                      "remark": "Seeded from the recorded weighted score."
+                    }
+                  }
                 },
                 {
                   "repo": "indie/smalllib",
                   "pr_number": 12,
                   "merged_at": "<timestamp>",
-                  "score": 64.4
+                  "score": 64.4,
+                  "dimensions": {
+                    "substance": {
+                      "score": 66,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "complexity": {
+                      "score": 66,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "conversation_quality": {
+                      "score": 66,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "craft": {
+                      "score": 66,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "skill_specificity": {
+                      "score": 66,
+                      "remark": "Seeded from the recorded weighted score."
+                    }
+                  }
                 },
                 {
                   "repo": "acme/bigrepo",
                   "pr_number": 102,
                   "merged_at": "<timestamp>",
-                  "score": 62.1
+                  "score": 62.1,
+                  "dimensions": {
+                    "substance": {
+                      "score": 63,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "complexity": {
+                      "score": 63,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "conversation_quality": {
+                      "score": 63,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "craft": {
+                      "score": 63,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "skill_specificity": {
+                      "score": 63,
+                      "remark": "Seeded from the recorded weighted score."
+                    }
+                  }
                 },
                 {
                   "repo": "acme/platform",
                   "pr_number": 55,
                   "merged_at": "<timestamp>",
-                  "score": 60.4
+                  "score": 60.4,
+                  "dimensions": {
+                    "substance": {
+                      "score": 61,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "complexity": {
+                      "score": 61,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "conversation_quality": {
+                      "score": 61,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "craft": {
+                      "score": 61,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "skill_specificity": {
+                      "score": 61,
+                      "remark": "Seeded from the recorded weighted score."
+                    }
+                  }
                 },
                 {
                   "repo": "acme/platform",
                   "pr_number": 56,
                   "merged_at": "<timestamp>",
-                  "score": 54.8
+                  "score": 54.8,
+                  "dimensions": {
+                    "substance": {
+                      "score": 56,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "complexity": {
+                      "score": 56,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "conversation_quality": {
+                      "score": 56,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "craft": {
+                      "score": 56,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "skill_specificity": {
+                      "score": 56,
+                      "remark": "Seeded from the recorded weighted score."
+                    }
+                  }
                 }
               ]
             }
@@ -381,7 +610,7 @@
       }
     },
     {
-      "_step": "NO AVAILABILITY GATE — RFC-0008 §1a. Carol is lapsed and her scorecard is readable, because a hirer who found her through include_inactive must be able to read the evidence.",
+      "_step": "NO AVAILABILITY GATE \u2014 RFC-0008 \u00a71a. Carol is lapsed and her scorecard is readable, because a hirer who found her through include_inactive must be able to read the evidence.",
       "as": "hank",
       "request": {
         "method": "GET",
@@ -472,7 +701,7 @@
       }
     },
     {
-      "_step": "not_looking IS still a 404 — the only availability state that hides a scorecard. An explicit opt-out is not a stale yes.",
+      "_step": "not_looking IS still a 404 \u2014 the only availability state that hides a scorecard. An explicit opt-out is not a stale yes.",
       "as": "carol",
       "request": {
         "method": "PUT",
@@ -518,7 +747,7 @@
       }
     },
     {
-      "_step": "The PUBLIC scorecard is a different document, reached only by a share token the contributor minted — ADR-0002.",
+      "_step": "The PUBLIC scorecard is a different document, reached only by a share token the contributor minted \u2014 ADR-0002.",
       "as": "alice",
       "request": {
         "method": "POST",
@@ -547,7 +776,7 @@
       },
       "expect": {
         "status": 200,
-        "_note": "No rank, no generalist score, no email — a contributor publishing their own evidence is not publishing their position against other people.",
+        "_note": "No rank, no generalist score, no email \u2014 a contributor publishing their own evidence is not publishing their position against other people.",
         "body": {
           "user": {
             "display_name": "Alice Okafor",
@@ -577,7 +806,7 @@
       }
     },
     {
-      "_step": "The share link is NOT subject to the availability gate — it is the contributor's own publication, not a search result.",
+      "_step": "The share link is NOT subject to the availability gate \u2014 it is the contributor's own publication, not a search result.",
       "as": "anonymous",
       "request": {
         "method": "GET",

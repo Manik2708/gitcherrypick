@@ -93,10 +93,26 @@ disagree, the ADR wins and the discrepancy goes to the Planner.
 
 ```bash
 .claude/scripts/bootstrap.sh   # cold-machine setup + doctor report
+make setup                     # tools, deps, venv
+
+make check                     # everything CI's `check` job runs, no Docker needed
+make check-all                 # check + db-test + e2e — the whole of CI, locally
+
+make e2e                       # 31 fixtures against a real Postgres
+make db-test                   # repository suite against a real Postgres
+make dev                       # a running backend to develop a client against
 ```
 
-Backend and frontend commands land here as stages 4–6 are implemented. Until then
-this section is intentionally empty rather than aspirational.
+`make dev` starts Postgres (55434), the third-party stand-in (18082) and the API
+(8080), seeded with the same fixtures the suite asserts against — so a client is
+built against the pinned contract rather than a second copy of it. It prints the
+seeded accounts and how to sign in as each of the three principal types. Sign-in
+runs the real OAuth path against the stand-in, so nobody needs credentials from
+github.com. `ARGS='--reset'` rebuilds the database after a schema change;
+`ARGS='--rich'` adds the scored population.
+
+It does **not** start the evaluator: a submitted claim stays queued until
+`cmd/evaluator` is run, and the model call it makes is still a stub.
 
 ## Conventions
 

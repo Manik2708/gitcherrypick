@@ -153,6 +153,12 @@ type scorecardEvidenceBody struct {
 	PRNumber int       `json:"pr_number"`
 	MergedAt time.Time `json:"merged_at"`
 	Score    float64   `json:"score"`
+	// Where to read it. The scorecard names a PR the reader may want to open.
+	URL string `json:"url,omitempty"`
+	// The model's reasoning, per dimension. Sent to an identified reader only;
+	// omitted rather than empty so "not judged this way" stays distinguishable
+	// from "judged and said nothing".
+	Dimensions map[string]domain.DimensionVerdict `json:"dimensions,omitempty"`
 }
 
 type scorecardSkillBody struct {
@@ -691,9 +697,17 @@ func scorecardOf(card *domain.Scorecard, identified bool) scorecardBody {
 			evidence = evidence[:publicEvidenceLimit]
 		}
 		for _, e := range evidence {
-			skill.Evidence = append(skill.Evidence, scorecardEvidenceBody{
+			row := scorecardEvidenceBody{
 				Repo: e.Repo, PRNumber: e.PRNumber, MergedAt: e.MergedAt, Score: e.Score,
-			})
+				URL: e.URL,
+			}
+			// Reasoning goes to an identified reader only. A verified hirer is
+			// who the rubric means; a share link is handed to anyone, and
+			// ADR-0002 already trims it to one PR for that reason.
+			if identified {
+				row.Dimensions = e.Dimensions
+			}
+			skill.Evidence = append(skill.Evidence, row)
 		}
 		out.Skills = append(out.Skills, skill)
 	}

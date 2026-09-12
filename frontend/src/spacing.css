@@ -1,0 +1,108 @@
+/* ==========================================================================
+   Spacing — the single place every gap, pad and margin is decided.
+   ==========================================================================
+
+   The problem this file exists to solve: the stylesheet had an 8px rhythm
+   (--s1…--s6 = 8/16/24/32/48/64) that covered nothing below 8px and nothing
+   between the steps. So 127 spacing values were hand-picked by eye — 10px in
+   24 places, 6px in 20, plus 3px, 5px, 7px, 9px, 14px, 34px, 38px. Fifteen
+   distinct off-scale numbers is what "inconsistent" looks like in practice,
+   and no amount of care at the call site fixes it: the scale had holes, so
+   authors filled them.
+
+   Two layers, and the distinction matters:
+
+   1 · THE SCALE (--space-*) is the raw vocabulary. Twelve steps, no more.
+       Nothing outside it is a legal spacing value anywhere in the app.
+
+   2 · THE CATEGORIES (--inset-*, --stack-*, --inline-*, --section-*,
+       --control-*) name what a space is FOR. A rule should reach for these,
+       not for the scale, because "the padding inside a card" is a decision
+       that should change everywhere at once — and --inset-md says that,
+       while --space-lg only says "16px".
+
+   Reach for the scale directly only for a genuine one-off with no category
+   (an optical nudge, a hairline). If you find yourself wanting a value that
+   is not here, the answer is almost always the nearest step, not a new one.
+   ========================================================================== */
+
+:root {
+  /* ---------- 1 · the scale --------------------------------------------
+     Dense below 16px because that is where interface detail lives, and
+     coarse above it because page rhythm does not need 4px precision. */
+  --space-0:    0;
+  --space-hair: 1px;   /* borders and optical nudges ONLY, never layout */
+  --space-3xs:  2px;
+  --space-2xs:  4px;
+  --space-xs:   6px;
+  --space-sm:   8px;
+  --space-md:   12px;
+  --space-lg:   16px;
+  --space-xl:   24px;
+  --space-2xl:  32px;
+  --space-3xl:  48px;
+  --space-4xl:  64px;
+
+  /* ---------- 2 · the categories ---------------------------------------
+     Each is a full ladder over the scale, so any site can speak in intent
+     rather than in pixels. They are aliases today — the point is that
+     "the padding inside cards" and "the gap between stacked rows" become
+     separately tunable decisions instead of two rules that happen to both
+     say 16px and drift apart the first time one is changed.
+
+     Which category: padding -> inset. Vertical rhythm -> stack.
+     Horizontal rhythm -> inline. Between page bands -> section.
+     Inside a button or a chip -> control. */
+
+  /* inset — padding INSIDE a container */
+  --inset-3xs: var(--space-3xs);
+  --inset-2xs: var(--space-2xs);
+  --inset-xs:  var(--space-xs);
+  --inset-sm:  var(--space-sm);
+  --inset-md:  var(--space-md);
+  --inset-lg:  var(--space-lg);
+  --inset-xl:  var(--space-xl);
+  --inset-2xl: var(--space-2xl);
+  --inset-3xl: var(--space-3xl);
+  --inset-4xl: var(--space-4xl);
+
+  /* stack — VERTICAL gap between siblings */
+  --stack-3xs: var(--space-3xs);
+  --stack-2xs: var(--space-2xs);
+  --stack-xs:  var(--space-xs);
+  --stack-sm:  var(--space-sm);
+  --stack-md:  var(--space-md);
+  --stack-lg:  var(--space-lg);
+  --stack-xl:  var(--space-xl);
+  --stack-2xl: var(--space-2xl);
+  --stack-3xl: var(--space-3xl);
+  --stack-4xl: var(--space-4xl);
+
+  /* inline — HORIZONTAL gap between siblings */
+  --inline-3xs: var(--space-3xs);
+  --inline-2xs: var(--space-2xs);
+  --inline-xs:  var(--space-xs);
+  --inline-sm:  var(--space-sm);
+  --inline-md:  var(--space-md);
+  --inline-lg:  var(--space-lg);
+  --inline-xl:  var(--space-xl);
+  --inline-2xl: var(--space-2xl);
+
+  /* section — page-level rhythm between bands */
+  --section-sm: var(--space-2xl);
+  --section-md: var(--space-3xl);
+  --section-lg: var(--space-4xl);
+
+  /* control — padding inside interactive things */
+  --control-pad-y:    var(--space-xs);
+  --control-pad-x:    var(--space-md);
+  --control-pad-x-lg: var(--space-lg);   /* a full-size button */
+  --control-pad-y-sm: var(--space-3xs);
+  --control-pad-x-sm: var(--space-sm);
+  --control-gap:      var(--space-xs);
+
+  /* Deliberately NOT on the scale, and not a category: the inner offset a
+     control reserves for an icon (.select chevron, .search-input glyph).
+     That is a function of the icon's size, not of page rhythm, and forcing
+     it onto the scale would either clip the glyph or float it. */
+}

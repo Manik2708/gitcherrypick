@@ -161,13 +161,16 @@ type prScoreBody struct {
 
 // judgedPRBody is a pull request AFTER it has been judged.
 //
-// Position and number identify it; everything else is the verdict. The repo
-// and the role are gone because they were the question, and this is the
-// answer — a contributor reading a scored claim is looking at what their
-// evidence was worth, not at what they submitted.
+// Position and number identify it; everything else is the verdict. The role is
+// gone because it was the question and this is the answer — but the repo and
+// the URL stay: "PR #922" names nothing a reader can open, and a verdict you
+// cannot click through to is hard to check and harder to argue with.
 type judgedPRBody struct {
-	Position int `json:"position"`
-	PRNumber int `json:"pr_number"`
+	Position  int    `json:"position"`
+	PRNumber  int    `json:"pr_number"`
+	RepoOwner string `json:"repo_owner,omitempty"`
+	RepoName  string `json:"repo_name,omitempty"`
+	URL       string `json:"url,omitempty"`
 
 	Scores     []prScoreBody              `json:"scores,omitempty"`
 	Dimensions map[string]prDimensionBody `json:"dimensions,omitempty"`
@@ -219,7 +222,10 @@ var rejectionMessages = map[string]string{
 func judgedPRBodies(in []domain.PREvidence) []judgedPRBody {
 	out := make([]judgedPRBody, 0, len(in))
 	for _, pr := range in {
-		body := judgedPRBody{Position: pr.Position, PRNumber: pr.PRNumber}
+		body := judgedPRBody{
+			Position: pr.Position, PRNumber: pr.PRNumber,
+			RepoOwner: pr.RepoOwner, RepoName: pr.RepoName, URL: pr.RawURL,
+		}
 		for _, s := range pr.Scores {
 			body.Scores = append(body.Scores, prScoreBody{Skill: s.Skill, Score: s.Score})
 		}

@@ -1,0 +1,39 @@
+# Postgres for local development. Nothing else runs in a container — the API
+# and the fake third parties are built and run on the host, so a developer can
+# attach a debugger or rebuild one binary without touching the others.
+#
+# Started and stopped by dev.sh. Not intended to be run directly.
+#
+# The e2e suite (55432) and the repository suite (55433) each own a port and a
+# container name of their own, so a development database can stay up while
+# either suite runs.
+
+name: gitcherrypick-dev
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: gitcherrypick
+      POSTGRES_PASSWORD: dev
+      POSTGRES_DB: gitcherrypick_dev
+    ports:
+      - "55434:5432"
+    volumes:
+      # A NAMED volume, unlike the suites' tmpfs. A developer who spent an
+      # afternoon building state through the UI should not lose it because
+      # they restarted the script.
+      - gitcherrypick-dev-data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U gitcherrypick -d gitcherrypick_dev -q && psql -U gitcherrypick -d gitcherrypick_dev -c 'select 1' -q",
+        ]
+      interval: 1s
+      timeout: 3s
+      retries: 30
+      start_period: 2s
+
+volumes:
+  gitcherrypick-dev-data:

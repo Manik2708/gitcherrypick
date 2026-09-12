@@ -37,9 +37,11 @@ func main() {
 
 func command() *cobra.Command {
 	var (
-		addr    string
-		selfURL string
-		pinned  string
+		addr          string
+		selfURL       string
+		pinned        string
+		oauthCallback string
+		hirerCallback string
 	)
 
 	cmd := &cobra.Command{
@@ -52,7 +54,7 @@ func command() *cobra.Command {
 			if selfURL == "" {
 				selfURL = "http://" + addr
 			}
-			return run(cmd.Context(), addr, selfURL, pinned)
+			return run(cmd.Context(), addr, selfURL, pinned, oauthCallback, hirerCallback)
 		},
 	}
 
@@ -61,6 +63,13 @@ func command() *cobra.Command {
 		"RFC3339 instant to start the clock at; defaults to the host's clock. "+
 			"Pinning it is what makes a suite whose fixtures carry absolute dates "+
 			"produce the same result on every calendar day")
+	cmd.Flags().StringVar(&oauthCallback, "oauth-callback-url", "",
+		"where /login/oauth/authorize sends a browser back to, e.g. "+
+			"http://localhost:8080/auth/github/callback. Empty disables the page: "+
+			"the fixture suite calls the callback directly and never visits it")
+	cmd.Flags().StringVar(&hirerCallback, "hirer-oauth-callback-url", "",
+		"where the sign-in page sends a browser for a HIRER session. One identity "+
+			"may own both account types (ADR-0009), so the page offers both when set")
 	cmd.Flags().StringVar(&selfURL, "self-url", "",
 		"absolute base URL clients reach this server at; defaults to http://<addr>. "+
 			"OIDC discovery must advertise absolute endpoints, so the server has to know its own address")
@@ -68,7 +77,7 @@ func command() *cobra.Command {
 	return cmd
 }
 
-func run(ctx context.Context, addr, selfURL, pinned string) error {
+func run(ctx context.Context, addr, selfURL, pinned, oauthCallback, hirerCallback string) error {
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -87,7 +96,7 @@ func run(ctx context.Context, addr, selfURL, pinned string) error {
 
 	srv := &http.Server{
 		Addr:              addr,
-		Handler:           NewServer(store, selfURL).Handler(),
+		Handler:           NewServer(store, selfURL).WithOAuthCallback(oauthCallback, hirerCallback).Handler(),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 

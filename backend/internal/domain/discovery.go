@@ -112,12 +112,26 @@ type ScorecardSkill struct {
 }
 
 // ScorecardEvidence is one scored PR.
+//
+// Dimensions carries the per-dimension score and the model's remark for each.
+// evaluation/dimensions.md is explicit that these are for the hirer as much as
+// the contributor — "a hirer reading the scorecard is buying exactly that
+// specificity" — and a bare number without the reasoning is the assertion this
+// platform exists to replace.
 type ScorecardEvidence struct {
-	Repo     string
-	PRNumber int
-	Title    string
-	MergedAt time.Time
-	Score    float64
+	Repo       string
+	URL        string
+	PRNumber   int
+	Title      string
+	MergedAt   time.Time
+	Score      float64
+	Dimensions map[string]DimensionVerdict
+}
+
+// DimensionVerdict is one judged dimension: what it scored and why.
+type DimensionVerdict struct {
+	Score  int    `json:"score"`
+	Remark string `json:"remark"`
 }
 
 // LeaderboardKind selects which board to read.
