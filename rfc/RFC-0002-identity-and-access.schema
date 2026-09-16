@@ -11,6 +11,16 @@ CREATE TYPE hirer_auth_provider AS ENUM ('google', 'email', 'github');
 
 CREATE TYPE verification_status AS ENUM ('pending', 'approved', 'rejected');
 
+-- A BAND, not a number (RFC-0017). The field is "CurrentApproxEmployees" and
+-- approximate is what it means: nobody knows whether 47 means 47, and a band is
+-- both easier to answer honestly and harder to answer misleadingly.
+--
+-- The labels carry their own boundaries. 'small' and 'medium' would hide the
+-- one thing the value is for — an administrator judging whether the evidence a
+-- company offers is proportionate to its size.
+CREATE TYPE organization_headcount_band AS ENUM (
+    '1-10', '11-50', '51-200', '201-1000', '1000+');
+
 -- What a hirer or organization submitted as proof. 'alternative' is the path
 -- for small firms with no company domain or LinkedIn page (RFC-0002) — without
 -- it, verification would only be satisfiable by large companies.
@@ -168,6 +178,45 @@ CREATE TABLE organizations (
     website     text,
     linkedin_url text,                   -- required for verification (RFC-0002)
 
+    -- --- onboarding (RFC-0017) ------------------------------------------
+    --
+    -- Written by the onboarding form, which is also what creates the owner
+    -- (RFC-0017 §2). Nullable because the optional fields are genuinely
+    -- optional: a fully remote company has no office to name, a registered
+    -- address is often an accountant's rather than the company's, and several
+    -- countries have no postcode.
+
+    description text,
+
+    -- The company address, and the OWNER'S address. This form CREATES the
+    -- owner (RFC-0017 §2): the proof is sent here, and whoever holds the
+    -- address becomes the owner. ADR-0016 made the username the identity
+    -- precisely so an address could be shared, which is what makes
+    -- hiring@acme.com an ordinary owner address rather than a collision.
+    --
+    -- Stored here as well as on the owner's seat. The two may diverge later —
+    -- an owner is free to change their own contact address without changing
+    -- the company's — so they are one value copied, not one column shared.
+    email       citext,
+
+    -- E.164 where the submitter manages it, free text where they do not.
+    -- Unvalidated beyond a length: a phone number is read by an administrator
+    -- deciding a company is real, and refusing an unfamiliar format would
+    -- reject the caller rather than the number.
+    phone       text,
+
+    -- Self-reported and approximate — "CurrentApproxEmployees" in the source
+    -- diagram. Nobody audits it; it tells an administrator whether they are
+    -- looking at a studio or a multinational, which changes what evidence is
+    -- reasonable to expect.
+    headcount   organization_headcount_band,
+
+    -- No `onboarded_at`. Onboarding is the ONLY thing that creates an
+    -- organisation (RFC-0017 §1), so it could never differ from created_at.
+    -- The state that matters is whether a seat exists yet: the form writes
+    -- this row, and the owner appears only once the company address has been
+    -- proven.
+
     -- Only verified organizations may hire. NULL = unverified.
     verified_at timestamptz,
     verified_by uuid,                    -- FK to admin_accounts, added below
@@ -187,6 +236,32 @@ CREATE TRIGGER trg_organizations_updated_at
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 -- ---------------------------------------------------------------------------
+-- hirer_usernames — the namespace itself (ADR-0016 §Identity).
+--
+-- A username must be unique across BOTH hirer_accounts and the roster: an
+-- organisation stages a name before the person exists, so a name already held
+-- by a live seat has to be refused at that moment, not discovered when the
+-- redeemer finally clicks their link and the seat insert fails.
+--
+-- No constraint spans two tables, so the namespace is a table of its own and
+-- both reference it. Claiming a name is an INSERT here, which makes a
+-- collision a constraint violation rather than a read-then-write race —
+-- ADR-0009's pattern, and the only version of it available across two tables.
+--
+-- Rows are not deleted once a seat exists: the foreign key from
+-- hirer_accounts sees to that, which is what "never reused, including after
+-- revocation" means in practice. A roster entry WITHDRAWN before anyone
+-- claimed it releases its name, because no seat ever carried it and burning a
+-- name over a typo would be a trap.
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE hirer_usernames (
+    username   citext PRIMARY KEY,
+    claimed_at timestamptz NOT NULL DEFAULT now()
+);
+
+
+-- ---------------------------------------------------------------------------
 -- hirer_accounts — separate from contributor accounts (RFC-0002).
 -- ---------------------------------------------------------------------------
 
@@ -194,6 +269,17 @@ CREATE TABLE hirer_accounts (
     id               uuid PRIMARY KEY,
     organization_id  uuid                REFERENCES organizations(id) ON DELETE SET NULL,
 
+    -- The sign-in identifier (ADR-0016). Not the email: an address is a
+    -- contact field that changes hands, and a work address outlives the person
+    -- who held it. A username is globally unique and NEVER reused, so an
+    -- authored row stays attributable to one person forever.
+    --
+    -- The reference to hirer_usernames is what makes "globally" true: the
+    -- roster claims names out of the same table, so the two cannot collide.
+    username         citext              NOT NULL REFERENCES hirer_usernames(username),
+
+    -- A contact field, not an identity. Two seats in one organisation may
+    -- share an alias such as hiring@acme.com.
     email            citext              NOT NULL,
     auth_provider    hirer_auth_provider NOT NULL,
     provider_subject text,               -- Google 'sub' etc.; NULL for email auth
@@ -211,10 +297,19 @@ CREATE TABLE hirer_accounts (
     -- that someone will pay, so the contributor gets the fact and the choice.
     payment_verified_at timestamptz,
 
+    -- Removing a seat revokes it; it never deletes the row. The seat authored
+    -- shortlists and the permanent record of which candidates were told an
+    -- organisation was interested (ADR-0008), and deleting it would orphan
+    -- that. ADR-0016 §5.
+    disabled_at      timestamptz,
+    disabled_by      uuid,               -- FK to hirer_accounts, added below
+
     created_at       timestamptz NOT NULL DEFAULT now(),
     updated_at       timestamptz NOT NULL DEFAULT now(),
 
-    CONSTRAINT uq_hirer_email UNIQUE (email),
+    -- Unconditional, deliberately: a revoked seat keeps its name forever, which
+    -- is what makes "maya" unambiguous on a round from two years ago.
+    CONSTRAINT uq_hirer_username UNIQUE (username),
     CONSTRAINT ck_hirer_password_only_for_email CHECK (
         (auth_provider = 'email' AND password_hash IS NOT NULL) OR
         (auth_provider <> 'email' AND password_hash IS NULL)
@@ -225,7 +320,15 @@ ALTER TABLE user_github_identities
     ADD CONSTRAINT fk_identity_hirer
     FOREIGN KEY (hirer_account_id) REFERENCES hirer_accounts(id) ON DELETE CASCADE;
 
+ALTER TABLE hirer_accounts
+    ADD CONSTRAINT fk_hirer_disabled_by
+    FOREIGN KEY (disabled_by) REFERENCES hirer_accounts(id);
+
 CREATE INDEX idx_hirer_org ON hirer_accounts (organization_id);
+
+-- Sign-in and capability checks want live seats only.
+CREATE INDEX idx_hirer_live ON hirer_accounts (organization_id)
+    WHERE disabled_at IS NULL;
 CREATE INDEX idx_hirer_unverified ON hirer_accounts (created_at)
     WHERE verified_at IS NULL;
 
@@ -365,20 +468,8 @@ CREATE TABLE organization_members (
 
 CREATE INDEX idx_org_members_hirer ON organization_members (hirer_account_id);
 
-CREATE TABLE organization_invitations (
-    id              uuid PRIMARY KEY,
-    organization_id uuid            NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-    email           citext          NOT NULL,
-    role            org_member_role NOT NULL DEFAULT 'member',
-    invited_by      uuid            NOT NULL REFERENCES hirer_accounts(id) ON DELETE CASCADE,
+-- organization_invitations was here. ADR-0016 replaced the invitation-token
+-- flow with a roster: an organisation names an address, and whoever proves
+-- they hold it may create the seat. The roster table lives in
+-- RFC-0016-org-roster-and-email-verification.schema.
 
-    token_hash      bytea           NOT NULL,
-    accepted_at     timestamptz,
-    expires_at      timestamptz     NOT NULL,
-    created_at      timestamptz     NOT NULL DEFAULT now(),
-
-    CONSTRAINT uq_org_invitation_token UNIQUE (token_hash)
-);
-
-CREATE UNIQUE INDEX uq_org_invite_pending ON organization_invitations (organization_id, email)
-    WHERE accepted_at IS NULL;

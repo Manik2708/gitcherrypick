@@ -125,6 +125,18 @@ CREATE TABLE shortlists (
     name            text             NOT NULL,
     description     text,
 
+    -- The job this round is for (ADR-0019 §3). One shortlist, one role: a
+    -- hirer wanting the same contributor for a second opening opens a second
+    -- shortlist, which raises a second, separate contact request.
+    --
+    -- This is what lets a contact request say "for THIS, at THIS salary, in
+    -- THESE countries" instead of "somebody is interested in you". Without it
+    -- the role details have no route to the person being contacted.
+    --
+    -- NOT NULL, and the foreign key is added in RFC-0019 where `roles` is
+    -- defined — a forward reference, not a migration. Ordering, not ALTER.
+    role_id         uuid             NOT NULL,
+
     status          shortlist_status NOT NULL DEFAULT 'open',
 
     -- The commitment a hirer makes when opening a round. Not enforced by

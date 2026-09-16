@@ -1,0 +1,172 @@
+-- ---------------------------------------------------------------------------
+-- RFC-0018 — The contributor profile
+--
+-- Delta only. Everything not mentioned here stays as earlier RFCs defined it.
+--
+-- Edited at origin by ADR-0019 step 1: the three verification columns below.
+-- `users` is still left alone deliberately.
+-- What it holds comes from GitHub and is replaced on every sign-in; what this
+-- adds is typed by the person and must never be overwritten by a callback.
+-- Two lifetimes, two tables.
+-- ---------------------------------------------------------------------------
+
+
+-- ---------------------------------------------------------------------------
+-- 1. What shape of work someone will take.
+--
+-- Four independent facts, not one choice. A person open to a remote contract
+-- and an onsite permanent role is stating two things, and an enum would make
+-- them pick. `availability_status` already answers a DIFFERENT question — am I
+-- looking, and how keenly — and keeps its expiry, because that is what stops
+-- the pool filling with people who stopped looking a year ago (ADR-0010 §5).
+--
+-- Defaults are FALSE, not true. A profile nobody has filled in should surface
+-- nobody: opting a contributor into internships by inaction would put them in
+-- front of hirers they never agreed to hear from.
+-- ---------------------------------------------------------------------------
+CREATE TABLE user_work_preferences (
+    user_id              uuid PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+
+    -- No open_to_freelance. `availability_status` already carries it, as
+    -- `looking_for_freelance` and `open_to_freelance`, and two controls that
+    -- both mean "freelance" can disagree — leaving a UI to decide which wins,
+    -- differently in each place somebody reads it.
+    --
+    -- The flags therefore cover the shapes the status does NOT: where the work
+    -- happens, and what kind of engagement it is.
+    open_to_remote       boolean NOT NULL DEFAULT false,
+    open_to_internships  boolean NOT NULL DEFAULT false,
+    open_to_onsite       boolean NOT NULL DEFAULT false,
+    open_to_contract     boolean NOT NULL DEFAULT false,
+
+    -- Where they are now. ISO 3166-1 alpha-2, matching organization_addresses,
+    -- because a role's eligible countries are matched against this and "UK"
+    -- and "U.K." cannot both be the same country.
+    --
+    -- Distinct from users.location, which is free text GitHub supplies and a
+    -- sign-in overwrites. This one is typed by the person and survives.
+    current_country      char(2),
+
+    -- Years worked in a job, as opposed to years contributing. Both matter to
+    -- a hirer and they are not the same number: someone with eight years of
+    -- open source and one of employment is a specific person.
+    office_yoe           smallint,
+
+    -- The first and latest pull requests, ASKED rather than derived.
+    --
+    -- Deriving them from claims was wrong: a contributor's first contribution
+    -- is often years old, in a repository they never claimed here, and a claim
+    -- is five PRs they chose as their BEST — not their earliest and not their
+    -- most recent. Reading "started contributing in 2024" off a claim would be
+    -- reading the wrong thing confidently.
+    --
+    -- first_pr_url is WRITE-ONCE. When somebody started is a fact about the
+    -- past, and a field that could be revised downward whenever it suited
+    -- would be worth nothing to the hirer reading it. The service refuses a
+    -- second, different value; the column merely stores what it is told.
+    first_pr_url         text,
+
+    -- latest_pr_url is editable, because it goes stale by definition.
+    latest_pr_url        text,
+
+    -- When those pull requests were AUTHORED, established by us rather than
+    -- typed by anybody (ADR-0019 §7).
+    --
+    -- Authored, not merged. A first contribution can sit in review for eight
+    -- months, or two years, or be merged long after the person moved on: merge
+    -- date measures a project's responsiveness, authored date measures when
+    -- somebody started contributing, and only one of those was asked about.
+    --
+    -- This makes open-source years the one number on a contributor's profile
+    -- that is evidence rather than testimony — which is the whole argument of
+    -- this platform, applied to the field where it was easiest not to bother.
+    first_pr_authored_at  timestamptz,
+    latest_pr_authored_at timestamptz,
+
+    -- When the first pull request was last confirmed against GitHub, or NULL.
+    --
+    -- NULL with a URL present means a fetch we could not complete — a rate
+    -- limit, an outage — and a job will retry. Until it lands, open-source
+    -- years are UNKNOWN, and unknown does not clear a role's minimum. A
+    -- deliberate fail-closed: failing open would make any minimum clearable
+    -- with a link nobody could check (ADR-0019 §When the fetch fails).
+    --
+    -- A fetch that SUCCEEDS and disproves the claim never reaches this column.
+    -- Those are refused at the service and nothing is written, so a
+    -- write-once field never records an unverified URL.
+    first_pr_verified_at  timestamptz,
+
+    -- An authored date without a URL is a fact about nothing.
+    CONSTRAINT ck_work_pref_first_pr_dates CHECK (
+        first_pr_url IS NOT NULL OR
+        (first_pr_authored_at IS NULL AND first_pr_verified_at IS NULL)),
+    CONSTRAINT ck_work_pref_latest_pr_dates CHECK (
+        latest_pr_url IS NOT NULL OR latest_pr_authored_at IS NULL),
+
+    created_at           timestamptz NOT NULL DEFAULT now(),
+    updated_at           timestamptz NOT NULL DEFAULT now(),
+
+    CONSTRAINT ck_work_pref_country CHECK (current_country IS NULL OR current_country ~ '^[A-Z]{2}$'),
+
+    -- Zero is legal — someone contributing before their first job — but a
+    -- negative number is not, and nobody has worked for 120 years.
+    CONSTRAINT ck_work_pref_office_yoe CHECK (
+        office_yoe IS NULL OR (office_yoe >= 0 AND office_yoe <= 80))
+);
+
+CREATE TRIGGER trg_user_work_preferences_updated_at
+    BEFORE UPDATE ON user_work_preferences
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+
+-- ---------------------------------------------------------------------------
+-- 2. What they expect to be paid.
+--
+-- A table of its own rather than columns above, because this is the most
+-- sensitive thing a contributor tells the platform and the separation is the
+-- point: a query that reads work preferences does not incidentally read
+-- somebody's salary expectation.
+--
+-- Both figures are optional and independent. A freelancer may state an hourly
+-- rate and no annual figure; a permanent candidate the reverse.
+-- ---------------------------------------------------------------------------
+CREATE TABLE user_compensation (
+    user_id        uuid PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+
+    -- ISO 4217. Required when either amount is set: a number with no currency
+    -- is not a rate, and guessing one from the country would be worse than
+    -- asking.
+    currency       char(3),
+
+    -- MINOR UNITS, as bigint. Never a float: 0.1 + 0.2 is not 0.3, and money
+    -- that does not add up is money nobody trusts. 45_00 is forty-five of
+    -- whatever `currency` says.
+    hourly_rate    bigint,
+    yearly_amount  bigint,
+
+    created_at     timestamptz NOT NULL DEFAULT now(),
+    updated_at     timestamptz NOT NULL DEFAULT now(),
+
+    CONSTRAINT ck_compensation_currency CHECK (currency IS NULL OR currency ~ '^[A-Z]{3}$'),
+
+    -- An amount needs a currency to mean anything.
+    CONSTRAINT ck_compensation_has_currency CHECK (
+        (hourly_rate IS NULL AND yearly_amount IS NULL) OR currency IS NOT NULL),
+
+    -- Zero is not a rate anybody means to state.
+    CONSTRAINT ck_compensation_positive CHECK (
+        (hourly_rate IS NULL OR hourly_rate > 0) AND
+        (yearly_amount IS NULL OR yearly_amount > 0))
+);
+
+CREATE TRIGGER trg_user_compensation_updated_at
+    BEFORE UPDATE ON user_compensation
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+
+-- The matching read: "who is open to this shape of work, in a country this
+-- role accepts?" Partial, because a profile open to nothing matches nothing
+-- and there is no reason to carry those rows.
+CREATE INDEX idx_work_pref_matching ON user_work_preferences (current_country)
+    WHERE open_to_remote OR open_to_internships
+       OR open_to_onsite OR open_to_contract;
