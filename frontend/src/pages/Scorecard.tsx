@@ -15,23 +15,18 @@ import { Link, useParams } from "react-router-dom";
 import { useScorecard } from "../hooks/hirer";
 import { EvidenceRow } from "../ui/judgement";
 import * as format from "../logic/format";
-import {
-  Avatar,
-  Banner,
-  Card,
-  Empty,
-  Failure,
-  Icon,
-  Loading,
-  Meter,
-  Pill,
-} from "../ui/primitives";
+import { Avatar, Banner, Card, Empty, Failure, Icon, Loading, Meter, Pill } from "../ui/primitives";
 
 export function ScorecardPage() {
   const { userId } = useParams<{ userId: string }>();
   const card = useScorecard(userId);
 
-  if (card.loading) return <div className="page"><Loading what="the scorecard" /></div>;
+  if (card.loading)
+    return (
+      <div className="page">
+        <Loading what="the scorecard" />
+      </div>
+    );
   if (card.error) {
     return (
       <div className="page page--narrow">
@@ -142,9 +137,19 @@ export function ScorecardPage() {
   );
 }
 
-function SkillBlock({ skill }: { skill: NonNullable<ReturnType<typeof useScorecard>["data"]>["skills"][number] }) {
+function SkillBlock({
+  skill,
+}: {
+  skill: NonNullable<ReturnType<typeof useScorecard>["data"]>["skills"][number];
+}) {
   return (
-    <li className={skill.standing === "secondary" ? "standing__item standing__item--secondary" : "standing__item"}>
+    <li
+      className={
+        skill.standing === "secondary"
+          ? "standing__item standing__item--secondary"
+          : "standing__item"
+      }
+    >
       <div className="standing__head">
         <span className="standing__name">{skill.name}</span>
         <Pill tone={skill.standing === "primary" ? "primary" : "secondary"}>

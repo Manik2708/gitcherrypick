@@ -60,7 +60,7 @@ func TestWireCodesAreDistinct(t *testing.T) {
 		service.CodeNotFound, service.CodeClaimNotFound,
 		service.CodeContributorNotFound, service.CodeShortlistNotFound,
 		service.CodeSavedSearchNotFound, service.CodeScorecardNotFound,
-		service.CodeInvitationNotFound, service.CodeNoHirerAccount,
+		service.CodeRosterEntryNotFound, service.CodeNoHirerAccount,
 		service.CodeClaimLocked, service.CodeVersionConflict,
 		service.CodeEvidenceUnchanged, service.CodeEvidencePairConflict,
 		service.CodeAlreadyShortlisted, service.CodeEntryAlreadyNotified,
@@ -68,7 +68,8 @@ func TestWireCodesAreDistinct(t *testing.T) {
 		service.CodeSkillAlreadyExists, service.CodeAliasTaken, service.CodeSlugTaken,
 		service.CodeRequestAlreadyDecided, service.CodeRequestAlreadyOpen,
 		service.CodeSuggestionAlreadyDecided, service.CodeSweepInProgress,
-		service.CodeInvitationExpired, service.CodeInvitationAccepted,
+		service.CodeVerificationRequired, service.CodeVerificationSpent,
+		service.CodeVerificationExpired, service.CodeUsernameTaken,
 		service.CodeInvalidClaim, service.CodeInvalidEvidence,
 		service.CodeInvalidShortlist, service.CodeInvalidQuery,
 		service.CodeInvalidFilter, service.CodeUnknownFilter, service.CodeUnknownSkill,
@@ -77,6 +78,8 @@ func TestWireCodesAreDistinct(t *testing.T) {
 		service.CodeRubricVersionUnchanged,
 		service.CodeInvalidID, service.CodeInvalidState,
 		service.CodeRateLimited, service.CodeReevaluationCooldown,
+		service.CodeOrganizationRequired, service.CodeInvalidProfile,
+		service.CodeFirstPRIsFixed,
 	}
 
 	seen := make(map[string]struct{}, len(codes))

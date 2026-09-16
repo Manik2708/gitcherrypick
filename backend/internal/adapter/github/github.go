@@ -35,7 +35,27 @@ const (
 // read:user already includes the account's email addresses, so /user/emails
 // resolves without user:email — which would additionally grant the ability to
 // CHANGE them.
-const scopes = "read:user"
+// scopes is what the consent screen asks for.
+//
+// This was "read:user" alone, on the reasoning that read:user already covers
+// the email list and that adding user:email would also grant the ability to
+// CHANGE an address. Both halves of that are wrong, and live sign-in fails
+// because of it:
+//
+//	GitHub gates "List email addresses for the authenticated user" behind
+//	user:email specifically; read:user does not reach it. So primaryEmail gets
+//	403, CompleteGitHub fails, and the contributor sees a refused sign-in.
+//
+//	user:email is READ access to addresses. Changing them needs the broader
+//	"user" scope, which is not requested here and should not be.
+//
+// The stand-in cannot catch this: it returns an email list whatever the token
+// carries, so the whole flow passes locally and only fails against github.com.
+//
+// Still read-only, and still no repository access — the pull requests the
+// platform judges are public, and are read with the service's own token rather
+// than the contributor's.
+const scopes = "read:user user:email"
 
 // apiVersion pins the REST API's dated contract, so a server-side default
 // moving does not silently change what this client receives.

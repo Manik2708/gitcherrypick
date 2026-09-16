@@ -48,52 +48,177 @@
             {
               "position": 1,
               "pr_number": 101,
+              "repo_owner": "acme",
+              "repo_name": "bigrepo",
+              "url": "https://github.com/acme/bigrepo/pull/101",
               "scores": [
                 {
                   "skill": "go",
                   "score": 79.3
                 }
-              ]
+              ],
+              "dimensions": {
+                "complexity": {
+                  "score": 83,
+                  "remark": "Seeded from the recorded weighted score."
+                },
+                "conversation_quality": {
+                  "score": 83,
+                  "remark": "Seeded from the recorded weighted score."
+                },
+                "craft": {
+                  "score": 83,
+                  "remark": "Seeded from the recorded weighted score."
+                },
+                "skill_specificity": {
+                  "score": 83,
+                  "remark": "Seeded from the recorded weighted score."
+                },
+                "substance": {
+                  "score": 83,
+                  "remark": "Seeded from the recorded weighted score."
+                }
+              }
             },
             {
               "position": 2,
               "pr_number": 102,
+              "repo_owner": "acme",
+              "repo_name": "bigrepo",
+              "url": "https://github.com/acme/bigrepo/pull/102",
               "scores": [
                 {
                   "skill": "go",
                   "score": 62.1
                 }
-              ]
+              ],
+              "dimensions": {
+                "complexity": {
+                  "score": 63,
+                  "remark": "Seeded from the recorded weighted score."
+                },
+                "conversation_quality": {
+                  "score": 63,
+                  "remark": "Seeded from the recorded weighted score."
+                },
+                "craft": {
+                  "score": 63,
+                  "remark": "Seeded from the recorded weighted score."
+                },
+                "skill_specificity": {
+                  "score": 63,
+                  "remark": "Seeded from the recorded weighted score."
+                },
+                "substance": {
+                  "score": 63,
+                  "remark": "Seeded from the recorded weighted score."
+                }
+              }
             },
             {
               "position": 3,
               "pr_number": 55,
+              "repo_owner": "acme",
+              "repo_name": "platform",
+              "url": "https://github.com/acme/platform/pull/55",
               "scores": [
                 {
                   "skill": "go",
                   "score": 60.4
                 }
-              ]
+              ],
+              "dimensions": {
+                "complexity": {
+                  "score": 61,
+                  "remark": "Seeded from the recorded weighted score."
+                },
+                "conversation_quality": {
+                  "score": 61,
+                  "remark": "Seeded from the recorded weighted score."
+                },
+                "craft": {
+                  "score": 61,
+                  "remark": "Seeded from the recorded weighted score."
+                },
+                "skill_specificity": {
+                  "score": 61,
+                  "remark": "Seeded from the recorded weighted score."
+                },
+                "substance": {
+                  "score": 61,
+                  "remark": "Seeded from the recorded weighted score."
+                }
+              }
             },
             {
               "position": 4,
               "pr_number": 56,
+              "repo_owner": "acme",
+              "repo_name": "platform",
+              "url": "https://github.com/acme/platform/pull/56",
               "scores": [
                 {
                   "skill": "go",
                   "score": 54.8
                 }
-              ]
+              ],
+              "dimensions": {
+                "complexity": {
+                  "score": 56,
+                  "remark": "Seeded from the recorded weighted score."
+                },
+                "conversation_quality": {
+                  "score": 56,
+                  "remark": "Seeded from the recorded weighted score."
+                },
+                "craft": {
+                  "score": 56,
+                  "remark": "Seeded from the recorded weighted score."
+                },
+                "skill_specificity": {
+                  "score": 56,
+                  "remark": "Seeded from the recorded weighted score."
+                },
+                "substance": {
+                  "score": 56,
+                  "remark": "Seeded from the recorded weighted score."
+                }
+              }
             },
             {
               "position": 5,
               "pr_number": 12,
+              "repo_owner": "indie",
+              "repo_name": "smalllib",
+              "url": "https://github.com/indie/smalllib/pull/12",
               "scores": [
                 {
                   "skill": "go",
                   "score": 64.4
                 }
-              ]
+              ],
+              "dimensions": {
+                "complexity": {
+                  "score": 66,
+                  "remark": "Seeded from the recorded weighted score."
+                },
+                "conversation_quality": {
+                  "score": 66,
+                  "remark": "Seeded from the recorded weighted score."
+                },
+                "craft": {
+                  "score": 66,
+                  "remark": "Seeded from the recorded weighted score."
+                },
+                "skill_specificity": {
+                  "score": 66,
+                  "remark": "Seeded from the recorded weighted score."
+                },
+                "substance": {
+                  "score": 66,
+                  "remark": "Seeded from the recorded weighted score."
+                }
+              }
             }
           ],
           "skills": [

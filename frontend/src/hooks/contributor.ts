@@ -2,9 +2,14 @@
 
 import { endpoints } from "../api/endpoints";
 import type {
+  CompensationExpectation,
+  ContributorProfile,
+  CountriesResponse,
+  WorkPreferences,
   Claim,
   ClaimSummary,
   ContactRequest,
+  ContactRole,
   Demotion,
   MyRank,
   MySkills,
@@ -78,7 +83,10 @@ export function useWithdrawPreview(claimId: string | undefined) {
   const client = useClient();
   return useAsync<{ demotions: Demotion[] }>(
     (signal) =>
-      client.get<{ demotions: Demotion[] }>(endpoints.claims.withdrawPreview(claimId ?? ""), signal),
+      client.get<{ demotions: Demotion[] }>(
+        endpoints.claims.withdrawPreview(claimId ?? ""),
+        signal,
+      ),
     [client, claimId],
     Boolean(claimId),
   );
@@ -144,8 +152,7 @@ export function useSetAvailability() {
 export function useMyContactRequests() {
   const client = useClient();
   return useAsync<{ requests: ContactRequest[] }>(
-    (signal) =>
-      client.get<{ requests: ContactRequest[] }>(endpoints.me.contactRequests(), signal),
+    (signal) => client.get<{ requests: ContactRequest[] }>(endpoints.me.contactRequests(), signal),
     [client],
   );
 }
@@ -165,4 +172,61 @@ export function useMintShareLink() {
 export function useRevokeShareLink() {
   const client = useClient();
   return useAction((id: string) => client.delete<unknown>(endpoints.me.revokeShareLink(id)));
+}
+
+/* --- the profile (ADR-0018) ----------------------------------------------- */
+
+export function useMyProfile() {
+  const client = useClient();
+  return useAsync<ContributorProfile>(
+    (signal) => client.get<ContributorProfile>(endpoints.me.profile(), signal),
+    [client],
+  );
+}
+
+export function useSaveProfile() {
+  const client = useClient();
+  return useAction((body: WorkPreferences) =>
+    client.put<ContributorProfile>(endpoints.me.profile(), body),
+  );
+}
+
+export function useMyCompensation() {
+  const client = useClient();
+  return useAsync<CompensationExpectation>(
+    (signal) => client.get<CompensationExpectation>(endpoints.me.compensation(), signal),
+    [client],
+  );
+}
+
+export function useSaveCompensation() {
+  const client = useClient();
+  return useAction((body: CompensationExpectation) =>
+    client.put<CompensationExpectation>(endpoints.me.compensation(), body),
+  );
+}
+
+/** The country picker. Public, and it fails open — see `degraded`. */
+export function useCountries() {
+  const client = useClient();
+  return useAsync<CountriesResponse>(
+    (signal) => client.get<CountriesResponse>(endpoints.public.countries(), signal),
+    [client],
+  );
+}
+
+/**
+ * The roles open to this contributor (ADR-0019 §Endpoints).
+ *
+ * The filter runs on the server, against their own profile: countries, the
+ * minimums, the shapes of work they ticked, and the pay they said they expect.
+ * That last one travels in exactly one direction — it keeps roles paying less
+ * than they asked for out of their way, and is never shown to a hirer.
+ */
+export function useMyRoles() {
+  const client = useClient();
+  return useAsync<{ roles: ContactRole[] }>(
+    (signal) => client.get<{ roles: ContactRole[] }>(endpoints.me.roles(), signal),
+    [client],
+  );
 }

@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
@@ -826,12 +825,6 @@ func (c *ClaimController) writeClaimError(w http.ResponseWriter, err error) {
 	writeError(w, err)
 }
 
-// prURL matches a GitHub pull request link.
-//
-// Anchored, and tolerant of a trailing slash or query string — a contributor
-// pastes what their browser shows, which often carries #discussion anchors.
-var prURL = regexp.MustCompile(`^/([^/]+)/([^/]+)/pull/(\d+)/?$`)
-
 // parsePREvidence turns submitted URLs into domain evidence.
 //
 // Returns the first error rather than every one: unlike a validation failure,
@@ -871,21 +864,10 @@ func parsePREvidence(in []prEvidenceRequest) ([]domain.PREvidence, error) {
 	return out, nil
 }
 
+// parsePRURL delegates to the domain, which owns the one regex. The profile
+// service needs the same parse for ADR-0019 §7, and two copies would drift.
 func parsePRURL(raw string) (owner, name string, number int, err error) {
-	parsed, err := url.Parse(strings.TrimSpace(raw))
-	if err != nil {
-		return "", "", 0, fmt.Errorf("unparseable url %q: %w", raw, err)
-	}
-
-	match := prURL.FindStringSubmatch(parsed.Path)
-	if match == nil {
-		return "", "", 0, fmt.Errorf("%q is not a pull request url", raw)
-	}
-	number, err = strconv.Atoi(match[3])
-	if err != nil {
-		return "", "", 0, fmt.Errorf("%q has no pr number: %w", raw, err)
-	}
-	return match[1], match[2], number, nil
+	return domain.ParsePRURL(raw)
 }
 
 // repoURL matches a repository link, for supporting projects.

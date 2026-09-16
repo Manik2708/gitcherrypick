@@ -147,7 +147,7 @@ code does whatever it currently does, which is not a test.
 
 ## Index
 
-31 cases covering **all 58 specified endpoints**. Each names the decision it pins, so a
+38 cases covering **all specified endpoints**. Each names the decision it pins, so a
 change to that decision has an obvious place to fail.
 
 | Case                                               | Pins                                                                            |
@@ -158,7 +158,9 @@ change to that decision has an obvious place to fail.
 | **auth/**refresh_rotation_and_reuse_detection      | Replaying a spent token revokes the whole family — including the current holder |
 | **auth/**unverified_hirer_cannot_hire              | Registration ≠ hiring capability; verification is the real gate                 |
 | **auth/**share_link_is_the_only_public_surface     | Full gating, and the one thing a contributor may publish                        |
-| **orgs/**invitations_and_seat_grants               | Org self-administers seats; capability is inherited, never earned individually  |
+| **orgs/**roster_is_owners_only                     | Org self-administers seats; capability is inherited, never earned individually  |
+| **orgs/**redemption_proves_the_address             | A roster is an allowlist, not a credential; the inbox is the proof              |
+| **orgs/**onboarding_creates_nothing_until_approved | The public form creates nothing; approval creates company, address and owner    |
 | **claims/**submit_valid_five_prs                   | Happy path, and the outbox property                                             |
 | **claims/**submit_invalid_evidence                 | Every failure named, nothing enqueued                                           |
 | **claims/**submit_pair_conflict                    | `(user, PR, skill)` uniqueness; same PR for another skill is fine               |
@@ -178,6 +180,11 @@ change to that decision has an obvious place to fail.
 | **discovery/**shortlist_lifecycle                  | Stage privately, confirm irreversibly; once shortlisted, never removed          |
 | **discovery/**saved_searches                       | Filter keys are the query parameters; gates evaluate as the caller              |
 | **me/**self_reads                                  | Own rank only — no neighbours; rank is global and survives lapsing              |
+| **me/**compensation_never_reaches_a_hirer          | ADR-0018 §2 on seven hirer-facing surfaces, before and after acceptance         |
+| **me/**profile_matchable_needs_both_halves         | A live window with no shape matches nothing; needs_attention ≠ !matchable       |
+| **me/**profile_put_replaces_and_first_pr_is_fixed  | PUT is a total replace; the first PR is write-once, the latest is not           |
+| **me/**profile_money_is_exact_and_validated        | Minor units, exact through bigint; every bad field named above the database     |
+| **places/**country_picker_is_public                | No account behind the picker, and degraded:false against a live provider        |
 | **skills/**catalogue_and_requests                  | Aliases resolve but aren't claimable; dedupe before the queue                   |
 | **admin/**verification_and_overdue_flagging        | Alternative evidence path; flag at 80%, never block                             |
 | **admin/**reevaluation_cooldown_escalates          | 28→56→112→224→365; acceptance never counts against you                          |

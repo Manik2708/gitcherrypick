@@ -42,3 +42,7 @@ backend/.dev/
 # Screenshots dropped in to report a UI problem. Scratch input for a fix, not
 # an artefact of the project — and they accumulate fast.
 frontend/problems/
+
+# scripts/up.sh's log, written at the repo root. Same kind of thing as
+# backend/.dev — a running stack's output, not an artefact of the project.
+/.dev/

@@ -270,13 +270,15 @@
             {
               "position": 1,
               "pr_number": 101,
+              "repo_owner": "acme",
+              "repo_name": "bigrepo",
+              "url": "https://github.com/acme/bigrepo/pull/101",
               "scores": [
                 {
                   "skill": "go",
                   "score": 71.19
                 }
               ],
-              "_note": "Scores well despite conversation_quality 0. One dimension of five, weighted 0.20.",
               "dimensions": {
                 "substance": {
                   "score": 84,
@@ -298,11 +300,15 @@
                   "score": 90,
                   "remark": "Concurrency work in idiomatic Go."
                 }
-              }
+              },
+              "_note": "Scores well despite conversation_quality 0. One dimension of five, weighted 0.20."
             },
             {
               "position": 2,
               "pr_number": 904,
+              "repo_owner": "acme",
+              "repo_name": "bigrepo",
+              "url": "https://github.com/acme/bigrepo/pull/904",
               "rejected": true,
               "rejection_reason": "below_quality_floor",
               "message": "This PR did not count toward any skill. Its assessed quality was too low to represent engineering work."
@@ -310,6 +316,9 @@
             {
               "position": 3,
               "pr_number": 102,
+              "repo_owner": "acme",
+              "repo_name": "bigrepo",
+              "url": "https://github.com/acme/bigrepo/pull/102",
               "scores": [
                 {
                   "skill": "go",

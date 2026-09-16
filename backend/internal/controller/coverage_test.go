@@ -229,10 +229,10 @@ func TestEveryHandlerPropagatesAServiceFailure(t *testing.T) {
 		},
 		"shortlist create": {
 			hirerPrincipal(true), http.MethodPost, "/shortlists",
-			`{"name":"R","description":"","tentative_result_date":"2026-12-01T00:00:00Z"}`,
+			`{"role_id":"01920000-0000-7000-8000-0000000e0001","name":"R","description":"","tentative_result_date":"2026-12-01T00:00:00Z"}`,
 			func(h *harness) {
 				h.shortlists.EXPECT().Create(mock.Anything, mock.Anything, mock.Anything,
-					mock.Anything, mock.Anything).Return(nil, errBoom)
+					mock.Anything, mock.Anything, mock.Anything).Return(nil, errBoom)
 			},
 		},
 		"shortlist list": {
@@ -287,12 +287,32 @@ func TestEveryHandlerPropagatesAServiceFailure(t *testing.T) {
 					Return(nil, errBoom)
 			},
 		},
-		"invite": {
-			hirerPrincipal(true), http.MethodPost, "/orgs/" + orgID + "/invitations",
-			`{"email":"x@y.com"}`,
+		"add to roster": {
+			hirerPrincipal(true), http.MethodPost, "/orgs/" + orgID + "/roster",
+			`{"email":"x@y.com","username":"xy"}`,
 			func(h *harness) {
-				h.orgs.EXPECT().Invite(mock.Anything, mock.Anything, mock.Anything,
-					mock.Anything, mock.Anything).Return(nil, "", errBoom)
+				h.orgs.EXPECT().AddToRoster(mock.Anything, mock.Anything, mock.Anything,
+					mock.Anything, mock.Anything, mock.Anything).Return(nil, errBoom)
+			},
+		},
+		"list roster": {
+			hirerPrincipal(true), http.MethodGet, "/orgs/" + orgID + "/roster", "",
+			func(h *harness) {
+				h.orgs.EXPECT().ListRoster(mock.Anything, mock.Anything, mock.Anything).
+					Return(nil, errBoom)
+			},
+		},
+		"list seats": {
+			hirerPrincipal(true), http.MethodGet, "/orgs/" + orgID + "/seats", "",
+			func(h *harness) {
+				h.orgs.EXPECT().ListSeats(mock.Anything, mock.Anything, mock.Anything).
+					Return(nil, errBoom)
+			},
+		},
+		"organizations": {
+			domain.Principal{}, http.MethodGet, "/organizations", "",
+			func(h *harness) {
+				h.redemption.EXPECT().ListOrganizations(mock.Anything).Return(nil, errBoom)
 			},
 		},
 		"admin verifications": {
@@ -381,7 +401,7 @@ func TestEveryHandlerPropagatesAServiceFailure(t *testing.T) {
 		},
 		"hirer register": {
 			domain.Principal{}, http.MethodPost, "/auth/hirer/register",
-			`{"email":"a@b.c","password":"pw","display_name":"A","organization":{"name":"O"}}`,
+			`{"email":"a@b.c","username":"ab","password":"pw","display_name":"A"}`,
 			func(h *harness) {
 				h.auth.EXPECT().RegisterHirer(mock.Anything, mock.Anything).Return(nil, errBoom)
 			},
@@ -438,10 +458,12 @@ func TestMalformedBodiesAreRejectedPerEndpoint(t *testing.T) {
 		"shortlist update":  {hirerPrincipal(true), http.MethodPatch, "/shortlists/" + shortlistID},
 		"shortlist entries": {hirerPrincipal(true), http.MethodPost, "/shortlists/" + shortlistID + "/entries"},
 		"save search":       {hirerPrincipal(true), http.MethodPost, "/saved-searches"},
-		"invite":            {hirerPrincipal(true), http.MethodPost, "/orgs/" + orgID + "/invitations"},
+		"add to roster":     {hirerPrincipal(true), http.MethodPost, "/orgs/" + orgID + "/roster"},
 		"sweep":             {adminPrincipal(), http.MethodPost, "/admin/evaluations/sweep"},
 		"admin decide":      {adminPrincipal(), http.MethodPost, "/admin/reevaluations/" + requestID + "/decide"},
-		"accept invitation": {domain.Principal{}, http.MethodPost, "/orgs/invitations/tok/accept"},
+		"redeem start":      {domain.Principal{}, http.MethodPost, "/auth/hirer/redeem/start"},
+		"redeem complete":   {domain.Principal{}, http.MethodPost, "/auth/hirer/redeem/complete"},
+		"verify resend":     {domain.Principal{}, http.MethodPost, "/auth/hirer/verify/resend"},
 	}
 
 	for name, tc := range cases {
@@ -483,7 +505,7 @@ func TestMalformedIDsAcrossTheSurface(t *testing.T) {
 		"delete search":   {hirerPrincipal(true), http.MethodDelete, "/saved-searches/nope"},
 		"shortlist get":   {hirerPrincipal(true), http.MethodGet, "/shortlists/nope"},
 		"remove entry":    {hirerPrincipal(true), http.MethodDelete, "/shortlists/" + shortlistID + "/entries/nope"},
-		"invite org":      {hirerPrincipal(true), http.MethodPost, "/orgs/nope/invitations"},
+		"roster org":      {hirerPrincipal(true), http.MethodPost, "/orgs/nope/roster"},
 		"admin decide":    {adminPrincipal(), http.MethodPost, "/admin/verifications/nope/decide"},
 		"claim reeval":    {contributorPrincipal(), http.MethodPost, "/claims/nope/reevaluation"},
 		"claim submit":    {contributorPrincipal(), http.MethodPost, "/claims/nope/submit"},

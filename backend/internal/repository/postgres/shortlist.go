@@ -40,15 +40,27 @@ const ContactWindow = 30 * 24 * time.Hour
 // silence as readily as for their own neglect.
 const OverdueFlagRatio = 0.8
 
-const shortlistColumns = `
-	s.id, s.organization_id, s.name, coalesce(s.description, ''), s.status,
-	s.tentative_result_date, s.created_by, s.created_at, s.updated_at,
-	s.first_confirmed_at, s.closed_at`
+// shortlistColumns resolves the AUTHOR rather than emitting their id
+// (ADR-0016 §9). shortlistFrom carries the join it needs, so the two are
+// always used together.
+var shortlistColumns = `
+	s.id, s.organization_id, s.role_id, s.name, coalesce(s.description, ''), s.status,
+	s.tentative_result_date, ` + hirerRefColumns("author") + `,
+	s.created_at, s.updated_at, s.first_confirmed_at, s.closed_at`
+
+// shortlistFrom is the FROM clause shortlistColumns requires.
+//
+// An inner join, not a left one: created_by is NOT NULL and references a row
+// that removal never deletes, so an author that failed to resolve would be a
+// corruption worth failing on rather than papering over with nulls.
+const shortlistFrom = `
+	FROM shortlists s
+	JOIN hirer_accounts author ON author.id = s.created_by`
 
 // ByID reads a round with its entries.
 func (r *ShortlistRepository) ByID(ctx context.Context, id domain.ShortlistID) (*domain.Shortlist, error) {
 	s, err := scanShortlist(r.db.pool.QueryRow(ctx,
-		`SELECT`+shortlistColumns+` FROM shortlists s WHERE s.id = $1`, string(id)))
+		`SELECT`+shortlistColumns+shortlistFrom+` WHERE s.id = $1`, string(id)))
 	if err != nil {
 		return nil, translate(err, fmt.Sprintf("shortlist %s", id))
 	}
@@ -60,8 +72,7 @@ func (r *ShortlistRepository) ByID(ctx context.Context, id domain.ShortlistID) (
 
 // ListByOrganization reads an org's rounds, newest first.
 func (r *ShortlistRepository) ListByOrganization(ctx context.Context, id domain.OrganizationID, status *domain.ShortlistStatus) ([]domain.Shortlist, error) {
-	query := `SELECT` + shortlistColumns + `
-		FROM shortlists s
+	query := `SELECT` + shortlistColumns + shortlistFrom + `
 		WHERE s.organization_id = $1
 		  AND ($2::shortlist_status IS NULL OR s.status = $2::shortlist_status)
 		ORDER BY s.created_at DESC`
@@ -99,15 +110,23 @@ func (r *ShortlistRepository) Create(ctx context.Context, s *domain.Shortlist) (
 		return nil, fmt.Errorf("generating shortlist id: %w", err)
 	}
 
+	// A CTE so the author can be joined: RETURNING cannot reach another table,
+	// and the response names the person rather than their id.
 	created, err := scanShortlist(r.db.pool.QueryRow(ctx, `
-		INSERT INTO shortlists
-		    (id, organization_id, name, description, tentative_result_date, created_by, status)
-		VALUES ($1, $2, $3, NULLIF($4, ''), $5, $6, 'draft')
-		RETURNING id, organization_id, name, coalesce(description, ''), status,
-		          tentative_result_date, created_by, created_at, updated_at,
-		          first_confirmed_at, closed_at`,
+		WITH s AS (
+		    INSERT INTO shortlists
+		        (id, organization_id, role_id, name, description,
+		         tentative_result_date, created_by, status)
+		    VALUES ($1, $2, $7, $3, NULLIF($4, ''), $5, $6, 'draft')
+		    RETURNING id, organization_id, role_id, name,
+		              coalesce(description, '') AS description,
+		              status, tentative_result_date, created_by, created_at, updated_at,
+		              first_confirmed_at, closed_at
+		)
+		SELECT`+shortlistColumns+`
+		FROM s JOIN hirer_accounts author ON author.id = s.created_by`,
 		id.String(), string(s.OrganizationID), s.Name, s.Description,
-		s.TentativeResultDate, string(s.CreatedBy)))
+		s.TentativeResultDate, string(s.CreatedBy.ID), string(s.RoleID)))
 	if err != nil {
 		return nil, translate(err, "creating shortlist")
 	}
@@ -121,15 +140,20 @@ func (r *ShortlistRepository) Create(ctx context.Context, s *domain.Shortlist) (
 // told survives a later edit (ADR-0005).
 func (r *ShortlistRepository) Update(ctx context.Context, id domain.ShortlistID, name, description *string, date *time.Time) (*domain.Shortlist, error) {
 	updated, err := scanShortlist(r.db.pool.QueryRow(ctx, `
-		UPDATE shortlists
-		SET name                  = coalesce($2, name),
-		    description           = coalesce($3, description),
-		    tentative_result_date = coalesce($4, tentative_result_date),
-		    updated_at            = now()
-		WHERE id = $1 AND status <> 'closed'
-		RETURNING id, organization_id, name, coalesce(description, ''), status,
-		          tentative_result_date, created_by, created_at, updated_at,
-		          first_confirmed_at, closed_at`,
+		WITH s AS (
+		    UPDATE shortlists
+		    SET name                  = coalesce($2, name),
+		        description           = coalesce($3, description),
+		        tentative_result_date = coalesce($4, tentative_result_date),
+		        updated_at            = now()
+		    WHERE id = $1 AND status <> 'closed'
+		    RETURNING id, organization_id, role_id, name,
+		              coalesce(description, '') AS description,
+		              status, tentative_result_date, created_by, created_at, updated_at,
+		              first_confirmed_at, closed_at
+		)
+		SELECT`+shortlistColumns+`
+		FROM s JOIN hirer_accounts author ON author.id = s.created_by`,
 		string(id), name, description, date))
 	if err != nil {
 		return nil, translate(err, fmt.Sprintf("updating shortlist %s", id))
@@ -140,12 +164,17 @@ func (r *ShortlistRepository) Update(ctx context.Context, id domain.ShortlistID,
 // Close ends a round.
 func (r *ShortlistRepository) Close(ctx context.Context, id domain.ShortlistID) (*domain.Shortlist, error) {
 	closed, err := scanShortlist(r.db.pool.QueryRow(ctx, `
-		UPDATE shortlists
-		SET status = 'closed', closed_at = now(), updated_at = now()
-		WHERE id = $1 AND status <> 'closed'
-		RETURNING id, organization_id, name, coalesce(description, ''), status,
-		          tentative_result_date, created_by, created_at, updated_at,
-		          first_confirmed_at, closed_at`,
+		WITH s AS (
+		    UPDATE shortlists
+		    SET status = 'closed', closed_at = now(), updated_at = now()
+		    WHERE id = $1 AND status <> 'closed'
+		    RETURNING id, organization_id, role_id, name,
+		              coalesce(description, '') AS description,
+		              status, tentative_result_date, created_by, created_at, updated_at,
+		              first_confirmed_at, closed_at
+		)
+		SELECT`+shortlistColumns+`
+		FROM s JOIN hirer_accounts author ON author.id = s.created_by`,
 		string(id)))
 	if err != nil {
 		return nil, translate(err, fmt.Sprintf("closing shortlist %s", id))
@@ -174,13 +203,16 @@ func (r *ShortlistRepository) AddEntry(ctx context.Context, e *domain.ShortlistE
 		              added_by, notified_at, added_at
 		)
 		SELECT s.shortlist_id, s.user_id, u.display_name, coalesce(gi.github_login, ''),
-		       s.note, s.added_by, s.notified_at, s.added_at
+		       s.note, `+hirerRefColumns("author")+`, s.notified_at, s.added_at
 		FROM staged s
 		JOIN users u ON u.id = s.user_id
+		JOIN hirer_accounts author ON author.id = s.added_by
 		LEFT JOIN user_github_identities gi ON gi.user_id = s.user_id`,
-		string(e.ShortlistID), string(e.UserID), e.Note, string(e.AddedBy),
-	).Scan(&out.ShortlistID, &out.UserID, &out.DisplayName, &out.GitHubLogin,
-		&out.Note, &out.AddedBy, &out.NotifiedAt, &out.AddedAt)
+		string(e.ShortlistID), string(e.UserID), e.Note, string(e.AddedBy.ID),
+	).Scan(scanTargets(
+		[]any{&out.ShortlistID, &out.UserID, &out.DisplayName, &out.GitHubLogin, &out.Note},
+		&out.AddedBy,
+		[]any{&out.NotifiedAt, &out.AddedAt})...)
 	if err != nil {
 		// No rows means the WHERE EXISTS failed: the round is closed or gone.
 		// Staging someone for a finished search would only ever mislead them.
@@ -263,14 +295,23 @@ func (r *ShortlistRepository) Confirm(ctx context.Context, t port.Tx, id domain.
 		    RETURNING id, shortlist_id, user_id, organization_id, requested_by,
 		              status, tentative_result_date, expires_at
 		),
+		-- The JOB this round is for (ADR-0019 §3). Carried out of here because
+		-- the notification is the contact request, and a request with no role
+		-- can only say that somebody is interested.
+		job AS (SELECT role_id FROM shortlists WHERE id = $1),
 		stamped AS (
 		    UPDATE shortlist_entries
 		    SET notified_at = now()
 		    WHERE shortlist_id = $1 AND user_id IN (SELECT user_id FROM staged)
 		)
-		SELECT id, shortlist_id, user_id, organization_id, requested_by,
-		       status, tentative_result_date, expires_at
-		FROM created`, string(id), ContactWindow.String())
+		SELECT c.id, c.shortlist_id, c.user_id, c.organization_id,
+		       `+hirerRefColumns("author")+`,
+		       job.role_id,
+		       c.status, c.tentative_result_date, c.expires_at
+		FROM created c
+		JOIN hirer_accounts author ON author.id = c.requested_by
+		CROSS JOIN job`,
+		string(id), ContactWindow.String())
 	if err != nil {
 		return nil, translate(err, fmt.Sprintf("confirming shortlist %s", id))
 	}
@@ -279,8 +320,10 @@ func (r *ShortlistRepository) Confirm(ctx context.Context, t port.Tx, id domain.
 	var out []domain.ContactRequest
 	for rows.Next() {
 		var cr domain.ContactRequest
-		if err := rows.Scan(&cr.ID, &cr.ShortlistID, &cr.UserID, &cr.OrganizationID,
-			&cr.RequestedBy, &cr.Status, &cr.TentativeResultDate, &cr.ExpiresAt); err != nil {
+		if err := rows.Scan(scanTargets(
+			[]any{&cr.ID, &cr.ShortlistID, &cr.UserID, &cr.OrganizationID},
+			&cr.RequestedBy,
+			[]any{&cr.RoleID, &cr.Status, &cr.TentativeResultDate, &cr.ExpiresAt})...); err != nil {
 			return nil, translate(err, "scanning contact request")
 		}
 		out = append(out, cr)
@@ -340,11 +383,13 @@ func (r *ShortlistRepository) entries(ctx context.Context, id domain.ShortlistID
 	// released it (ADR-0005).
 	rows, err := r.db.pool.Query(ctx, `
 		SELECT e.shortlist_id, e.user_id, u.display_name, coalesce(gi.github_login, ''),
-		       coalesce(e.note, ''), e.added_by, e.notified_at, e.added_at,
+		       coalesce(e.note, ''), `+hirerRefColumns("author")+`,
+		       e.notified_at, e.added_at,
 		       coalesce(cr.status::text, ''),
 		       CASE WHEN cr.email_released_at IS NOT NULL THEN u.email ELSE '' END
 		FROM shortlist_entries e
 		JOIN users u ON u.id = e.user_id
+		JOIN hirer_accounts author ON author.id = e.added_by
 		LEFT JOIN user_github_identities gi ON gi.user_id = e.user_id
 		LEFT JOIN contact_requests cr
 		       ON cr.shortlist_id = e.shortlist_id AND cr.user_id = e.user_id
@@ -358,9 +403,10 @@ func (r *ShortlistRepository) entries(ctx context.Context, id domain.ShortlistID
 	var out []domain.ShortlistEntry
 	for rows.Next() {
 		var e domain.ShortlistEntry
-		if err := rows.Scan(&e.ShortlistID, &e.UserID, &e.DisplayName, &e.GitHubLogin,
-			&e.Note, &e.AddedBy, &e.NotifiedAt, &e.AddedAt,
-			&e.ContactStatus, &e.Email); err != nil {
+		if err := rows.Scan(scanTargets(
+			[]any{&e.ShortlistID, &e.UserID, &e.DisplayName, &e.GitHubLogin, &e.Note},
+			&e.AddedBy,
+			[]any{&e.NotifiedAt, &e.AddedAt, &e.ContactStatus, &e.Email})...); err != nil {
 			return nil, translate(err, "scanning shortlist entry")
 		}
 		out = append(out, e)
@@ -370,9 +416,12 @@ func (r *ShortlistRepository) entries(ctx context.Context, id domain.ShortlistID
 
 func scanShortlist(row rowScanner) (*domain.Shortlist, error) {
 	var s domain.Shortlist
-	if err := row.Scan(&s.ID, &s.OrganizationID, &s.Name, &s.Description, &s.Status,
-		&s.TentativeResultDate, &s.CreatedBy, &s.CreatedAt, &s.UpdatedAt,
-		&s.FirstConfirmedAt, &s.ClosedAt); err != nil {
+	targets := scanTargets(
+		[]any{&s.ID, &s.OrganizationID, &s.RoleID, &s.Name, &s.Description,
+			&s.Status, &s.TentativeResultDate},
+		&s.CreatedBy,
+		[]any{&s.CreatedAt, &s.UpdatedAt, &s.FirstConfirmedAt, &s.ClosedAt})
+	if err := row.Scan(targets...); err != nil {
 		return nil, err
 	}
 	return &s, nil

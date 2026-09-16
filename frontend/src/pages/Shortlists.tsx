@@ -7,7 +7,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import type { ShortlistSummary } from "../contract";
-import { useCreateShortlist, useShortlists } from "../hooks/hirer";
+import { useCreateShortlist, useOrgID, useRoles, useShortlists } from "../hooks/hirer";
 import * as format from "../logic/format";
 import {
   Button,
@@ -30,7 +30,11 @@ function RoundCard({ round }: { round: ShortlistSummary }) {
         <Link className="sl-card__name" to={`/shortlists/${round.id}`}>
           {round.name}
         </Link>
-        <Pill tone={round.status === "closed" ? "stale" : round.status === "draft" ? "secondary" : "primary"}>
+        <Pill
+          tone={
+            round.status === "closed" ? "stale" : round.status === "draft" ? "secondary" : "primary"
+          }
+        >
           {round.status}
         </Pill>
       </div>
@@ -59,11 +63,24 @@ export function ShortlistsPage() {
   const rounds = useShortlists();
   const create = useCreateShortlist();
 
+  // Only OPEN roles can be rounded on: a draft is not a commitment, and a
+  // closed one is a withdrawn opening.
+  const org = useOrgID();
+  const roles = useRoles(org.id, "open");
+  const openRoles = roles.data?.roles ?? [];
+
+  const [roleId, setRoleId] = useState("");
+
   const [name, setName] = useState("");
   const [date, setDate] = useState("");
   const [description, setDescription] = useState("");
 
-  if (rounds.loading) return <div className="page"><Loading what="your rounds" /></div>;
+  if (rounds.loading)
+    return (
+      <div className="page">
+        <Loading what="your rounds" />
+      </div>
+    );
   if (rounds.error) {
     return (
       <div className="page page--narrow">
@@ -87,6 +104,37 @@ export function ShortlistsPage() {
 
       <Card>
         <p className="eyebrow">Start a round</p>
+
+        {/* A round is FOR a job (ADR-0019 §3). One round, one role: wanting the
+            same contributor for a second opening means a second round, which
+            raises a second, separate contact request — two jobs are two
+            decisions. Without this the invitation could only say that somebody
+            is interested. */}
+        <Field
+          label="The job this round is for"
+          htmlFor="role"
+          help={
+            openRoles.length === 0
+              ? "You have no open roles. A round can only approach people for a job the organisation has committed to — create one first."
+              : "Everybody on this round is approached for this job, and sees its salary, location and process."
+          }
+        >
+          <select
+            className="input"
+            id="role"
+            value={roleId}
+            onChange={(event) => setRoleId(event.target.value)}
+            disabled={openRoles.length === 0}
+          >
+            <option value="">Choose a role</option>
+            {openRoles.map((role) => (
+              <option key={role.id} value={role.id}>
+                {role.title}
+              </option>
+            ))}
+          </select>
+        </Field>
+
         <Field label="Name" htmlFor="name">
           <input
             className="input"
@@ -119,10 +167,11 @@ export function ShortlistsPage() {
         {create.error ? <Failure message={create.error.message} /> : null}
         <Button
           variant="primary"
-          disabled={create.pending || !name.trim() || !date}
+          disabled={create.pending || !roleId || !name.trim() || !date}
           onClick={() =>
-            void create.run(name, date, description).then((ok) => {
+            void create.run(roleId, name, date, description).then((ok) => {
               if (ok) {
+                setRoleId("");
                 setName("");
                 setDate("");
                 setDescription("");
@@ -136,7 +185,11 @@ export function ShortlistsPage() {
         </Button>
       </Card>
 
-      {all.length === 0 ? <Empty title="No rounds yet" icon="bookmark">Stage someone from search and a round will have something to hold.</Empty> : null}
+      {all.length === 0 ? (
+        <Empty title="No rounds yet" icon="bookmark">
+          Stage someone from search and a round will have something to hold.
+        </Empty>
+      ) : null}
 
       {[
         ["Draft — nobody told yet", drafts],

@@ -16,6 +16,8 @@ import {
   useReevaluationQueue,
   useSkillRequestQueue,
   useSweep,
+  useDecideOnboarding,
+  useOnboardingQueue,
   useVerificationQueue,
 } from "../hooks/admin";
 import * as format from "../logic/format";
@@ -33,6 +35,112 @@ import {
 } from "../ui/primitives";
 
 const CATEGORIES = ["language", "framework", "platform", "database", "practice", "tool"] as const;
+
+/**
+ * Companies awaiting a decision (ADR-0017).
+ *
+ * Approving does not stamp a column — it CREATES the organisation, its address,
+ * the owner seat and the membership, and verifies the company so it can hire
+ * immediately. It can also fail: two submissions may name one company, nothing
+ * reserves a name, and only the first approved can have it.
+ */
+function OnboardingQueue() {
+  const queue = useOnboardingQueue();
+  const decide = useDecideOnboarding();
+  const [reasons, setReasons] = useState<Record<string, string>>({});
+
+  const submissions = queue.data?.submissions ?? [];
+
+  return (
+    <Card>
+      <div className="section__head">
+        <h2 className="section__title">Companies awaiting review</h2>
+        <span className="section__note mono">{submissions.length}</span>
+      </div>
+
+      <p className="field__help">
+        Nothing here exists yet. Approving one creates the company, its address and the
+        owner&rsquo;s account together — and the name is only claimed at that moment, so approving a
+        second company with the same name will be refused.
+      </p>
+
+      {queue.error ? <Failure message={queue.error.message} onRetry={queue.reload} /> : null}
+      {queue.loading ? <Loading what="companies" /> : null}
+      {!queue.loading && submissions.length === 0 ? (
+        <Empty title="Nothing waiting">No company is awaiting a decision.</Empty>
+      ) : null}
+
+      <div className="rows">
+        {submissions.map((s) => (
+          <div className="row" key={s.id}>
+            <span className="row__ident">
+              <span className="row__name">{s.name}</span>
+              <span className="row__login">{s.email}</span>
+              <span className="row__meta">
+                {s.headcount ? <Pill>{s.headcount} people</Pill> : null}
+                {s.supersedes ? <Pill tone="cherry">A correction</Pill> : null}
+                <span>waiting {Math.round(s.age_hours)}h</span>
+              </span>
+              {s.description ? <p className="row__headline">{s.description}</p> : null}
+              <span className="row__meta">
+                {/* The address is the evidence an administrator weighs, so it is
+                    shown rather than hidden behind a click. Null means none was
+                    given, which is itself a fact about the company. */}
+                {s.address ? (
+                  <span>
+                    {[s.address.street1, s.address.city, s.address.postal_code, s.address.country]
+                      .filter(Boolean)
+                      .join(", ")}
+                  </span>
+                ) : (
+                  <span className="muted">No office address given</span>
+                )}
+                {s.phone ? <span>{s.phone}</span> : null}
+              </span>
+              <span className="row__meta">
+                Will sign in as <b>{s.owner.username}</b> ({s.owner.display_name})
+              </span>
+            </span>
+
+            <span className="row__right">
+              <Field label="Reason, if refusing" htmlFor={`why-${s.id}`}>
+                <input
+                  className="input"
+                  id={`why-${s.id}`}
+                  value={reasons[s.id] ?? ""}
+                  onChange={(e) => setReasons({ ...reasons, [s.id]: e.target.value })}
+                />
+              </Field>
+              <span className="row__actions">
+                <Button
+                  variant="primary"
+                  size="sm"
+                  disabled={decide.pending}
+                  onClick={() => void decide.run(s.id, true, "").then(() => queue.reload())}
+                >
+                  Approve
+                </Button>
+                <Button
+                  variant="danger"
+                  size="sm"
+                  disabled={decide.pending || !(reasons[s.id] ?? "").trim()}
+                  title="A refusal must carry a reason — the company is told it, and corrects from it."
+                  onClick={() =>
+                    void decide.run(s.id, false, reasons[s.id] ?? "").then(() => queue.reload())
+                  }
+                >
+                  Refuse
+                </Button>
+              </span>
+            </span>
+          </div>
+        ))}
+      </div>
+
+      {decide.error ? <Failure message={decide.error.message} /> : null}
+    </Card>
+  );
+}
 
 function VerificationQueue() {
   const queue = useVerificationQueue();
@@ -59,7 +167,9 @@ function VerificationQueue() {
       {queue.loading ? <Loading what="verifications" /> : null}
       {queue.error ? <Failure message={queue.error.message} onRetry={queue.reload} /> : null}
       {decide.error ? <Failure message={decide.error.message} /> : null}
-      {!queue.loading && requests.length === 0 ? <Empty title="Nothing waiting" icon="check" /> : null}
+      {!queue.loading && requests.length === 0 ? (
+        <Empty title="Nothing waiting" icon="check" />
+      ) : null}
 
       <ul className="rows">
         {requests.map((r) => (
@@ -171,7 +281,9 @@ function SkillRequestQueue() {
       {queue.loading ? <Loading what="skill requests" /> : null}
       {queue.error ? <Failure message={queue.error.message} onRetry={queue.reload} /> : null}
       {decide.error ? <Failure message={decide.error.message} /> : null}
-      {!queue.loading && requests.length === 0 ? <Empty title="Nothing waiting" icon="check" /> : null}
+      {!queue.loading && requests.length === 0 ? (
+        <Empty title="Nothing waiting" icon="check" />
+      ) : null}
 
       <ul className="rows">
         {requests.map((r) => (
@@ -183,11 +295,7 @@ function SkillRequestQueue() {
               </div>
               <p className="rationale">{r.rationale}</p>
 
-              <Field
-                label="Slug to create"
-                htmlFor={`slug-${r.id}`}
-                help="Lower case, hyphenated."
-              >
+              <Field label="Slug to create" htmlFor={`slug-${r.id}`} help="Lower case, hyphenated.">
                 <input
                   className="input mono"
                   id={`slug-${r.id}`}
@@ -285,7 +393,9 @@ function DisputeQueue() {
       {queue.loading ? <Loading what="disputes" /> : null}
       {queue.error ? <Failure message={queue.error.message} onRetry={queue.reload} /> : null}
       {decide.error ? <Failure message={decide.error.message} /> : null}
-      {!queue.loading && requests.length === 0 ? <Empty title="Nothing waiting" icon="check" /> : null}
+      {!queue.loading && requests.length === 0 ? (
+        <Empty title="Nothing waiting" icon="check" />
+      ) : null}
 
       <ul className="rows">
         {requests.map((r) => (
@@ -353,8 +463,8 @@ function SweepControl() {
       {sweep.data ? (
         <Banner>
           Sweep started: <span className="mono">{sweep.data.from_rubric_version}</span> →{" "}
-          <span className="mono">{sweep.data.to_rubric_version}</span>,{" "}
-          {sweep.data.claims_enqueued} claims re-queued at {format.date(sweep.data.created_at)}.
+          <span className="mono">{sweep.data.to_rubric_version}</span>, {sweep.data.claims_enqueued}{" "}
+          claims re-queued at {format.date(sweep.data.created_at)}.
         </Banner>
       ) : null}
 
@@ -407,8 +517,9 @@ export function AdminQueuesPage() {
       <PageHead
         eyebrow="Administration"
         title="Review queues"
-        lede="Four decisions that reach somebody. A rejection always carries a reason, because “rejected” with nothing to fix is not an answer."
+        lede="Decisions that reach somebody. A rejection always carries a reason, because “rejected” with nothing to fix is not an answer."
       />
+      <OnboardingQueue />
       <VerificationQueue />
       <SkillRequestQueue />
       <DisputeQueue />

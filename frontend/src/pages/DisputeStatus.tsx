@@ -17,7 +17,12 @@ export function DisputeStatusPage() {
   // names, so a row says which claim it is rather than "open this claim".
   const claims = useMyClaims();
 
-  if (status.loading) return <div className="page"><Loading what="your dispute standing" /></div>;
+  if (status.loading)
+    return (
+      <div className="page">
+        <Loading what="your dispute standing" />
+      </div>
+    );
   if (status.error) {
     return (
       <div className="page page--narrow">
@@ -25,7 +30,12 @@ export function DisputeStatusPage() {
       </div>
     );
   }
-  if (!status.data) return <div className="page page--narrow"><Empty title="Nothing to show" /></div>;
+  if (!status.data)
+    return (
+      <div className="page page--narrow">
+        <Empty title="Nothing to show" />
+      </div>
+    );
 
   const d = status.data;
   const byId = new Map((claims.data?.claims ?? []).map((c) => [c.id, c]));

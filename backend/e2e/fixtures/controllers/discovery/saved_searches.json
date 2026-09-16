@@ -34,7 +34,7 @@
             "id": "01920000-0000-7000-8000-00000000b001",
             "name": "Acme Corp"
           },
-          "created_by": "01920000-0000-7000-8000-00000000c001",
+          "created_by": { "id": "01920000-0000-7000-8000-00000000c001", "username": "hank", "display_name": "Hank Rivera", "active": true },
           "created_at": "<timestamp>"
         }
       }
@@ -158,7 +158,7 @@
             "id": "01920000-0000-7000-8000-00000000b001",
             "name": "Acme Corp"
           },
-          "created_by": "01920000-0000-7000-8000-00000000c001",
+          "created_by": { "id": "01920000-0000-7000-8000-00000000c001", "username": "hank", "display_name": "Hank Rivera", "active": true },
           "created_at": "<timestamp>"
         }
       }
@@ -381,7 +381,12 @@
                 "min_skill_score": 50,
                 "availability": ["looking_for_job", "looking_for_freelance"]
               },
-              "created_by": "01920000-0000-7000-8000-00000000c001",
+              "created_by": {
+                "id": "01920000-0000-7000-8000-00000000c001",
+                "username": "hank",
+                "display_name": "Hank Rivera",
+                "active": true
+              },
               "created_at": "<timestamp>"
             },
             {
@@ -390,7 +395,12 @@
               "filters": {
                 "min_generalist_score": 120
               },
-              "created_by": "01920000-0000-7000-8000-00000000c001",
+              "created_by": {
+                "id": "01920000-0000-7000-8000-00000000c001",
+                "username": "hank",
+                "display_name": "Hank Rivera",
+                "active": true
+              },
               "created_at": "<timestamp>"
             }
           ]

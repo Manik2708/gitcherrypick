@@ -22,8 +22,12 @@ func (db *DB) Contacts() *ContactRepository { return &ContactRepository{db: db} 
 
 var _ port.ContactRepository = (*ContactRepository)(nil)
 
-const contactColumns = `
-	cr.id, cr.shortlist_id, cr.user_id, cr.organization_id, cr.requested_by,
+// contactColumns resolves the ASKING hirer rather than emitting their id
+// (ADR-0016 §9): a request made by a colleague who has since left is still
+// theirs, and the reader needs a name to make sense of it.
+var contactColumns = `
+	cr.id, cr.shortlist_id, cr.user_id, cr.organization_id, ` + hirerRefColumns("author") + `,
+	sl.role_id,
 	cr.status, cr.tentative_result_date, cr.responded_at, cr.email_released_at,
 	cr.expires_at, cr.created_at,
 	coalesce(o.name, ''), (o.verified_at IS NOT NULL), (o.payment_verified_at IS NOT NULL),
@@ -33,6 +37,8 @@ const contactColumns = `
 // contactFrom joins the organization every contact request is about.
 const contactFrom = `
 	FROM contact_requests cr
+	JOIN hirer_accounts author ON author.id = cr.requested_by
+	JOIN shortlists sl ON sl.id = cr.shortlist_id
 	LEFT JOIN organizations o ON o.id = cr.organization_id
 	JOIN users u ON u.id = cr.user_id
 	LEFT JOIN user_github_identities gi ON gi.user_id = cr.user_id`
@@ -92,28 +98,31 @@ func (r *ContactRepository) Respond(ctx context.Context, t port.Tx, id domain.Co
 	// enum in the SET and as text in the comparison, and $3 as timestamptz in
 	// one branch and unknown in the other — Postgres refuses to deduce two
 	// types for one parameter.
+	// A CTE, so the answer comes back through contactColumns like every other
+	// read: the same shape, with the organization and the asking hirer already
+	// resolved. A bare RETURNING cannot reach either table, and the previous
+	// version filled them with empty strings and then read the organization
+	// back in a second query.
 	cr, err := scanContact(r.db.q(t).QueryRow(ctx, `
-		UPDATE contact_requests cr
-		SET status            = $2::contact_request_status,
-		    responded_at      = $3::timestamptz,
-		    email_released_at = CASE WHEN $2::contact_request_status = 'accepted' THEN $3::timestamptz END
-		WHERE cr.id = $1 AND cr.status = 'pending'
-		RETURNING cr.id, cr.shortlist_id, cr.user_id, cr.organization_id, cr.requested_by,
-		          cr.status, cr.tentative_result_date, cr.responded_at, cr.email_released_at,
-		          cr.expires_at, cr.created_at, '', false, false, '', '', ''`,
+		WITH answered AS (
+		    UPDATE contact_requests
+		    SET status            = $2::contact_request_status,
+		        responded_at      = $3::timestamptz,
+		        email_released_at = CASE WHEN $2::contact_request_status = 'accepted'
+		                                THEN $3::timestamptz END
+		    WHERE id = $1 AND status = 'pending'
+		    RETURNING *
+		)
+		SELECT`+contactColumns+`
+		FROM answered cr
+		JOIN hirer_accounts author ON author.id = cr.requested_by
+	JOIN shortlists sl ON sl.id = cr.shortlist_id
+		LEFT JOIN organizations o ON o.id = cr.organization_id
+		JOIN users u ON u.id = cr.user_id
+		LEFT JOIN user_github_identities gi ON gi.user_id = cr.user_id`,
 		string(id), string(status), at))
 	if err != nil {
 		return nil, translate(err, fmt.Sprintf("responding to contact request %s", id))
-	}
-
-	// RETURNING cannot reach a joined table, so the organization is read back
-	// rather than left blank: the response to an answer shows the same company
-	// the request did.
-	if err := r.db.q(t).QueryRow(ctx,
-		`SELECT coalesce(name, ''), (verified_at IS NOT NULL), (payment_verified_at IS NOT NULL)
-		 FROM organizations WHERE id = $1`, string(cr.OrganizationID),
-	).Scan(&cr.OrganizationName, &cr.OrganizationVerified, &cr.PaymentVerified); err != nil {
-		return nil, translate(err, "reading the requesting organization")
 	}
 	return cr, nil
 }
@@ -153,11 +162,42 @@ func (r *ContactRepository) list(ctx context.Context, query string, args ...any)
 
 func scanContact(row rowScanner) (*domain.ContactRequest, error) {
 	var cr domain.ContactRequest
-	if err := row.Scan(&cr.ID, &cr.ShortlistID, &cr.UserID, &cr.OrganizationID, &cr.RequestedBy,
-		&cr.Status, &cr.TentativeResultDate, &cr.RespondedAt, &cr.EmailReleasedAt,
-		&cr.ExpiresAt, &cr.CreatedAt, &cr.OrganizationName, &cr.OrganizationVerified, &cr.PaymentVerified,
-		&cr.DisplayName, &cr.GitHubLogin, &cr.Email); err != nil {
+	targets := scanTargets(
+		[]any{&cr.ID, &cr.ShortlistID, &cr.UserID, &cr.OrganizationID},
+		&cr.RequestedBy,
+		[]any{&cr.RoleID,
+			&cr.Status, &cr.TentativeResultDate, &cr.RespondedAt, &cr.EmailReleasedAt,
+			&cr.ExpiresAt, &cr.CreatedAt,
+			&cr.OrganizationName, &cr.OrganizationVerified, &cr.PaymentVerified,
+			&cr.DisplayName, &cr.GitHubLogin, &cr.Email})
+	if err := row.Scan(targets...); err != nil {
 		return nil, err
 	}
 	return &cr, nil
+}
+
+// ReleasedTo resolves an address this organization has already been given.
+//
+// The join is the authorisation: a row exists only where a contributor
+// ACCEPTED a request from this organization and email_released_at was stamped.
+// Nothing here searches users by email in the general case, which is what keeps
+// the caller from learning whether an arbitrary address has an account.
+//
+// Case-insensitive, because an address typed by a recruiter reading it off a
+// CV will not match the casing GitHub supplied.
+func (r *ContactRepository) ReleasedTo(ctx context.Context, org domain.OrganizationID, email string) (domain.UserID, error) {
+	var id string
+	err := r.db.pool.QueryRow(ctx, `
+		SELECT u.id
+		  FROM contact_requests cr
+		  JOIN users u ON u.id = cr.user_id
+		 WHERE cr.organization_id = $1
+		   AND cr.status = 'accepted'
+		   AND cr.email_released_at IS NOT NULL
+		   AND lower(u.email) = lower($2)
+		 LIMIT 1`, string(org), email).Scan(&id)
+	if err != nil {
+		return "", translate(err, "resolving a released contributor")
+	}
+	return domain.UserID(id), nil
 }

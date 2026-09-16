@@ -94,6 +94,23 @@ func (p Principals) KeyForEmail(email string) string {
 	return ""
 }
 
+// KeyForUsername names the hirer a username belongs to.
+//
+// Since ADR-0016 a hirer signs in with a username, so it — not the address —
+// is what identifies who a `/auth/hirer/login` step just authenticated as.
+// Hirers only: usernames exist in no other namespace.
+func (p Principals) KeyForUsername(username string) string {
+	if username == "" {
+		return ""
+	}
+	for _, h := range p.Hirers {
+		if strings.EqualFold(h.Username, username) {
+			return h.Key
+		}
+	}
+	return ""
+}
+
 // Reset forgets every cached session.
 //
 // Called after the clock moves: the tokens it holds were minted against the
@@ -183,7 +200,8 @@ func authenticateHirer(ctx context.Context, client *http.Client, principal strin
 		return session.session()
 	}
 
-	body := map[string]string{"email": hirer.Email, "password": SeededPassword}
+	// USERNAME, not email (ADR-0016): the address stopped being an identity.
+	body := map[string]string{"username": hirer.Username, "password": SeededPassword}
 	var session sessionResponse
 	if err := call(ctx, client, "POST", "/auth/hirer/login", body, "", &session); err != nil {
 		return nil, fmt.Errorf("hirer login: %w", err)
@@ -299,8 +317,13 @@ func unreachable(err error) error {
 
 // loginBody is the part of an authentication request that names who is
 // signing in.
+//
+// Two fields because the three sign-in paths do not agree on one: an admin
+// presents an email (ADR-0002), a hirer presents a username (ADR-0016), and
+// either may name a seeded principal.
 type loginBody struct {
-	Email string `json:"email"`
+	Email    string `json:"email"`
+	Username string `json:"username"`
 }
 
 // tokenPair is the part of an authentication response worth keeping.
@@ -329,7 +352,10 @@ func adoptSession(sessions *sessionCache, principals Principals, step Step, resp
 
 	var login loginBody
 	_ = json.Unmarshal(step.Request.Body, &login)
-	key := principals.KeyForEmail(login.Email)
+	key := principals.KeyForUsername(login.Username)
+	if key == "" {
+		key = principals.KeyForEmail(login.Email)
+	}
 	if key == "" {
 		return
 	}

@@ -53,7 +53,10 @@ func TestAuthorizeURL(t *testing.T) {
 
 	// Read-only scopes. Anything broader asks a contributor to trust the
 	// platform with more than it needs.
-	require.Equal(t, "read:user", parsed.Query().Get("scope"))
+	// user:email is required, not incidental: /user/emails is gated behind it,
+	// and the sign-in path needs a VERIFIED address. Narrowing this back to
+	// read:user alone passes here and fails against github.com.
+	require.Equal(t, "read:user user:email", parsed.Query().Get("scope"))
 }
 
 func TestAuthorizeURLDefaultsToRealGitHub(t *testing.T) {

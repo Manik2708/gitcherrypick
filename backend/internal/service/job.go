@@ -14,11 +14,18 @@ import (
 // Exposed as an interface so the e2e harness can drive each one synchronously
 // instead of sleeping — a sleep is a flake with a timer attached.
 type JobService struct {
+	// profiles re-verifies pull requests whose fetch could not be completed
+	// (ADR-0019 §7). Held as the SERVICE rather than the repository, because
+	// the check that a pull request is merged and is actually the
+	// contributor's is business logic, not a query.
+	profiles port.ProfileVerifier
+
 	users      port.UserRepository
 	shortlists port.ShortlistRepository
 	contacts   port.ContactRepository
 	norms      port.NormsRepository
 	hirers     port.HirerRepository
+	onboarding port.OnboardingRepository
 	notifier   port.Notifier
 	clock      port.Clock
 }
@@ -30,11 +37,52 @@ func NewJobService(
 	contacts port.ContactRepository,
 	norms port.NormsRepository,
 	hirers port.HirerRepository,
+	onboarding port.OnboardingRepository,
+	profiles port.ProfileVerifier,
 	notifier port.Notifier,
 	clock port.Clock,
 ) *JobService {
 	return &JobService{users: users, shortlists: shortlists, contacts: contacts,
-		norms: norms, hirers: hirers, notifier: notifier, clock: clock}
+		norms: norms, hirers: hirers, onboarding: onboarding, profiles: profiles,
+		notifier: notifier, clock: clock}
+}
+
+// VerifyPendingPRs drains the verification retry queue.
+//
+// Bounded per run. A sweep that read every unverified row would become a
+// report, and one GitHub call per contributor is the rate-limited resource
+// here — a long queue is better drained over several runs than in one that
+// exhausts the budget for everything else.
+func (s *JobService) VerifyPendingPRs(ctx context.Context) (int, error) {
+	n, err := s.profiles.VerifyPending(ctx, VerificationBatch)
+	if err != nil {
+		return 0, fmt.Errorf("verifying pending pull requests: %w", err)
+	}
+	return n, nil
+}
+
+// VerificationBatch is how many profiles one run re-checks.
+const VerificationBatch = 100
+
+// ExpireOnboarding deletes submitted companies whose code lapsed unused.
+//
+// The only sweep here that DELETES. Everything else in this file stamps a
+// column — an availability window lapses, a contact request expires — and the
+// row stays because somebody may still want to read it. A submission that was
+// never proven is different: its code is gone, so it can never be proven, never
+// reach an administrator and never become a company. It is not stale, it is
+// unreachable (ADR-0017 §2).
+//
+// The trade is that it loses the trail. Somebody submitting one company name
+// ten times and never verifying leaves nothing behind — which is deliberate:
+// abuse of an endpoint that creates nothing belongs to rate limiting, not to a
+// table nobody prunes.
+func (s *JobService) ExpireOnboarding(ctx context.Context) (int, error) {
+	n, err := s.onboarding.ExpireUnproven(ctx, s.clock.Now().Add(-OnboardingWindow))
+	if err != nil {
+		return 0, fmt.Errorf("expiring unproven onboarding submissions: %w", err)
+	}
+	return n, nil
 }
 
 var _ port.JobService = (*JobService)(nil)

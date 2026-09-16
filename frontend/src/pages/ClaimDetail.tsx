@@ -137,7 +137,12 @@ export function ClaimDetailPage() {
   const [acknowledged, setAcknowledged] = useState(false);
   const now = new Date();
 
-  if (claim.loading) return <div className="page"><Loading what="the claim" /></div>;
+  if (claim.loading)
+    return (
+      <div className="page">
+        <Loading what="the claim" />
+      </div>
+    );
   if (claim.error) {
     return (
       <div className="page page--narrow">
@@ -146,7 +151,11 @@ export function ClaimDetailPage() {
     );
   }
   if (!claim.data) {
-    return <div className="page page--narrow"><Empty title="No such claim" /></div>;
+    return (
+      <div className="page page--narrow">
+        <Empty title="No such claim" />
+      </div>
+    );
   }
 
   const current = claim.data;
@@ -343,7 +352,11 @@ export function ClaimDetailPage() {
             />
 
             {chosen.length > 1 ? (
-              <Field label="Nominated primary" htmlFor="primary" help="Defaults to the first you picked.">
+              <Field
+                label="Nominated primary"
+                htmlFor="primary"
+                help="Defaults to the first you picked."
+              >
                 <select
                   className="select"
                   id="primary"

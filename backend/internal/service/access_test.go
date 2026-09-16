@@ -47,6 +47,38 @@ func TestRequireHiringCapability(t *testing.T) {
 		}
 	})
 
+	// An INDEPENDENT hirer has no organisation (ADR-0017 §1), so there is none
+	// to read capability through. Their own review is the only thing there is.
+	t.Run("a verified independent hirer may hire", func(t *testing.T) {
+		// The bug this pins: reading through the organisation unconditionally
+		// refused an independent hirer FOREVER — no org meant not-found meant
+		// not capable, even after an administrator approved them personally.
+		// Nothing failed; the account simply never worked.
+		hirers := mocks.NewHirerRepository(t)
+
+		p := hirerPrincipal()
+		now := time.Now()
+		p.Hirer.OrganizationID = ""
+		p.Hirer.VerifiedAt = &now
+
+		if err := service.NewAccessService(hirers).RequireHiringCapability(ctx(t), p); err != nil {
+			t.Fatalf("a verified independent hirer should be able to hire, got %v", err)
+		}
+	})
+
+	t.Run("an unverified independent hirer may not", func(t *testing.T) {
+		hirers := mocks.NewHirerRepository(t)
+
+		p := hirerPrincipal()
+		p.Hirer.OrganizationID = ""
+		p.Hirer.VerifiedAt = nil
+
+		err := service.NewAccessService(hirers).RequireHiringCapability(ctx(t), p)
+		if !errors.Is(err, service.ErrNotCapable) {
+			t.Fatalf("expected ErrNotCapable, got %v", err)
+		}
+	})
+
 	t.Run("payment verification is not a gate", func(t *testing.T) {
 		// ADR-0002 §5: missing payment evidence is DISCLOSED to the contributor
 		// at contact time. Gating on it here would turn a disclosure into a ban.

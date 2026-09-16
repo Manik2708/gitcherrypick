@@ -1,0 +1,340 @@
+{
+  "name": "PUT replaces the whole profile, and the first pull request is write-once",
+  "description": "Three rules from ADR-0018 that a PATCH-shaped implementation would break quietly.\n\nFIRST, THE REPLACE. The endpoint is a PUT and not a PATCH, because a profile form submits every field it shows, so a full replace says what happened. The test is the one a merge passes by accident in every other case — set two flags, then submit a body with all four false. A merge leaves a flag set that somebody had just cleared and answers 200 as though it had not: the screen says they are not open to internships while the index says they are, and the only symptom is mail they never agreed to hear.\n\nThe country and the self-reported years clear the same way. An empty country stores NULL rather than leaving the previous one standing, which matters because current_country is matched against a role's eligible countries — a stale one puts somebody in front of roles in a country they have left. office_yoe returns to null, because not stated is not zero years.\n\nSECOND, WRITE-ONCE (decision 7, as amended). first_pr_url is asked rather than derived — a first contribution is often years old in a repository nobody claimed here, and a claim is five PRs somebody chose as their BEST, not their earliest — and once recorded it cannot be changed. A field revisable downward whenever it suited would be worth nothing to the hirer reading it. A second, DIFFERENT value is refused with a readable error rather than silently overruled, because a client that sent a new value and got a 200 would show it back and believe it had saved. latest_pr_url is editable in the same request, because it goes stale by definition.\n\nRe-sending the SAME first PR is accepted, which is what a form showing the field does on every save. That matters to a client: since this is a replace, it has to keep echoing the value it was given.\n\nTHIRD, needs_attention (amendment 2) is about having been ASKED, not about the answer. The all-false step is the proof: every flag off, matchable false, needs_attention false. 'I am not open to any of these right now' is a real answer somebody may mean, and nobody should be nagged about a decision they made.\n\nEvery refusal also asserts the table, because the interesting half of a refusal is what it did NOT write: the 409 arrives carrying four flags and a country, and none of them may land.",
+  "seed": ["principals", "catalogue", "repositories"],
+  "steps": [
+    {
+      "_step": "The full form, as the screen submits it. Two flags on, two off, and both pull requests stated for the first time.",
+      "as": "alice",
+      "request": {
+        "method": "PUT",
+        "path": "/me/profile",
+        "body": {
+          "open_to_remote": true,
+          "open_to_internships": true,
+          "open_to_onsite": false,
+          "open_to_contract": false,
+          "current_country": "DE",
+          "office_yoe": 4,
+          "first_pr_url": "https://github.com/indie/smalllib/pull/12",
+          "latest_pr_url": "https://github.com/acme/bigrepo/pull/101"
+        }
+      },
+      "expect": {
+        "status": 200,
+        "_note": "office_yoe 4 beside a first PR from years earlier: two different facts about the same person, and the pair is the point — somebody with eight years of open source and one of employment is a specific person a hirer wants to be able to see. needs_attention goes false the moment she answers.",
+        "body": {
+          "preferences": {
+            "open_to_remote": true,
+            "open_to_internships": true,
+            "open_to_onsite": false,
+            "open_to_contract": false,
+            "current_country": "DE",
+            "office_yoe": 4,
+            "first_pr_url": "https://github.com/indie/smalllib/pull/12",
+            "latest_pr_url": "https://github.com/acme/bigrepo/pull/101"
+          },
+          "availability": {
+            "status": "looking_for_job",
+            "expires_at": "<timestamp>"
+          },
+          "needs_attention": false,
+          "matchable": true
+        },
+        "db": {
+          "user_work_preferences": {
+            "where": {
+              "user_id": "{{alice.id}}"
+            },
+            "count": 1,
+            "all_match": {
+              "open_to_remote": true,
+              "open_to_internships": true,
+              "open_to_onsite": false,
+              "open_to_contract": false,
+              "current_country": "DE",
+              "office_yoe": 4,
+              "first_pr_url": "https://github.com/indie/smalllib/pull/12",
+              "latest_pr_url": "https://github.com/acme/bigrepo/pull/101"
+            }
+          }
+        }
+      }
+    },
+    {
+      "_step": "Read back. What the write returned is what a later read returns, which is not free: the write answers from a re-read, so a column the upsert forgot would show up here rather than after a deploy.",
+      "as": "alice",
+      "request": {
+        "method": "GET",
+        "path": "/me/profile"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "preferences": {
+            "open_to_remote": true,
+            "open_to_internships": true,
+            "open_to_onsite": false,
+            "open_to_contract": false,
+            "current_country": "DE",
+            "office_yoe": 4,
+            "first_pr_url": "https://github.com/indie/smalllib/pull/12",
+            "latest_pr_url": "https://github.com/acme/bigrepo/pull/101"
+          },
+          "availability": {
+            "status": "looking_for_job",
+            "expires_at": "<timestamp>"
+          },
+          "needs_attention": false,
+          "matchable": true
+        }
+      }
+    },
+    {
+      "_step": "SHE CLEARS EVERYTHING SHE IS ALLOWED TO CLEAR, and moves her latest PR on. The same first PR is echoed back, which is what a replace requires of a client.",
+      "as": "alice",
+      "request": {
+        "method": "PUT",
+        "path": "/me/profile",
+        "body": {
+          "open_to_remote": false,
+          "open_to_internships": false,
+          "open_to_onsite": false,
+          "open_to_contract": false,
+          "current_country": "",
+          "office_yoe": null,
+          "first_pr_url": "https://github.com/indie/smalllib/pull/12",
+          "latest_pr_url": "https://github.com/acme/platform/pull/56"
+        }
+      },
+      "expect": {
+        "status": 200,
+        "_note": "THE STEP A MERGE FAILS. All four flags are false, so she is unmatchable again despite a live window — and needs_attention is still FALSE, because she has answered. That pair is amendment 2: being unmatchable is not a reason to prompt somebody, only never having been asked is.",
+        "body": {
+          "preferences": {
+            "open_to_remote": false,
+            "open_to_internships": false,
+            "open_to_onsite": false,
+            "open_to_contract": false,
+            "current_country": "",
+            "office_yoe": null,
+            "first_pr_url": "https://github.com/indie/smalllib/pull/12",
+            "latest_pr_url": "https://github.com/acme/platform/pull/56"
+          },
+          "availability": {
+            "status": "looking_for_job",
+            "expires_at": "<timestamp>"
+          },
+          "needs_attention": false,
+          "matchable": false
+        },
+        "db": {
+          "user_work_preferences": {
+            "_note": "Still ONE row — the upsert updated rather than inserting a second — and every flag is false in the TABLE, not merely in the response. The country is NULL rather than two blank characters.",
+            "where": {
+              "user_id": "{{alice.id}}"
+            },
+            "count": 1,
+            "all_match": {
+              "open_to_remote": false,
+              "open_to_internships": false,
+              "open_to_onsite": false,
+              "open_to_contract": false,
+              "current_country": null,
+              "office_yoe": null,
+              "first_pr_url": "https://github.com/indie/smalllib/pull/12",
+              "latest_pr_url": "https://github.com/acme/platform/pull/56"
+            }
+          }
+        }
+      }
+    },
+    {
+      "as": "alice",
+      "request": {
+        "method": "GET",
+        "path": "/me/profile"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "preferences": {
+            "open_to_remote": false,
+            "open_to_internships": false,
+            "open_to_onsite": false,
+            "open_to_contract": false,
+            "current_country": "",
+            "office_yoe": null,
+            "first_pr_url": "https://github.com/indie/smalllib/pull/12",
+            "latest_pr_url": "https://github.com/acme/platform/pull/56"
+          },
+          "availability": {
+            "status": "looking_for_job",
+            "expires_at": "<timestamp>"
+          },
+          "needs_attention": false,
+          "matchable": false
+        }
+      }
+    },
+    {
+      "_step": "A DIFFERENT FIRST PULL REQUEST. Refused by name, not accepted with the field quietly ignored.",
+      "as": "alice",
+      "request": {
+        "method": "PUT",
+        "path": "/me/profile",
+        "body": {
+          "open_to_remote": true,
+          "open_to_internships": false,
+          "open_to_onsite": false,
+          "open_to_contract": false,
+          "current_country": "GB",
+          "office_yoe": 4,
+          "first_pr_url": "https://github.com/acme/bigrepo/pull/900",
+          "latest_pr_url": "https://github.com/acme/platform/pull/56"
+        }
+      },
+      "expect": {
+        "status": 409,
+        "_note": "409 rather than 200: a contributor who revised their start date and got an OK would go on believing they had, and the date a hirer reads would disagree with the one they typed. The repository coalesces as well, so the guarantee survives a caller who forgets to check — but a caller has to be TOLD, and only this layer can tell them.",
+        "body": {
+          "error": "first_pr_is_fixed"
+        },
+        "db": {
+          "user_work_preferences": {
+            "_note": "THE WHOLE REQUEST DID NOTHING. open_to_remote is still false and the country is still NULL, so the four legal fields the same body carried did not land alongside the refused one. A partial write here would be the worst outcome: a profile half in the state somebody asked for.",
+            "where": {
+              "user_id": "{{alice.id}}"
+            },
+            "count": 1,
+            "all_match": {
+              "first_pr_url": "https://github.com/indie/smalllib/pull/12",
+              "open_to_remote": false,
+              "current_country": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "_step": "And the read confirms it. A 409 that had written the flags would be invisible from the response that refused it.",
+      "as": "alice",
+      "request": {
+        "method": "GET",
+        "path": "/me/profile"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "preferences": {
+            "open_to_remote": false,
+            "open_to_internships": false,
+            "open_to_onsite": false,
+            "open_to_contract": false,
+            "current_country": "",
+            "office_yoe": null,
+            "first_pr_url": "https://github.com/indie/smalllib/pull/12",
+            "latest_pr_url": "https://github.com/acme/platform/pull/56"
+          },
+          "availability": {
+            "status": "looking_for_job",
+            "expires_at": "<timestamp>"
+          },
+          "needs_attention": false,
+          "matchable": false
+        }
+      }
+    },
+    {
+      "_step": "THE SAME first PR, with everything else moving. Accepted — the rule is 'cannot be CHANGED', not 'cannot be sent again', and a client submitting the form it was given must not be punished for echoing a value it is not allowed to alter.",
+      "as": "alice",
+      "request": {
+        "method": "PUT",
+        "path": "/me/profile",
+        "body": {
+          "open_to_remote": true,
+          "open_to_internships": false,
+          "open_to_onsite": false,
+          "open_to_contract": true,
+          "current_country": "GB",
+          "office_yoe": 5,
+          "first_pr_url": "https://github.com/indie/smalllib/pull/12",
+          "latest_pr_url": "https://github.com/acme/bigrepo/pull/904"
+        }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "preferences": {
+            "open_to_remote": true,
+            "open_to_internships": false,
+            "open_to_onsite": false,
+            "open_to_contract": true,
+            "current_country": "GB",
+            "office_yoe": 5,
+            "first_pr_url": "https://github.com/indie/smalllib/pull/12",
+            "latest_pr_url": "https://github.com/acme/bigrepo/pull/904"
+          },
+          "availability": {
+            "status": "looking_for_job",
+            "expires_at": "<timestamp>"
+          },
+          "needs_attention": false,
+          "matchable": true
+        },
+        "db": {
+          "user_work_preferences": {
+            "_note": "latest_pr_url moved and first_pr_url did not. Editable and write-once, in one request.",
+            "where": {
+              "user_id": "{{alice.id}}"
+            },
+            "count": 1,
+            "all_match": {
+              "first_pr_url": "https://github.com/indie/smalllib/pull/12",
+              "latest_pr_url": "https://github.com/acme/bigrepo/pull/904",
+              "office_yoe": 5,
+              "current_country": "GB"
+            }
+          }
+        }
+      }
+    },
+    {
+      "_step": "A BODY FROM A CLIENT BUILT AGAINST THE EARLIER DRAFT, which still thinks it can state an open-source-years figure. Decision 7 was amended precisely because that number was the wrong fact stated confidently, so the field has to be refused rather than accepted and dropped.",
+      "as": "alice",
+      "request": {
+        "method": "PUT",
+        "path": "/me/profile",
+        "body": {
+          "open_to_remote": true,
+          "open_to_internships": false,
+          "open_to_onsite": false,
+          "open_to_contract": true,
+          "current_country": "GB",
+          "office_yoe": 5,
+          "first_pr_url": "https://github.com/indie/smalllib/pull/12",
+          "latest_pr_url": "https://github.com/acme/bigrepo/pull/904",
+          "open_source_years": 12
+        }
+      },
+      "expect": {
+        "status": 400,
+        "_note": "400 and not 200-with-the-field-dropped, the same reading as the two approved fixtures that pin a DisallowUnknownFields refusal: a caller that believes it saved twelve years would go on believing it. Decoding fails before any service runs, so nothing is written either.",
+        "body": {
+          "error": "invalid_profile"
+        },
+        "db": {
+          "user_work_preferences": {
+            "where": {
+              "user_id": "{{alice.id}}"
+            },
+            "count": 1,
+            "all_match": {
+              "office_yoe": 5
+            }
+          }
+        }
+      }
+    }
+  ]
+}

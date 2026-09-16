@@ -349,8 +349,8 @@ func (_c *ShortlistService_ContactRequests_Call) RunAndReturn(run func(ctx conte
 }
 
 // Create provides a mock function for the type ShortlistService
-func (_mock *ShortlistService) Create(ctx context.Context, p domain.Principal, name string, description string, date time.Time) (*domain.Shortlist, error) {
-	ret := _mock.Called(ctx, p, name, description, date)
+func (_mock *ShortlistService) Create(ctx context.Context, p domain.Principal, role domain.RoleID, name string, description string, date time.Time) (*domain.Shortlist, error) {
+	ret := _mock.Called(ctx, p, role, name, description, date)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Create")
@@ -358,18 +358,18 @@ func (_mock *ShortlistService) Create(ctx context.Context, p domain.Principal, n
 
 	var r0 *domain.Shortlist
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.Principal, string, string, time.Time) (*domain.Shortlist, error)); ok {
-		return returnFunc(ctx, p, name, description, date)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.Principal, domain.RoleID, string, string, time.Time) (*domain.Shortlist, error)); ok {
+		return returnFunc(ctx, p, role, name, description, date)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.Principal, string, string, time.Time) *domain.Shortlist); ok {
-		r0 = returnFunc(ctx, p, name, description, date)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.Principal, domain.RoleID, string, string, time.Time) *domain.Shortlist); ok {
+		r0 = returnFunc(ctx, p, role, name, description, date)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*domain.Shortlist)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, domain.Principal, string, string, time.Time) error); ok {
-		r1 = returnFunc(ctx, p, name, description, date)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, domain.Principal, domain.RoleID, string, string, time.Time) error); ok {
+		r1 = returnFunc(ctx, p, role, name, description, date)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -384,14 +384,15 @@ type ShortlistService_Create_Call struct {
 // Create is a helper method to define mock.On call
 //   - ctx context.Context
 //   - p domain.Principal
+//   - role domain.RoleID
 //   - name string
 //   - description string
 //   - date time.Time
-func (_e *ShortlistService_Expecter) Create(ctx interface{}, p interface{}, name interface{}, description interface{}, date interface{}) *ShortlistService_Create_Call {
-	return &ShortlistService_Create_Call{Call: _e.mock.On("Create", ctx, p, name, description, date)}
+func (_e *ShortlistService_Expecter) Create(ctx interface{}, p interface{}, role interface{}, name interface{}, description interface{}, date interface{}) *ShortlistService_Create_Call {
+	return &ShortlistService_Create_Call{Call: _e.mock.On("Create", ctx, p, role, name, description, date)}
 }
 
-func (_c *ShortlistService_Create_Call) Run(run func(ctx context.Context, p domain.Principal, name string, description string, date time.Time)) *ShortlistService_Create_Call {
+func (_c *ShortlistService_Create_Call) Run(run func(ctx context.Context, p domain.Principal, role domain.RoleID, name string, description string, date time.Time)) *ShortlistService_Create_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -401,17 +402,21 @@ func (_c *ShortlistService_Create_Call) Run(run func(ctx context.Context, p doma
 		if args[1] != nil {
 			arg1 = args[1].(domain.Principal)
 		}
-		var arg2 string
+		var arg2 domain.RoleID
 		if args[2] != nil {
-			arg2 = args[2].(string)
+			arg2 = args[2].(domain.RoleID)
 		}
 		var arg3 string
 		if args[3] != nil {
 			arg3 = args[3].(string)
 		}
-		var arg4 time.Time
+		var arg4 string
 		if args[4] != nil {
-			arg4 = args[4].(time.Time)
+			arg4 = args[4].(string)
+		}
+		var arg5 time.Time
+		if args[5] != nil {
+			arg5 = args[5].(time.Time)
 		}
 		run(
 			arg0,
@@ -419,6 +424,7 @@ func (_c *ShortlistService_Create_Call) Run(run func(ctx context.Context, p doma
 			arg2,
 			arg3,
 			arg4,
+			arg5,
 		)
 	})
 	return _c
@@ -429,7 +435,7 @@ func (_c *ShortlistService_Create_Call) Return(shortlist *domain.Shortlist, err 
 	return _c
 }
 
-func (_c *ShortlistService_Create_Call) RunAndReturn(run func(ctx context.Context, p domain.Principal, name string, description string, date time.Time) (*domain.Shortlist, error)) *ShortlistService_Create_Call {
+func (_c *ShortlistService_Create_Call) RunAndReturn(run func(ctx context.Context, p domain.Principal, role domain.RoleID, name string, description string, date time.Time) (*domain.Shortlist, error)) *ShortlistService_Create_Call {
 	_c.Call.Return(run)
 	return _c
 }

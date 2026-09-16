@@ -78,9 +78,7 @@ export interface Action<A extends unknown[], T> {
   error: ApiError | null;
 }
 
-export function useAction<A extends unknown[], T>(
-  run: (...args: A) => Promise<T>,
-): Action<A, T> {
+export function useAction<A extends unknown[], T>(run: (...args: A) => Promise<T>): Action<A, T> {
   const [data, setData] = useState<T | undefined>(undefined);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<ApiError | null>(null);

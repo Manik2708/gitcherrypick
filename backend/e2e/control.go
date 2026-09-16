@@ -241,12 +241,25 @@ func (c *Control) SetClock(ctx context.Context, target string) error {
 }
 
 // Now reads the clock the API is running on.
+//
+// HOST time plus the offset, exactly as adapter/clock computes it — not Epoch
+// plus the offset. The offset the fake server reports ALREADY carries the pin:
+// --now sets it to (Epoch - host time), and the API adds it to its own clock.
+// Anchoring on Epoch here would subtract that pin a second time, and the error
+// is the distance between the host's date and the Epoch — zero on the day the
+// Epoch was chosen, and a day larger every day after.
+//
+// That made this a dated bug rather than a visible one: SetClock computed an
+// advance from an instant a month before the API's, and overshot by the same
+// month. The fixture that surfaced it asks for 2026-09-01 and landed on
+// 2026-10-03, which turned a result date one month in the future into one two
+// days in the past.
 func (c *Control) Now(ctx context.Context) (time.Time, error) {
 	var offset clockOffsetBody
 	if err := c.get(ctx, "/_clock", &offset); err != nil {
 		return time.Time{}, err
 	}
-	return EpochTime().Add(time.Duration(offset.OffsetSeconds * float64(time.Second))), nil
+	return time.Now().UTC().Add(time.Duration(offset.OffsetSeconds * float64(time.Second))), nil
 }
 
 // clockOffsetBody is what the clock endpoint reports.

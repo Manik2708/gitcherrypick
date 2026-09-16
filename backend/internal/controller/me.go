@@ -19,6 +19,11 @@ type MeController struct {
 	discovery port.DiscoveryService
 	contacts  port.ContactService
 	reeval    port.ReevaluationService
+	profiles  port.ProfileService
+
+	// roles backs GET /me/roles — the contributor's view of what is open to
+	// them, and the one place their compensation expectation is used.
+	roles port.RoleService
 }
 
 // NewMeController wires the self-service surface.
@@ -29,9 +34,12 @@ func NewMeController(
 	discovery port.DiscoveryService,
 	contacts port.ContactService,
 	reeval port.ReevaluationService,
+	profiles port.ProfileService,
+	roles port.RoleService,
 ) *MeController {
 	return &MeController{auth: auth, orgs: orgs, skills: skills,
-		discovery: discovery, contacts: contacts, reeval: reeval}
+		discovery: discovery, contacts: contacts, reeval: reeval,
+		profiles: profiles, roles: roles}
 }
 
 var _ port.Controller = (*MeController)(nil)
@@ -43,6 +51,20 @@ func (c *MeController) Routes() (string, http.Handler) {
 
 	r.Get("/", c.me)
 	r.Put("/availability", c.setAvailability)
+
+	// The contributor profile (ADR-0018). Compensation is a SEPARATE pair
+	// rather than fields on the profile, so a client updating what shape of
+	// work it will take never sends a salary — and so no hirer-facing handler
+	// is one struct field away from reading one.
+	r.Get("/profile", c.profile)
+	r.Put("/profile", c.saveProfile)
+	r.Get("/compensation", c.compensation)
+	r.Put("/compensation", c.saveCompensation)
+
+	// What is open to this person (ADR-0019). Under /me rather than a public
+	// roles list, because the filter reads their profile — including the pay
+	// they expect, which is why the result can only be theirs.
+	r.Get("/roles", myRoles(c.roles))
 	r.Get("/skills", c.mySkills)
 	r.Get("/rank", c.myRank)
 	r.Get("/verification", c.myVerification)
@@ -467,16 +489,37 @@ func contributorProfile(c *domain.Contributor) contributorMe {
 }
 
 func hirerProfile(h *domain.Hirer) hirerMe {
-	// Both gates, evaluated once. ADR-0002 requires the hirer AND their
-	// organization to be verified; reporting either alone would let a seat
-	// believe they can search when they cannot.
-	capable := h.VerifiedAt != nil && h.Organization.IsVerified()
+	// Capability mirrors AccessService.RequireHiringCapability exactly, because
+	// two endpoints disagreeing about what an account may do is worse than
+	// either answer alone — the client hides a button the server would honour,
+	// or offers one it refuses.
+	//
+	// That gate reads the ORGANIZATION and nothing else for a seat: verifying
+	// an org lifts every seat under it, and a seat's own column is not
+	// consulted at all, because it is stale for anyone created before the org
+	// was approved (ADR-0002, ADR-0008 §3a). A roster-redeemed seat and an
+	// onboarded owner both have verified_at NULL for exactly that reason.
+	//
+	// An INDEPENDENT hirer has no organisation (ADR-0017 §1), so their own
+	// approval is the only thing there is to read.
+	//
+	// This was `h.VerifiedAt != nil && h.Organization.IsVerified()`, which is
+	// wrong in both directions: it refused an org-verified seat the server
+	// allows, and it would have granted a seat whose org is unverified.
+	capable := h.Organization.IsVerified()
+	if h.Organization == nil {
+		capable = h.VerifiedAt != nil
+	}
 
 	out := hirerMe{
 		ID:          h.ID,
 		Kind:        string(domain.KindHirer),
 		DisplayName: h.DisplayName,
-		Verified:    h.VerifiedAt != nil,
+
+		// Verified follows the same rule, for the same reason summarizeHirer
+		// does: a seat reporting its own unstamped column would read "not
+		// verified" while being perfectly able to hire.
+		Verified: capable,
 		Capabilities: hirerCapabilities{
 			CanSearch: capable, CanShortlist: capable, CanViewScorecards: capable,
 		},
@@ -495,4 +538,192 @@ func availabilityOf(a *domain.Availability) *availabilityBody {
 		return nil
 	}
 	return &availabilityBody{Status: string(a.Status), ExpiresAt: a.ExpiresAt}
+}
+
+// --- the contributor profile (ADR-0018) ---------------------------------------
+
+// workPreferencesBody is what shape of work somebody will take.
+//
+// No open_to_freelance: availability already carries freelance, and two
+// controls meaning one thing can disagree (ADR-0018 §6).
+type workPreferencesBody struct {
+	OpenToRemote      bool `json:"open_to_remote"`
+	OpenToInternships bool `json:"open_to_internships"`
+	OpenToOnsite      bool `json:"open_to_onsite"`
+	OpenToContract    bool `json:"open_to_contract"`
+
+	// CurrentCountry is ISO 3166-1 alpha-2, empty when unstated. Distinct from
+	// the free-text location GitHub supplies.
+	CurrentCountry string `json:"current_country"`
+
+	// OfficeYOE is SELF-REPORTED, and a pointer so that "not said" stays
+	// distinct from "zero years" — somebody contributing before their first
+	// job is a real person with a real answer.
+	OfficeYOE *int `json:"office_yoe"`
+
+	// FirstPRURL is WRITE-ONCE: sending a second, different value is a 409
+	// rather than a silent overwrite. A contributor's first contribution is
+	// often years old in a repository they never claimed here, which is why it
+	// is asked rather than read off a claim.
+	FirstPRURL string `json:"first_pr_url"`
+
+	// LatestPRURL is editable, because it goes stale by definition.
+	LatestPRURL string `json:"latest_pr_url"`
+}
+
+// profileBody is the whole profile screen's answer.
+type profileBody struct {
+	Preferences workPreferencesBody `json:"preferences"`
+
+	Availability *availabilityBody `json:"availability"`
+
+	// NeedsAttention is whether to PROMPT. True only when this person has
+	// never answered — not when they answered "none of these", which is a real
+	// answer somebody may mean and must not be nagged about.
+	NeedsAttention bool `json:"needs_attention"`
+
+	// Matchable is false when the window is live and no shape is enabled — a
+	// state reachable by accident and invisible from outside (ADR-0018). A
+	// named field rather than something a client derives, because a client
+	// that forgot would leave somebody wondering why nobody ever writes.
+	Matchable bool `json:"matchable"`
+}
+
+// compensationBody is what somebody expects to be paid.
+//
+// A HIRER NEVER RECEIVES THIS SHAPE (ADR-0018 §2). It is returned by
+// GET /me/compensation and by nothing else.
+type compensationBody struct {
+	// Currency is ISO 4217, empty when nothing is stated.
+	Currency string `json:"currency"`
+
+	// Minor units. Null means not stated, which is not zero.
+	HourlyRate   *int64 `json:"hourly_rate"`
+	YearlyAmount *int64 `json:"yearly_amount"`
+}
+
+func profileBodyOf(p *port.ContributorProfile) profileBody {
+	if p == nil {
+		return profileBody{}
+	}
+	return profileBody{
+		Preferences: workPreferencesBody{
+			OpenToRemote:      p.Preferences.OpenToRemote,
+			OpenToInternships: p.Preferences.OpenToInternships,
+			OpenToOnsite:      p.Preferences.OpenToOnsite,
+			OpenToContract:    p.Preferences.OpenToContract,
+			CurrentCountry:    p.Preferences.CurrentCountry,
+			OfficeYOE:         p.Preferences.OfficeYOE,
+			FirstPRURL:        p.Preferences.FirstPRURL,
+			LatestPRURL:       p.Preferences.LatestPRURL,
+		},
+		Availability:   availabilityOf(p.Availability),
+		NeedsAttention: p.NeedsAttention,
+		Matchable:      p.Matchable,
+	}
+}
+
+func compensationBodyOf(c *domain.Compensation) compensationBody {
+	if c == nil {
+		return compensationBody{}
+	}
+	return compensationBody{
+		Currency: c.Currency, HourlyRate: c.HourlyRate, YearlyAmount: c.YearlyAmount,
+	}
+}
+
+func (c *MeController) profile(w http.ResponseWriter, r *http.Request) {
+	p, ok := require(w, r, domain.KindContributor)
+	if !ok {
+		return
+	}
+	out, err := c.profiles.Profile(r.Context(), domain.UserID(p.Subject()))
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, profileBodyOf(out))
+}
+
+// saveProfile replaces the stated preferences.
+//
+// PUT, not PATCH: the form submits every field it shows, so a full replace
+// says what happened. A merge would leave a flag set that somebody had just
+// cleared, and they would have no way to tell.
+func (c *MeController) saveProfile(w http.ResponseWriter, r *http.Request) {
+	p, ok := require(w, r, domain.KindContributor)
+	if !ok {
+		return
+	}
+
+	var body workPreferencesBody
+	if err := decode(w, r, &body); err != nil {
+		// 400, not 422: the body could not be READ — a syntax error, or a field
+		// nothing here has. That is a malformed request, and the rest of this
+		// codebase answers 400 for it. 422 is for a body that parsed and then
+		// failed a rule, which is a different thing to tell a client.
+		//
+		// invalid_profile, not invalid_claim: "claim" is a specific noun here,
+		// and a client branching on it would think its evidence was rejected.
+		writeCode(w, http.StatusBadRequest, service.CodeInvalidProfile)
+		return
+	}
+
+	out, err := c.profiles.SaveProfile(r.Context(), domain.UserID(p.Subject()),
+		domain.WorkPreferences{
+			OpenToRemote:      body.OpenToRemote,
+			OpenToInternships: body.OpenToInternships,
+			OpenToOnsite:      body.OpenToOnsite,
+			OpenToContract:    body.OpenToContract,
+			CurrentCountry:    body.CurrentCountry,
+			OfficeYOE:         body.OfficeYOE,
+			FirstPRURL:        body.FirstPRURL,
+			LatestPRURL:       body.LatestPRURL,
+		})
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, profileBodyOf(out))
+}
+
+// compensation returns the figure to the person who typed it.
+//
+// Contributor-only, and there is deliberately no hirer-facing counterpart. A
+// hirer who knows what you will accept offers exactly that (ADR-0018 §2).
+func (c *MeController) compensation(w http.ResponseWriter, r *http.Request) {
+	p, ok := require(w, r, domain.KindContributor)
+	if !ok {
+		return
+	}
+	out, err := c.profiles.Compensation(r.Context(), domain.UserID(p.Subject()))
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, compensationBodyOf(out))
+}
+
+func (c *MeController) saveCompensation(w http.ResponseWriter, r *http.Request) {
+	p, ok := require(w, r, domain.KindContributor)
+	if !ok {
+		return
+	}
+
+	var body compensationBody
+	if err := decode(w, r, &body); err != nil {
+		writeCode(w, http.StatusBadRequest, service.CodeInvalidProfile)
+		return
+	}
+
+	out, err := c.profiles.SaveCompensation(r.Context(), domain.UserID(p.Subject()),
+		domain.Compensation{
+			Currency: body.Currency, HourlyRate: body.HourlyRate,
+			YearlyAmount: body.YearlyAmount,
+		})
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, compensationBodyOf(out))
 }

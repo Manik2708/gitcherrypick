@@ -42,17 +42,18 @@ var (
 	// different thing to tell the caller, and a different thing to fix.
 	ErrEmailUnverified = errors.New("the provider has not verified this email address")
 
-	// An invitation that was real and no longer works, split by WHY. The
-	// holder's remedy differs: one asks for a fresh invitation, the other
-	// simply signs in.
 	// ErrEntryNotified is a shortlist entry whose contributor was already
 	// told. Removing it would destroy the record of a disclosure that
 	// happened, which is the one thing the two-phase design guarantees
 	// (ADR-0008 §3a).
 	ErrEntryNotified = fmt.Errorf("the entry has been notified: %w", ErrConflict)
 
-	ErrInvitationExpired  = fmt.Errorf("the invitation has expired: %w", ErrConflict)
-	ErrInvitationAccepted = fmt.Errorf("the invitation was already accepted: %w", ErrConflict)
+	// ErrRosterEntryRedeemed is a roster entry that already produced a seat.
+	//
+	// A conflict rather than an absence: the entry is still there, and the
+	// person holding a link to it should be told to sign in rather than that
+	// their employer never named them (ADR-0016 §3).
+	ErrRosterEntryRedeemed = fmt.Errorf("the roster entry was already redeemed: %w", ErrConflict)
 )
 
 // UserRepository owns contributors and their availability.
@@ -104,6 +105,11 @@ type SessionRepository interface {
 	// token stolen beforehand.
 	RevokeFamily(ctx context.Context, tx Tx, familyID string) error
 
+	// RevokeAllForPrincipal kills every family a principal holds. Removing a
+	// roster entry ends that person's access everywhere, not just on the
+	// device the request came from.
+	RevokeAllForPrincipal(ctx context.Context, tx Tx, subject string) error
+
 	// CloseFamily retires a family the holder signed out of.
 	//
 	// Distinct from RevokeFamily, which is the COLLATERAL case: a session
@@ -129,8 +135,27 @@ type SessionRepository interface {
 
 // HirerRepository owns recruiter seats and their organizations.
 type HirerRepository interface {
+	// ByID SELECTS disabled_at rather than filtering on it, following the
+	// convention admin_accounts sets: a caller already holding a valid token
+	// is entitled to learn their access was withdrawn.
 	ByID(ctx context.Context, id domain.HirerID) (*domain.Hirer, error)
+
+	// ByUsername resolves a sign-in, and a disabled seat is NOT FOUND here.
+	// Sign-in must not reveal that a revoked account exists.
+	ByUsername(ctx context.Context, username string) (*domain.Hirer, error)
+
+	// ByEmail finds a seat by its contact address. Email is not an identity
+	// (ADR-0016), so this may legitimately match more than one row across the
+	// platform — it is scoped by the caller, never used to authenticate.
 	ByEmail(ctx context.Context, email string) (*domain.Hirer, error)
+
+	// ListSeats returns an organization's seats, live and revoked. Revoked
+	// ones stay listable because they are the seats an owner most needs to
+	// resolve when reading an old round's author (ADR-0016 §5a).
+	ListSeats(ctx context.Context, orgID domain.OrganizationID) ([]domain.Hirer, error)
+
+	// Disable revokes a seat without deleting it.
+	Disable(ctx context.Context, tx Tx, id domain.HirerID, by domain.HirerID, now time.Time) error
 
 	// ByGitHubUserID resolves a seat that signed up through GitHub.
 	//
@@ -149,6 +174,14 @@ type HirerRepository interface {
 	Register(ctx context.Context, tx Tx, in NewHirerAccount) (*HirerRegistration, error)
 
 	Organization(ctx context.Context, id domain.OrganizationID) (*domain.Organization, error)
+
+	// OrganizationBySlug resolves a VERIFIED organization by its slug. An
+	// unverified one is not found: a roster may be built before verification,
+	// but not redeemed (ADR-0016 §2).
+	OrganizationBySlug(ctx context.Context, slug string) (*domain.Organization, error)
+
+	// ListVerifiedOrganizations backs the public picker (ADR-0016 §3a).
+	ListVerifiedOrganizations(ctx context.Context) ([]domain.Organization, error)
 	Members(ctx context.Context, id domain.OrganizationID) ([]domain.Hirer, error)
 
 	// SharesGitHubIdentity backs AssertNotSelf. It is asked as a question
@@ -257,8 +290,40 @@ type OrganizationRepository interface {
 	// CreateInvitation returns the stored row rather than just its id, so the
 	// created_at on the wire is the one the database wrote — not a second
 	// clock reading taken next to it, which would differ under load.
-	CreateInvitation(ctx context.Context, tx Tx, orgID domain.OrganizationID, email string, role domain.OrgRole, invitedBy domain.HirerID, tokenHash []byte, expiresAt time.Time) (*Invitation, error)
-	InvitationByTokenHash(ctx context.Context, tx Tx, hash []byte) (*Invitation, error)
+	// ClaimUsername reserves a name in the global namespace.
+	//
+	// Called before the roster entry and before a self-serve registration,
+	// inside the same transaction. A taken name comes back as ErrConflict
+	// from the insert — never from a prior read, which would be both a race
+	// and an endpoint that answers "does this name exist" (ADR-0009).
+	ClaimUsername(ctx context.Context, tx Tx, username string) error
+
+	// ReleaseUsername gives a name back.
+	//
+	// Only ever called for a roster entry WITHDRAWN before anyone redeemed it:
+	// no seat carried the name, so nothing is being erased. A name a seat has
+	// held is never released — the foreign key from hirer_accounts refuses,
+	// which is what "never reused" means in practice (ADR-0016 §1).
+	ReleaseUsername(ctx context.Context, tx Tx, username string) error
+
+	// AddRosterEntry reserves an address and a username for a seat that does
+	// not exist yet. A username collision translates to ErrConflict and names
+	// nothing about who holds it (ADR-0009's pattern).
+	AddRosterEntry(ctx context.Context, tx Tx, e *RosterEntry) (*RosterEntry, error)
+
+	// RosterEntryByEmail finds an UNREDEEMED entry. A redeemed one is not a
+	// miss but a conflict: the seat already exists.
+	RosterEntryByEmail(ctx context.Context, tx Tx, orgID domain.OrganizationID, email string) (*RosterEntry, error)
+
+	RosterEntryByID(ctx context.Context, tx Tx, id domain.RosterEntryID) (*RosterEntry, error)
+
+	// ListRoster returns every entry, redeemed or not — the redeemed ones are
+	// the record of why each seat exists.
+	ListRoster(ctx context.Context, orgID domain.OrganizationID) ([]RosterEntry, error)
+
+	// RemoveRosterEntry deletes the entry. Revoking the seat it created is the
+	// service's job, because it spans the session repository too.
+	RemoveRosterEntry(ctx context.Context, tx Tx, id domain.RosterEntryID) error
 
 	// AcceptInvitation creates the hirer, the membership, and marks the
 	// invitation accepted in one transaction. The seat inherits the
@@ -267,7 +332,10 @@ type OrganizationRepository interface {
 	// Expiry is a business rule measured on the platform's clock (ADR-0012),
 	// and SQL now() would answer from a second one nothing else in the system
 	// reads.
-	AcceptInvitation(ctx context.Context, tx Tx, id domain.RequestID, h *domain.Hirer, passwordHash []byte, now time.Time) (*domain.Hirer, error)
+	// RedeemRosterEntry creates the seat and marks the entry redeemed in one
+	// transaction. The hirer carries the username and role the entry pinned;
+	// the caller supplies only the password.
+	RedeemRosterEntry(ctx context.Context, tx Tx, id domain.RosterEntryID, h *domain.Hirer, passwordHash []byte, now time.Time) (*domain.Hirer, error)
 
 	// VerifyOrganization lifts every seat at once. Verification is per
 	// organization, not per person (ADR-0002, ADR-0008 §3a).
@@ -280,18 +348,375 @@ type OrganizationRepository interface {
 	// raises it against the organization, while a later seat is verified in
 	// its own right (ADR-0002). Returns the most recent when both exist.
 	VerificationFor(ctx context.Context, hirer domain.HirerID, org domain.OrganizationID) (*VerificationRequest, error)
+
+	// Addresses lists an organisation's offices.
+	//
+	// Written during onboarding (ADR-0017) and read by roles, which point at a
+	// row rather than retyping one — so correcting an address corrects every
+	// role at it.
+	Addresses(ctx context.Context, id domain.OrganizationID) ([]domain.Address, error)
 }
 
-// Invitation is a pending seat grant.
-type Invitation struct {
-	ID             domain.RequestID
+// RosterEntry is an organization's standing intent to seat an address.
+//
+// It is an allowlist entry, not a credential: being on a roster is a guessable
+// fact, so redeeming one also requires proving control of the address
+// (ADR-0016 §3). The username and role are pinned here by the organization,
+// leaving the redeemer nothing to choose but a password.
+type RosterEntry struct {
+	ID             domain.RosterEntryID
 	OrganizationID domain.OrganizationID
 	Email          string
+	Username       string
 	Role           domain.OrgRole
-	InvitedBy      domain.HirerID
-	AcceptedAt     *time.Time
-	ExpiresAt      time.Time
-	CreatedAt      time.Time
+
+	// AddedBy names the owner who listed this address, resolved rather than
+	// referenced (ADR-0016 §9). An owner who has since left still added it,
+	// and a bare id in the response would send the reader looking for them.
+	AddedBy domain.HirerRef
+
+	RedeemedAt *time.Time
+	RedeemedBy *domain.HirerID
+	CreatedAt  time.Time
+}
+
+// OnboardingSubmission is a company that has been described but does not exist.
+//
+// No OrganizationID, because there is no organisation: the form writes one of
+// these, an administrator approves it, and the organisation, its address and
+// the owner seat are created from it in one transaction (ADR-0017 §2, §3).
+//
+// That ordering is the whole design. The form is public, so a submission that
+// wrote an organisation directly would let anyone take a company name — or a
+// hundred of them — by typing them in and walking away.
+type OnboardingSubmission struct {
+	ID domain.OnboardingID
+
+	// --- the company, as submitted ---------------------------------------
+	Name        string
+	Description string
+	Email       string
+	Phone       string
+	Headcount   domain.HeadcountBand
+
+	// --- the main office, as submitted -----------------------------------
+	//
+	// Flat rather than a domain.Address: a pending submission has no
+	// organisation for an address to belong to.
+	Country    string
+	City       string
+	PostalCode string
+	Street1    string
+	Street2    string
+
+	// --- the person who will own it --------------------------------------
+	//
+	// All three arrive together when the emailed code is used, and are empty
+	// before that. Proving the address and choosing how to sign in are one
+	// step, so approval needs no second email (ADR-0017 §5).
+	OwnerUsername    string
+	OwnerDisplayName string
+
+	// EmailVerifiedAt is what moves a submission into the review queue. Nil
+	// means an administrator must never see it.
+	EmailVerifiedAt *time.Time
+
+	DecidedAt      *time.Time
+	DecidedBy      *domain.AdminID
+	DecisionReason string
+
+	// OrganizationID is set only on approval, and is what the submission
+	// became.
+	OrganizationID *domain.OrganizationID
+
+	// SupersedesID names the rejected submission this one corrects. The table
+	// is append-only, so an administrator reading a second attempt can tell a
+	// corrected postcode from a rewritten claim (ADR-0017 §8).
+	SupersedesID *domain.OnboardingID
+
+	CreatedAt time.Time
+}
+
+// Proven reports whether the company address has been confirmed.
+func (s *OnboardingSubmission) Proven() bool { return s != nil && s.EmailVerifiedAt != nil }
+
+// Decided reports whether an administrator has ruled on it.
+func (s *OnboardingSubmission) Decided() bool { return s != nil && s.DecidedAt != nil }
+
+// OnboardingRepository owns submitted organisations.
+//
+// Separate from OrganizationRepository because the two hold different things:
+// one holds companies, this holds descriptions of companies that may never
+// become any. Folding them together would put a nullable organization_id on
+// every organisation read.
+type OnboardingRepository interface {
+	// Submit records a form. It reserves no slug and creates nothing else.
+	Submit(ctx context.Context, tx Tx, in *OnboardingSubmission) (*OnboardingSubmission, error)
+
+	ByID(ctx context.Context, tx Tx, id domain.OnboardingID) (*OnboardingSubmission, error)
+
+	// Prove stamps the address confirmed and records how the owner will sign
+	// in. The password hash is stored rather than returned: it is a credential
+	// for a seat that does not exist yet, and nothing above this layer has a
+	// reason to hold it.
+	Prove(ctx context.Context, tx Tx, id domain.OnboardingID, owner OnboardingOwner, at time.Time) error
+
+	// Queue returns proven, undecided submissions, oldest first. An unproven
+	// one is never returned — an administrator must not spend attention on a
+	// company nobody can reach (ADR-0017 §4).
+	Queue(ctx context.Context) ([]OnboardingSubmission, error)
+
+	// Promote creates the organisation, its address, the owner seat and the
+	// membership, and stamps the submission decided. One transaction: a
+	// half-promoted submission would be an organisation nobody owns.
+	//
+	// The slug is passed in rather than derived here. Turning a company name
+	// into a URL is a product rule and the service owns it; a repository that
+	// derived its own would be the second place that rule lived.
+	//
+	// A taken slug comes back as ErrConflict. Approval is the first admin
+	// decision that the data can refuse (ADR-0017 §Approval can fail).
+	Promote(ctx context.Context, tx Tx, id domain.OnboardingID, slug string, by domain.AdminID, at time.Time) (*domain.Organization, error)
+
+	// Reject stamps it decided with a reason, and creates nothing.
+	Reject(ctx context.Context, tx Tx, id domain.OnboardingID, by domain.AdminID, reason string, at time.Time) error
+
+	// ExpireUnproven deletes submissions never proven whose code has lapsed.
+	// The first scheduled job that deletes rather than stamping (ADR-0017 §6).
+	ExpireUnproven(ctx context.Context, before time.Time) (int, error)
+}
+
+// OnboardingOwner is how the first person at a company will sign in.
+//
+// Carried as a struct because the three arrive together and are meaningless
+// apart: a username with no password is a half-claimed seat nothing completes.
+type OnboardingOwner struct {
+	Username     string
+	DisplayName  string
+	PasswordHash []byte
+}
+
+// ProfileRepository owns what a contributor says about themselves (ADR-0018).
+//
+// Separate from UserRepository because the two hold different things with
+// different lifetimes: `users` is what GitHub supplies and a sign-in
+// overwrites, this is typed by the person and must survive every callback.
+type ProfileRepository interface {
+	// WorkPreferences returns the stated preferences, or a zero-valued row for
+	// a contributor who has never filled the form in. Absence is not an error:
+	// everybody starts here.
+	WorkPreferences(ctx context.Context, id domain.UserID) (*domain.WorkPreferences, error)
+
+	// SaveWorkPreferences replaces them. An upsert, because the endpoint is a
+	// PUT and a form submits every field it shows.
+	SaveWorkPreferences(ctx context.Context, tx Tx, w *domain.WorkPreferences) error
+
+	// Compensation returns what a contributor expects to be paid.
+	//
+	// A HIRER NEVER READS THIS (ADR-0018 §2). No hirer-facing query calls it,
+	// and the reason it is its own method on its own table is so that none can
+	// reach it by accident.
+	Compensation(ctx context.Context, id domain.UserID) (*domain.Compensation, error)
+	SaveCompensation(ctx context.Context, tx Tx, c *domain.Compensation) error
+
+	// SaveVerifiedPRDates records when the stated pull requests were AUTHORED,
+	// and when we last confirmed the first one (ADR-0019 §7).
+	//
+	// Separate from SaveWorkPreferences because the two have different authors:
+	// that one writes what the contributor typed, this writes what we
+	// established. A retry job calls this and has nothing the person typed.
+	SaveVerifiedPRDates(ctx context.Context, tx Tx, d VerifiedPRDates) error
+
+	// PendingVerification lists contributors whose first pull request is
+	// stated but unconfirmed — a fetch that could not be COMPLETED, which a job
+	// retries. Bounded, because this is a queue drain and not a report.
+	PendingVerification(ctx context.Context, limit int) ([]domain.UserID, error)
+}
+
+// VerifiedPRDates is what a verification pass established.
+//
+// FirstAuthoredAt and VerifiedAt travel together: a date we did not check is
+// not a date we may quote, and splitting them would let one be written without
+// the other.
+type VerifiedPRDates struct {
+	UserID domain.UserID
+
+	FirstAuthoredAt  *time.Time
+	LatestAuthoredAt *time.Time
+	VerifiedAt       *time.Time
+}
+
+// RoleRepository owns openings (ADR-0019).
+type RoleRepository interface {
+	ByID(ctx context.Context, id domain.RoleID) (*domain.Role, error)
+
+	// ListByOrganization returns every role the organisation has, including
+	// superseded ones. A caller wanting the live list filters on status: it is
+	// the NEWEST row that is live, so "supersedes_id IS NULL" is the wrong
+	// filter and is not offered here.
+	ListByOrganization(ctx context.Context, id domain.OrganizationID, status *domain.RoleStatus) ([]domain.Role, error)
+
+	// Create writes a DRAFT. A role is never born open: opening is a separate
+	// act, by whoever the organisation's authority setting says may perform it.
+	Create(ctx context.Context, tx Tx, r *domain.Role) (*domain.Role, error)
+
+	// UpdateDraft replaces a draft's contents. Drafts only — an open role is
+	// immutable (ADR-0019 §13) and this returns ErrConflict for one.
+	UpdateDraft(ctx context.Context, tx Tx, r *domain.Role) (*domain.Role, error)
+
+	// Open stamps opened_by and opened_at and moves the role to open.
+	Open(ctx context.Context, tx Tx, id domain.RoleID, by domain.HirerID, at time.Time) (*domain.Role, error)
+
+	// Revise writes a SUCCESSOR to an open role and closes the original as
+	// superseded, in one transaction.
+	//
+	// One call, because the two halves cannot come apart: a successor without
+	// the close would leave two open roles for one job, and a close without the
+	// successor would withdraw a live opening.
+	Revise(ctx context.Context, tx Tx, of domain.RoleID, next *domain.Role, by domain.HirerID, at time.Time) (*domain.Role, error)
+
+	// RequestClose stamps close_requested_by. The role STAYS OPEN: a request is
+	// not an outcome, and the commitment stands until somebody withdraws it.
+	RequestClose(ctx context.Context, tx Tx, id domain.RoleID, by domain.HirerID, at time.Time) (*domain.Role, error)
+
+	// Close ends a role, recording why and — for hired_via_platform — who.
+	//
+	// The hires are written here rather than by a second call because the
+	// invariant "that reason has at least one hire and no other reason has any"
+	// spans two tables and cannot be a CHECK. One call makes it one
+	// transaction, which is the only place it can be held.
+	Close(ctx context.Context, tx Tx, id domain.RoleID, c RoleClosure) (*domain.Role, error)
+
+	// Matching returns open roles this contributor could be approached for.
+	Matching(ctx context.Context, m RoleMatch) ([]domain.Role, error)
+
+	// HiresOf reports who a role was filled with.
+	HiresOf(ctx context.Context, id domain.RoleID) ([]domain.RoleHire, error)
+}
+
+// RoleClosure is everything a close records.
+type RoleClosure struct {
+	By     domain.HirerID
+	At     time.Time
+	Reason domain.CloseReason
+
+	// Note is required when Reason is CloseOther. A reason of "other" with
+	// nothing after it is not a reason.
+	Note string
+
+	// Hires is one entry per person, and must be non-empty exactly when Reason
+	// is CloseHiredViaPlatform. A role may fill several seats: "two backend
+	// engineers" is one posting and two people.
+	Hires []domain.UserID
+}
+
+// RoleMatch is a contributor's side of the matching query (ADR-0019 §Endpoints).
+//
+// Compensation is in here, and that is the ONE direction it travels: it filters
+// this contributor's view of roles and is never shown to a hirer (ADR-0018 §5).
+type RoleMatch struct {
+	// Country is ISO 3166-1 alpha-2, or empty for somebody who has not said.
+	// Empty does not exclude: it matches roles that hire anywhere.
+	Country string
+
+	// Shapes are the engagements this contributor ticked. Empty matches
+	// NOTHING — a person who has said what they want and wants none of these
+	// is not shown roles they did not ask for.
+	Shapes []domain.Engagement
+
+	// OfficeYOE and OSSYears are nil when unknown. Unknown office years clear
+	// a minimum (self-reported either way); unknown OSS years do NOT, because
+	// the figure is verified and failing open would make any minimum clearable
+	// with a link nobody could check (ADR-0019 §When the fetch fails).
+	OfficeYOE *int
+	OSSYears  *int
+
+	// MinYearly and MinHourly are what the contributor expects, in minor units,
+	// with Currency. A role paying less is kept out of their way. Nil means
+	// they stated nothing, and nothing is filtered.
+	Currency  string
+	MinYearly *int64
+	MinHourly *int64
+
+	Limit  int
+	Offset int
+}
+
+// OrgSettingsRepository owns an organisation's policy, as opposed to its
+// identity (ADR-0019 §11).
+type OrgSettingsRepository interface {
+	// Settings returns the stored row, or the DEFAULTS for an organisation that
+	// has never chosen. Absence is not an error: an organisation that never
+	// opens the screen behaves exactly like one that opened it and changed
+	// nothing.
+	Settings(ctx context.Context, id domain.OrganizationID) (*domain.OrgSettings, error)
+
+	Save(ctx context.Context, tx Tx, s *domain.OrgSettings) error
+}
+
+// EmailVerificationPurpose is what a proof of address unlocks.
+type EmailVerificationPurpose string
+
+// The two things an address is ever proven for.
+const (
+	// VerifyRosterRedemption creates a hirer seat on success.
+	VerifyRosterRedemption EmailVerificationPurpose = "roster_redemption"
+
+	// VerifyHirerRegistration marks a self-serve address proven, so an
+	// administrator is not asked to review an account nobody can reach.
+	VerifyHirerRegistration EmailVerificationPurpose = "hirer_registration"
+
+	// VerifyOrganizationOnboarding proves a company address before the
+	// submission describing it reaches an administrator (ADR-0017 §4).
+	VerifyOrganizationOnboarding EmailVerificationPurpose = "organization_onboarding"
+)
+
+// EmailVerification is an outstanding proof of an address.
+//
+// Only the hash is stored, exactly as sessions store a refresh token: the
+// plaintext goes to the recipient's inbox and nowhere else, so a database read
+// yields nothing redeemable.
+type EmailVerification struct {
+	ID      domain.EmailVerificationID
+	Email   string
+	Purpose EmailVerificationPurpose
+
+	// Exactly one of these is set, decided by Purpose and enforced by
+	// ck_verification_subject. Two columns rather than one polymorphic id:
+	// two foreign keys that each point at a real table are checked by the
+	// database, and one that points at "whichever table the purpose implies"
+	// is checked by nobody.
+	RosterID     *domain.RosterEntryID
+	OnboardingID *domain.OnboardingID
+
+	ConsumedAt *time.Time
+	ExpiresAt  time.Time
+	CreatedAt  time.Time
+}
+
+// EmailVerificationRepository owns outstanding proofs of an address.
+//
+// Only the hash is stored. The plaintext reaches the recipient's inbox and
+// nowhere else, so neither a database read nor a backup yields anything
+// redeemable — the same rule sessions follow for refresh tokens.
+type EmailVerificationRepository interface {
+	Create(ctx context.Context, tx Tx, v *EmailVerification, tokenHash []byte) (*EmailVerification, error)
+
+	// ByTokenHash finds the proof a caller is presenting. Consumed and expired
+	// rows are returned rather than hidden: the service distinguishes "already
+	// used" from "never existed", which are different things to be told.
+	ByTokenHash(ctx context.Context, tx Tx, hash []byte) (*EmailVerification, error)
+
+	// Outstanding finds an unconsumed, unexpired proof for an address, so a
+	// resend re-sends rather than minting a second live token.
+	//
+	// ANY purpose. One address has at most one live proof, and a resend that
+	// filtered to roster redemption would leave a company waiting on an
+	// onboarding code with no way to ask for another — a dead end, since the
+	// code is the only way forward (ADR-0017).
+	Outstanding(ctx context.Context, email string) (*EmailVerification, error)
+
+	Consume(ctx context.Context, tx Tx, id domain.EmailVerificationID, now time.Time) error
 }
 
 // ShareLinkRepository owns a contributor's publishable scorecard link.
@@ -627,6 +1052,19 @@ type ContactRepository interface {
 	Respond(ctx context.Context, tx Tx, id domain.ContactID, accept bool, at time.Time) (*domain.ContactRequest, error)
 
 	ExpireStale(ctx context.Context, now time.Time) (int, error)
+
+	// ReleasedTo resolves an email address the organisation has ALREADY been
+	// given, by a contact request this contributor accepted.
+	//
+	// The only way an organisation may name a person (ADR-0019 §15). A company
+	// can report hiring somebody who agreed to talk to it and nobody else, and
+	// the restriction also stops the field being an oracle: every address it
+	// accepts is one the organisation already holds, so asking tells them
+	// nothing they did not know.
+	//
+	// ErrNotFound for an address never released, whether or not it has an
+	// account here — the two must be indistinguishable from outside.
+	ReleasedTo(ctx context.Context, org domain.OrganizationID, email string) (domain.UserID, error)
 }
 
 // SavedSearchRepository owns stored filter sets.

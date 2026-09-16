@@ -9,16 +9,7 @@ import type { ClaimSummary } from "../contract";
 import { useCreateClaim, useMyClaims, useReevaluationStatus } from "../hooks/contributor";
 import { claimStatus, drafts, judged, queued } from "../logic/claims";
 import * as format from "../logic/format";
-import {
-  Button,
-  Card,
-  Empty,
-  Failure,
-  Icon,
-  Loading,
-  PageHead,
-  Pill,
-} from "../ui/primitives";
+import { Button, Card, Empty, Failure, Icon, Loading, PageHead, Pill } from "../ui/primitives";
 
 function tone(status: ClaimSummary["status"]) {
   switch (status) {
@@ -81,7 +72,12 @@ export function ClaimsPage() {
     if (claim) navigate(`/claims/${claim.id}`);
   }
 
-  if (claims.loading) return <div className="page"><Loading what="your claims" /></div>;
+  if (claims.loading)
+    return (
+      <div className="page">
+        <Loading what="your claims" />
+      </div>
+    );
   if (claims.error) {
     return (
       <div className="page page--narrow">
@@ -124,7 +120,9 @@ export function ClaimsPage() {
         <div className="hscore">
           <span className="hscore__label">Awaiting judgement</span>
           <span className="hscore__n mono">{waiting.length}</span>
-          <span className="hscore__note">Queued. Nothing scores until the evaluator reaches it.</span>
+          <span className="hscore__note">
+            Queued. Nothing scores until the evaluator reaches it.
+          </span>
         </div>
         <div className="hscore">
           <span className="hscore__label">Judged</span>
@@ -138,7 +136,12 @@ export function ClaimsPage() {
           title="No claims yet"
           icon="commit"
           actions={
-            <Button variant="primary" size="sm" disabled={create.pending} onClick={() => void start()}>
+            <Button
+              variant="primary"
+              size="sm"
+              disabled={create.pending}
+              onClick={() => void start()}
+            >
               <Icon name="plus" size="sm" />
               Start your first claim
             </Button>
@@ -149,11 +152,17 @@ export function ClaimsPage() {
         </Empty>
       ) : null}
 
-      {([
-        ["Drafts", open, undefined],
-        ["Awaiting judgement", waiting, "Submitted and queued. Nothing here is scored until the evaluator reaches it."],
-        ["Judged", done, undefined],
-      ] as const).map(([title, list, note]) =>
+      {(
+        [
+          ["Drafts", open, undefined],
+          [
+            "Awaiting judgement",
+            waiting,
+            "Submitted and queued. Nothing here is scored until the evaluator reaches it.",
+          ],
+          ["Judged", done, undefined],
+        ] as const
+      ).map(([title, list, note]) =>
         list.length > 0 ? (
           <Card key={title}>
             <div className="section__head">

@@ -145,9 +145,17 @@ const (
 
 // PRFacts are the GitHub facts a judgement and the arithmetic signals need.
 type PRFacts struct {
-	Title          string
-	Merged         bool
-	MergedAt       *time.Time
+	Title    string
+	Merged   bool
+	MergedAt *time.Time
+
+	// When the pull request was OPENED, as opposed to when somebody merged it.
+	//
+	// Open-source experience is dated from this (ADR-0019 §7). The two come
+	// apart badly: a first contribution can sit in review for eight months, or
+	// be merged long after the person moved on. Merge date measures a project's
+	// responsiveness; this measures when they started contributing.
+	CreatedAt      time.Time
 	AuthorUserID   int64
 	Additions      int
 	Deletions      int

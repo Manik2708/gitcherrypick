@@ -57,12 +57,13 @@ func TestAdminRepositoryAccounts(t *testing.T) {
 }
 
 func TestAdminRepositoryVerifications(t *testing.T) {
-	t.Run("approving an org-scoped request verifies the organization", func(t *testing.T) {
-		// ck_verification_single_subject guarantees exactly one subject, and
-		// org-scoped is what makes approval lift every seat (ADR-0008 §3a).
+	t.Run("registration queues a HIRER-scoped request", func(t *testing.T) {
+		// Since ADR-0017 §1 registration creates an INDEPENDENT hirer and no
+		// organisation at all, so there is no company for a request to name.
+		// ck_verification_single_subject wants exactly one subject, and for
+		// this route that subject is the person.
 		db, ctx := newDB(t), testContext(t)
-		hirer := mustRegister(ctx, t, db, "pat@unknown.example", "Pat", "Unknown Ltd", "unknown-ltd")
-		admin := mustCreateAdmin(ctx, t, db)
+		independent := mustRegisterIndependent(ctx, t, db, "pat@unknown.example", "pat", "Pat")
 
 		pending, err := db.Admins().PendingVerifications(ctx)
 		if err != nil {
@@ -71,41 +72,41 @@ func TestAdminRepositoryVerifications(t *testing.T) {
 		if len(pending) != 1 {
 			t.Fatalf("expected 1 pending request, got %d", len(pending))
 		}
-		if pending[0].Organization == nil {
-			t.Fatal("registration should queue an ORGANIZATION request")
+		if pending[0].Organization != nil {
+			t.Error("an independent hirer has no organisation to name")
 		}
+		if pending[0].Hirer == nil || pending[0].Hirer.ID != independent.ID {
+			t.Error("the request should name the hirer")
+		}
+	})
 
-		mustDecideVerification(ctx, t, db, pending[0].ID, admin, true)
+	t.Run("onboarding verifies the organisation without a verification request", func(t *testing.T) {
+		// The administrator's decision on the SUBMISSION is the verification
+		// (ADR-0017 §2). There is no second review, so no verification_requests
+		// row is created and the queue stays empty.
+		db, ctx := newDB(t), testContext(t)
+		owner := mustRegister(ctx, t, db, "hiring@acme.example", "Jo", "Acme Corp", "acme-corp")
 
-		org, err := db.Hirers().Organization(ctx, hirer.OrganizationID)
+		org, err := db.Hirers().Organization(ctx, owner.OrganizationID)
 		if err != nil {
 			t.Fatalf("reading the org: %v", err)
 		}
 		if !org.IsVerified() {
-			t.Error("expected the organization verified")
+			t.Error("an approved company should be able to hire immediately")
 		}
-	})
 
-	t.Run("rejecting verifies nothing", func(t *testing.T) {
-		db, ctx := newDB(t), testContext(t)
-		hirer := mustRegister(ctx, t, db, "pat@unknown.example", "Pat", "Unknown Ltd", "unknown-ltd")
-		admin := mustCreateAdmin(ctx, t, db)
-
-		pending, _ := db.Admins().PendingVerifications(ctx)
-		mustDecideVerification(ctx, t, db, pending[0].ID, admin, false)
-
-		org, err := db.Hirers().Organization(ctx, hirer.OrganizationID)
+		pending, err := db.Admins().PendingVerifications(ctx)
 		if err != nil {
-			t.Fatalf("reading: %v", err)
+			t.Fatalf("listing: %v", err)
 		}
-		if org.IsVerified() {
-			t.Error("a rejected request verified the organization")
+		if len(pending) != 0 {
+			t.Errorf("onboarding queued %d verification request(s); the submission IS the record", len(pending))
 		}
 	})
 
 	t.Run("a decision is final", func(t *testing.T) {
 		db, ctx := newDB(t), testContext(t)
-		mustRegister(ctx, t, db, "pat@unknown.example", "Pat", "Unknown Ltd", "unknown-ltd")
+		mustRegisterIndependent(ctx, t, db, "pat@unknown.example", "pat", "Pat")
 		admin := mustCreateAdmin(ctx, t, db)
 
 		pending, _ := db.Admins().PendingVerifications(ctx)
@@ -122,7 +123,7 @@ func TestAdminRepositoryVerifications(t *testing.T) {
 
 	t.Run("the queue holds only undecided requests", func(t *testing.T) {
 		db, ctx := newDB(t), testContext(t)
-		mustRegister(ctx, t, db, "pat@unknown.example", "Pat", "Unknown Ltd", "unknown-ltd")
+		mustRegisterIndependent(ctx, t, db, "pat@unknown.example", "pat", "Pat")
 		admin := mustCreateAdmin(ctx, t, db)
 
 		pending, _ := db.Admins().PendingVerifications(ctx)

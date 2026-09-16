@@ -22,13 +22,17 @@ import { LeaderboardPage } from "./pages/Leaderboard";
 import { MyStandingPage } from "./pages/MyStanding";
 import { NotFoundPage } from "./pages/NotFound";
 import { PublicScorecardPage } from "./pages/PublicScorecard";
+import { OnboardingPage, OnboardingVerifyPage } from "./pages/Onboarding";
+import { RedeemPage } from "./pages/Redeem";
 import { RegisterPage } from "./pages/Register";
 import { SavedSearchesPage } from "./pages/SavedSearches";
 import { ScorecardPage } from "./pages/Scorecard";
 import { SearchPage } from "./pages/Search";
 import { ShortlistDetailPage } from "./pages/ShortlistDetail";
+import { RolesPage } from "./pages/Roles";
 import { ShortlistsPage } from "./pages/Shortlists";
 import { SignInPage } from "./pages/SignIn";
+import { TeamPage } from "./pages/Team";
 import { ErrorBoundary } from "./ui/ErrorBoundary";
 import { ScrollToHash } from "./ui/ScrollToHash";
 import { Avatar, Icon } from "./ui/primitives";
@@ -121,11 +125,17 @@ function Sidebar() {
             <NavItem to="/leaderboard" icon="board">
               Leaderboard
             </NavItem>
+            <NavItem to="/roles" icon="bookmark">
+              Roles
+            </NavItem>
             <NavItem to="/shortlists" icon="bookmark">
               Shortlists
             </NavItem>
             <NavItem to="/saved-searches" icon="list">
               Saved searches
+            </NavItem>
+            <NavItem to="/team" icon="people">
+              Team
             </NavItem>
           </>
         ) : null}
@@ -157,7 +167,11 @@ function Sidebar() {
           <Avatar name={principal.display_name} size="sm" tint={4} />
           <span className="od-field od-fill">
             <span className="user-card__name od-truncate">{principal.display_name}</span>
-            <button type="button" className="user-card__meta od-truncate" onClick={() => void signOut()}>
+            <button
+              type="button"
+              className="user-card__meta od-truncate"
+              onClick={() => void signOut()}
+            >
               Sign out
             </button>
           </span>
@@ -209,11 +223,19 @@ export function App() {
             <Routes>
               <Route path="/signin" element={<SignInPage />} />
               <Route path="/register" element={<RegisterPage />} />
+
+              {/* Unauthenticated by necessity: whoever is here has no account
+                  yet, and the second step is what creates one (ADR-0016 §3). */}
+              <Route path="/redeem" element={<RedeemPage />} />
+
+              {/* Listing a company. Public, because onboarding is how an OWNER
+                  comes to exist — there is nobody to be signed in as yet
+                  (ADR-0017 §1). */}
+              <Route path="/organisation" element={<OnboardingPage />} />
+              <Route path="/organisation/verify" element={<OnboardingVerifyPage />} />
+              <Route path="/organisation/revise" element={<OnboardingPage mode="revise" />} />
               <Route path="/auth/github/callback" element={<AuthCallbackPage />} />
-              <Route
-                path="/auth/hirer/github/callback"
-                element={<AuthCallbackPage as="hirer" />}
-              />
+              <Route path="/auth/hirer/github/callback" element={<AuthCallbackPage as="hirer" />} />
               {/* The same GitHub identity can own both kinds of account, so the
                   path is what says which session to mint. Without this route the
                   hirer return landed on the 404. */}
@@ -287,6 +309,14 @@ export function App() {
                 }
               />
               <Route
+                path="/roles"
+                element={
+                  <RequireSession>
+                    <RolesPage />
+                  </RequireSession>
+                }
+              />
+              <Route
                 path="/shortlists"
                 element={
                   <RequireSession>
@@ -307,6 +337,14 @@ export function App() {
                 element={
                   <RequireSession>
                     <SavedSearchesPage />
+                  </RequireSession>
+                }
+              />
+              <Route
+                path="/team"
+                element={
+                  <RequireSession>
+                    <TeamPage />
                   </RequireSession>
                 }
               />

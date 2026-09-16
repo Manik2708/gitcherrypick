@@ -92,8 +92,8 @@ export function LandingPage() {
               <Icon name="commit" size="sm" />
               Sign in with GitHub
             </Link>
-            <Link className="btn btn--ghost" to="/register">
-              Register a hiring account
+            <Link className="btn btn--ghost" to="/organisation">
+              List your organisation
             </Link>
           </div>
         </div>
@@ -123,8 +123,8 @@ export function LandingPage() {
             <Icon name="commit" size="sm" />
             Sign in with GitHub
           </Link>
-          <Link className="btn btn--ghost" to="/register">
-            Register a hiring account
+          <Link className="btn btn--ghost" to="/organisation">
+            List your organisation
           </Link>
         </div>
       </section>
@@ -164,8 +164,8 @@ export function PublicNav() {
       <Link className="btn btn--quiet btn--sm" to="/signin">
         Sign in
       </Link>
-      <Link className="btn btn--primary btn--sm" to="/register">
-        Register
+      <Link className="btn btn--primary btn--sm" to="/organisation">
+        List your organisation
       </Link>
     </header>
   );

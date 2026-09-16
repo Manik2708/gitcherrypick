@@ -26,7 +26,14 @@ const stateTTL = 10 * time.Minute
 
 // AuthController serves /auth.
 type AuthController struct {
-	auth   port.AuthService
+	auth port.AuthService
+
+	// redemption is the second way a hirer account comes into existence:
+	// redeeming a roster entry rather than registering (ADR-0016). It lives
+	// here because chi mounts one handler per prefix and those routes are
+	// under /auth — where they belong, since they mint sessions.
+	redemption port.RedemptionService
+
 	secure bool
 }
 
@@ -35,8 +42,8 @@ type AuthController struct {
 // secure marks the state cookie Secure. It is configuration rather than a
 // constant because local development runs on http, and a Secure cookie there is
 // silently dropped — which presents as a state mismatch nobody can explain.
-func NewAuthController(auth port.AuthService, secure bool) *AuthController {
-	return &AuthController{auth: auth, secure: secure}
+func NewAuthController(auth port.AuthService, redemption port.RedemptionService, secure bool) *AuthController {
+	return &AuthController{auth: auth, redemption: redemption, secure: secure}
 }
 
 var _ port.Controller = (*AuthController)(nil)
@@ -60,6 +67,14 @@ func (c *AuthController) Routes() (string, http.Handler) {
 
 	r.Post("/hirer/register", c.registerHirer)
 	r.Post("/hirer/login", c.loginHirer)
+
+	// Redeeming a roster entry (ADR-0016 §3). Unauthenticated like everything
+	// else here, and for the strongest version of the reason: the caller has
+	// no account until the second of these succeeds.
+	r.Post("/hirer/redeem/start", c.startRedemption)
+	r.Post("/hirer/redeem/complete", c.completeRedemption)
+	r.Post("/hirer/verify/resend", c.resendVerification)
+
 	r.Post("/admin/login", c.loginAdmin)
 
 	r.Post("/refresh", c.refresh)
@@ -160,17 +175,6 @@ type refreshRequest struct {
 	RefreshToken string `json:"refresh_token"`
 }
 
-// organizationInput is the company a registrant is signing up on behalf of.
-//
-// Nested rather than flattened to organization_name/website/linkedin_url: the
-// registration creates two things, and the body should say which fields
-// describe the person and which describe the company.
-type organizationInput struct {
-	Name        string `json:"name"`
-	Website     string `json:"website"`
-	LinkedInURL string `json:"linkedin_url"`
-}
-
 // proofInput is one piece of evidence that the account is real.
 //
 // Kind, and then either a value or free notes. `alternative` and
@@ -183,12 +187,17 @@ type proofInput struct {
 	AttachmentURL string `json:"attachment_url"`
 }
 
+// registerHirerRequest is an INDEPENDENT hirer signing up.
+//
+// No organisation. Someone starting a company uses POST /organizations, and
+// someone joining one that is already here was rostered and uses /redeem
+// (ADR-0017 §1). This route is for a person hiring on their own account.
 type registerHirerRequest struct {
-	Email        string            `json:"email"`
-	Password     string            `json:"password"`
-	DisplayName  string            `json:"display_name"`
-	Organization organizationInput `json:"organization"`
-	Proofs       []proofInput      `json:"proofs"`
+	Email       string       `json:"email"`
+	Username    string       `json:"username"`
+	Password    string       `json:"password"`
+	DisplayName string       `json:"display_name"`
+	Proofs      []proofInput `json:"proofs"`
 }
 
 // registeredHirerBody is a queued registration.
@@ -393,13 +402,11 @@ func (c *AuthController) registerHirer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	registration, err := c.auth.RegisterHirer(r.Context(), port.RegisterHirerRequest{
-		Email:            body.Email,
-		Password:         body.Password,
-		DisplayName:      body.DisplayName,
-		OrganizationName: body.Organization.Name,
-		Website:          body.Organization.Website,
-		LinkedInURL:      body.Organization.LinkedInURL,
-		Proofs:           proofs,
+		Email:       body.Email,
+		Username:    body.Username,
+		Password:    body.Password,
+		DisplayName: body.DisplayName,
+		Proofs:      proofs,
 	})
 	if err != nil {
 		writeError(w, err)
@@ -420,8 +427,17 @@ func (c *AuthController) registerHirer(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, out)
 }
 
+// hirerCredentialsRequest keys on USERNAME (ADR-0016).
+//
+// An email identifies nobody: two seats may share a contact address, and a
+// work address outlives the person who held it.
+type hirerCredentialsRequest struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
 func (c *AuthController) loginHirer(w http.ResponseWriter, r *http.Request) {
-	var body credentialsRequest
+	var body hirerCredentialsRequest
 	if err := decode(w, r, &body); err != nil {
 		// Reported as bad credentials rather than a bad body. A malformed
 		// login is still a failed login, and describing the difference would
@@ -430,7 +446,7 @@ func (c *AuthController) loginHirer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	hirer, pair, err := c.auth.LoginHirer(r.Context(), body.Email, body.Password)
+	hirer, pair, err := c.auth.LoginHirer(r.Context(), body.Username, body.Password)
 	if err != nil {
 		writeError(w, err)
 		return

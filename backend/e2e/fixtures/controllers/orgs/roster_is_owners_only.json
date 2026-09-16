@@ -1,0 +1,244 @@
+{
+  "name": "an organisation keeps a roster of addresses, and only an owner may change it",
+  "description": "ADR-0016 §3 replaced the invitation token with a roster. An invitation WAS the credential: whoever held the link became a seat, so a forwarded message, a shared inbox or a mail archive was a way in. A roster entry is an allowlist instead — it names who MAY hold a seat, grants nothing by itself, and creating the seat is a separate step that proves control of the address. This case covers the list; redemption_proves_the_address covers the proof.\n\nOWNERS ONLY, per §4, and the reason is not seniority for its own sake: an owner entry grants the power to grant further seats, so a member who could roster could roster themselves an owner seat and promote themselves. A member of the organisation and an owner of a different one therefore get the same refusal, and so does reading the roster — the list of who may join is a hiring plan.\n\nThe username namespace is platform-wide and unconditional (§Identity). A name is claimed the moment it is rostered and a clash is a 409 that names nothing about who holds it or where, following ADR-0009's pattern: attempt the insert, translate the violation, never check first and never explain.\n\nAn unverified organisation may still build a roster. Capability gates redemption, not intent: a company waiting on review can decide who it wants without being able to seat them.",
+  "seed": ["principals"],
+  "steps": [
+    {
+      "_step": "The public picker a redeemer finds their employer in. Unauthenticated by necessity — they have no account yet.",
+      "as": "anonymous",
+      "request": { "method": "GET", "path": "/organizations" },
+      "expect": {
+        "status": 200,
+        "_note": "VERIFIED ONLY, and name and slug only. 'Unknown Ltd' is absent: it cannot seat anyone, so listing it would only produce a redemption that silently fails. Nothing else may appear — no id, no roster size, no seat count, no payment status. The snapshot is the whole contract, so an extra key fails this step.",
+        "body": {
+          "organizations": [
+            { "name": "Acme Corp", "slug": "acme" },
+            { "name": "Tiny Studio", "slug": "tiny-studio" }
+          ]
+        }
+      }
+    },
+    {
+      "_step": "An empty roster is [], not null. Acme's two seats predate the roster, which is the ordinary state of an organisation that existed before this feature.",
+      "as": "hank",
+      "request": { "method": "GET", "path": "/orgs/01920000-0000-7000-8000-00000000b001/roster" },
+      "expect": { "status": 200, "body": { "entries": [] } }
+    },
+    {
+      "_step": "An owner names an address, a username and a role. No token comes back, because there is nothing to hold.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/orgs/01920000-0000-7000-8000-00000000b001/roster",
+        "body": { "email": "rita@acme.com", "username": "rita", "role": "member" }
+      },
+      "capture": { "rita_entry": "$.id" },
+      "expect": {
+        "status": 201,
+        "_note": "added_by is an OBJECT, not a bare id. ADR-0016 §9 says 'wherever a response emits created_by, added_by or requested_by' — this is one of those places, and a reader of the roster must be able to see who staged an entry without resolving a uuid against a list they may not be able to reach.",
+        "body": {
+          "id": "<uuid>",
+          "email": "rita@acme.com",
+          "username": "rita",
+          "role": "member",
+          "added_by": {
+            "id": "01920000-0000-7000-8000-00000000c001",
+            "username": "hank",
+            "display_name": "Hank Rivera",
+            "active": true
+          },
+          "redeemed_at": null,
+          "redeemed_by": null,
+          "created_at": "<timestamp>"
+        },
+        "db": {
+          "organization_hirer_roster": {
+            "where": { "email": "rita@acme.com" },
+            "count": 1,
+            "all_match": { "redeemed_at": null, "redeemed_by": null }
+          },
+          "hirer_accounts": {
+            "_note": "Rostering creates NO account. The entry is an intent; only redemption makes a seat.",
+            "where": { "email": "rita@acme.com" },
+            "count": 0
+          }
+        }
+      }
+    },
+    {
+      "_step": "A MEMBER of Acme cannot roster. dave_hiring is a verified seat in this very organisation, and §4 still refuses — the owner role they asked for is exactly the escalation the rule exists to stop.",
+      "as": "dave_hiring",
+      "request": {
+        "method": "POST",
+        "path": "/orgs/01920000-0000-7000-8000-00000000b001/roster",
+        "body": { "email": "selfpromotion@acme.com", "username": "selfpromotion", "role": "owner" }
+      },
+      "expect": {
+        "status": 403,
+        "body": { "error": "not_an_org_member" },
+        "db": { "organization_hirer_roster": { "where": { "email": "selfpromotion@acme.com" }, "count": 0 } }
+      }
+    },
+    {
+      "_step": "...and cannot read it either.",
+      "as": "dave_hiring",
+      "request": { "method": "GET", "path": "/orgs/01920000-0000-7000-8000-00000000b001/roster" },
+      "expect": { "status": 403, "body": { "error": "not_an_org_member" } }
+    },
+    {
+      "_step": "An owner of ANOTHER organisation is equally refused. Owning Tiny Studio is not authority inside Acme.",
+      "as": "sam_studio",
+      "request": {
+        "method": "POST",
+        "path": "/orgs/01920000-0000-7000-8000-00000000b001/roster",
+        "body": { "email": "intruder@acme.com", "username": "intruder", "role": "owner" }
+      },
+      "expect": {
+        "status": 403,
+        "body": { "error": "not_an_org_member" },
+        "db": { "organization_hirer_roster": { "where": { "email": "intruder@acme.com" }, "count": 0 } }
+      }
+    },
+    {
+      "_step": "The same username twice.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/orgs/01920000-0000-7000-8000-00000000b001/roster",
+        "body": { "email": "someone.else@acme.com", "username": "rita", "role": "member" }
+      },
+      "expect": {
+        "status": 409,
+        "_note": "No 'held by rita@acme.com', no 'held in this organisation', no field naming the clash. The body is the code and nothing else (§Identity).",
+        "body": { "error": "username_taken" },
+        "db": { "organization_hirer_roster": { "where": { "email": "someone.else@acme.com" }, "count": 0 } }
+      }
+    },
+    {
+      "_step": "A username already held by a LIVE SEAT IN ANOTHER ORGANISATION. 'sam' is Tiny Studio's owner and appears on nobody's roster — the namespace is platform-wide and its index unconditional (§Identity), so this is the same 409.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/orgs/01920000-0000-7000-8000-00000000b001/roster",
+        "body": { "email": "sam.at.acme@acme.com", "username": "sam", "role": "member" }
+      },
+      "expect": {
+        "status": 409,
+        "_note": "Refused HERE and not at redemption. An entry accepted now and unredeemable later tells an organisation it has seated somebody it has not, and the mistake surfaces only when that person tries to use it.",
+        "body": { "error": "username_taken" },
+        "db": { "organization_hirer_roster": { "where": { "email": "sam.at.acme@acme.com" }, "count": 0 } }
+      }
+    },
+    {
+      "_step": "An UNVERIFIED organisation may still build its roster while it waits for review. Pat owns Unknown Ltd, which has never been approved.",
+      "as": "pending_pat",
+      "request": {
+        "method": "POST",
+        "path": "/orgs/01920000-0000-7000-8000-00000000b003/roster",
+        "body": { "email": "colleague@unknown.example", "username": "colleague", "role": "member" }
+      },
+      "capture": { "colleague_entry": "$.id" },
+      "expect": {
+        "status": 201,
+        "_note": "Hiring capability is NOT required to roster. Redeeming an entry is what needs a verified org, because that is the moment an unknown person becomes a hirer inside it.",
+        "body": {
+          "id": "<uuid>",
+          "email": "colleague@unknown.example",
+          "username": "colleague",
+          "role": "member",
+          "added_by": {
+            "id": "01920000-0000-7000-8000-00000000c002",
+            "username": "pat",
+            "display_name": "Pat Ferreira",
+            "active": true
+          },
+          "redeemed_at": null,
+          "redeemed_by": null,
+          "created_at": "<timestamp>"
+        }
+      }
+    },
+    {
+      "_step": "The roster lists entries whether or not they have been redeemed. Nothing here has.",
+      "as": "hank",
+      "request": { "method": "GET", "path": "/orgs/01920000-0000-7000-8000-00000000b001/roster" },
+      "expect": {
+        "status": 200,
+        "_note": "One entry, and Acme's own. The refused writes above left nothing behind, and Unknown Ltd's entry belongs to Unknown Ltd.",
+        "body": {
+          "entries": [
+            {
+              "id": "<uuid>",
+              "email": "rita@acme.com",
+              "username": "rita",
+              "role": "member",
+              "added_by": {
+                "id": "01920000-0000-7000-8000-00000000c001",
+                "username": "hank",
+                "display_name": "Hank Rivera",
+                "active": true
+              },
+              "redeemed_at": null,
+              "redeemed_by": null,
+              "created_at": "<timestamp>"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "_step": "An entry belonging to ANOTHER organisation is not this owner's to remove, even holding its id.",
+      "as": "hank",
+      "request": {
+        "method": "DELETE",
+        "path": "/orgs/01920000-0000-7000-8000-00000000b001/roster/{{colleague_entry}}"
+      },
+      "expect": {
+        "status": 403,
+        "body": { "error": "not_an_org_member" },
+        "db": {
+          "organization_hirer_roster": { "where": { "email": "colleague@unknown.example" }, "count": 1 }
+        }
+      }
+    },
+    {
+      "_step": "A member may not remove one either.",
+      "as": "dave_hiring",
+      "request": {
+        "method": "DELETE",
+        "path": "/orgs/01920000-0000-7000-8000-00000000b001/roster/{{rita_entry}}"
+      },
+      "expect": {
+        "status": 403,
+        "body": { "error": "not_an_org_member" },
+        "db": { "organization_hirer_roster": { "where": { "email": "rita@acme.com" }, "count": 1 } }
+      }
+    },
+    {
+      "_step": "Removing an UNREDEEMED entry simply withdraws the offer. Nobody ever proved this address, so there is no seat behind it and nothing to revoke.",
+      "as": "hank",
+      "request": {
+        "method": "DELETE",
+        "path": "/orgs/01920000-0000-7000-8000-00000000b001/roster/{{rita_entry}}"
+      },
+      "expect": {
+        "status": 204,
+        "_note": "204 deliberately. There is nothing to return, and a body saying 'deleted' would be a lie once an entry HAS been redeemed — the seat row survives that case, so the same endpoint must not promise deletion here.",
+        "body": null,
+        "db": {
+          "organization_hirer_roster": { "where": { "email": "rita@acme.com" }, "count": 0 },
+          "hirer_accounts": {
+            "_note": "No seat was ever created, so none is stamped. Removal revokes what exists; it does not invent a row to mark.",
+            "where": { "username": "rita" },
+            "count": 0
+          }
+        }
+      }
+    },
+    {
+      "as": "hank",
+      "request": { "method": "GET", "path": "/orgs/01920000-0000-7000-8000-00000000b001/roster" },
+      "expect": { "status": 200, "body": { "entries": [] } }
+    }
+  ]
+}

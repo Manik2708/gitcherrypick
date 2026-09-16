@@ -18,6 +18,7 @@ import * as format from "../logic/format";
 import {
   Avatar,
   Button,
+  By,
   Card,
   Empty,
   Failure,
@@ -33,7 +34,12 @@ export function SavedSearchesPage() {
   const [replaying, setReplaying] = useState<string | undefined>(undefined);
   const replayed = useSavedSearchResults(replaying);
 
-  if (saved.loading) return <div className="page"><Loading what="your saved searches" /></div>;
+  if (saved.loading)
+    return (
+      <div className="page">
+        <Loading what="your saved searches" />
+      </div>
+    );
   if (saved.error) {
     return (
       <div className="page page--narrow">
@@ -72,6 +78,7 @@ export function SavedSearchesPage() {
                     <p className="row__headline mono small">{describe(filters)}</p>
                     <div className="row__meta">
                       <span>Saved {format.date(search.created_at)}</span>
+                      <By who={search.created_by} verb="by" />
                     </div>
                   </div>
                   <div className="row__right">
@@ -103,8 +110,8 @@ export function SavedSearchesPage() {
           <div className="section__head">
             <h2 className="section__title">Replayed</h2>
             <span className="section__note">
-              Run by the server against the stored filter set, so a filter this client does not
-              know about still takes effect.
+              Run by the server against the stored filter set, so a filter this client does not know
+              about still takes effect.
             </span>
           </div>
 
@@ -139,7 +146,11 @@ export function SavedSearchesPage() {
                           <span className="stat__label">Overall</span>
                         </span>
                       </div>
-                      <Button variant="ghost" size="sm" onClick={() => navigate(`/contributors/${result.id}`)}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => navigate(`/contributors/${result.id}`)}
+                      >
                         Scorecard
                       </Button>
                     </div>

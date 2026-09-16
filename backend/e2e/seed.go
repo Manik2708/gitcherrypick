@@ -201,11 +201,21 @@ func seedPrincipals(ctx context.Context, conn *pgx.Conn, bindings map[string]str
 			}
 			passwordHash = &hash
 		}
+		// The name is claimed out of the global namespace first, exactly as
+		// registration and rostering do. hirer_accounts.username references
+		// it, so a seed that skipped this would be writing a row production
+		// cannot write.
+		if _, err := conn.Exec(ctx,
+			`INSERT INTO hirer_usernames (username) VALUES ($1)`, h.Username); err != nil {
+			return fmt.Errorf("hirer %s username: %w", h.Key, err)
+		}
 		if _, err := conn.Exec(ctx,
 			`INSERT INTO hirer_accounts
-			   (id, organization_id, email, auth_provider, display_name, verified_at, password_hash)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-			h.ID, orgID, h.Email, h.AuthProvider, h.DisplayName, verifiedAt, passwordHash); err != nil {
+			   (id, organization_id, email, username, auth_provider,
+			    display_name, verified_at, password_hash)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+			h.ID, orgID, h.Email, h.Username, h.AuthProvider,
+			h.DisplayName, verifiedAt, passwordHash); err != nil {
 			return fmt.Errorf("hirer %s: %w", h.Key, err)
 		}
 
@@ -233,6 +243,46 @@ func seedPrincipals(ctx context.Context, conn *pgx.Conn, bindings map[string]str
 		}
 
 		bindings[h.Key+".id"] = h.ID
+	}
+
+	// One OPEN ROLE per organisation, bound as {{<org key>.role}}.
+	//
+	// A shortlist is FOR a job (ADR-0019 §3), so a round cannot be opened
+	// without one. Seeded rather than created by every fixture because the
+	// existing cases are about shortlists and consent, not about roles — making
+	// each of them create and open a role first would be three steps of
+	// scaffolding before the thing under test.
+	//
+	// Deliberately plain: remote, full time, no countries, no minimums, no pay.
+	// A fixture asserting on any of those states its own role instead, so the
+	// defaults here can never be mistaken for the case's subject.
+	for _, o := range file.Organizations {
+		owner := ""
+		for _, h := range file.Hirers {
+			if h.Organization == o.Key {
+				owner = h.ID
+				break
+			}
+		}
+		if owner == "" {
+			// An organisation with no seats has nobody who could have created
+			// a role. Leaving it without one is the honest state.
+			continue
+		}
+
+		var roleID string
+		if err := conn.QueryRow(ctx, `
+			INSERT INTO roles
+			    (id, organization_id, title, description, engagement, status,
+			     location, created_by, opened_by, opened_at)
+			VALUES (gen_random_uuid(), $1, 'Backend engineer',
+			        'Seeded so a round has a job to be for.',
+			        'full_time', 'open', 'remote', $2, $2, $3)
+			RETURNING id`,
+			o.ID, owner, now).Scan(&roleID); err != nil {
+			return fmt.Errorf("organization %s role: %w", o.Key, err)
+		}
+		bindings[o.Key+".role"] = roleID
 	}
 
 	// Verification is per ORGANIZATION (ADR-0002, and ADR-0008 §3a depends on
@@ -743,7 +793,15 @@ func seedScoredSet(ctx context.Context, conn *pgx.Conn, s scoredSet, bindings ma
 		}
 		var expires *time.Time
 		if a.ExpiresInDays != nil {
-			t := time.Now().UTC().AddDate(0, 0, *a.ExpiresInDays)
+			// EpochTime, not time.Now — the same reason given where the
+			// contributors above are seeded. The API reads a PINNED clock, so
+			// a window measured from the host's would sit in the wrong place
+			// relative to every comparison the API makes against it.
+			//
+			// Harmless while every override here is positive, and silently
+			// wrong the first time somebody seeds a lapsed one, which is
+			// exactly the case an override exists to express.
+			t := EpochTime().AddDate(0, 0, *a.ExpiresInDays)
 			expires = &t
 		}
 		if _, err := conn.Exec(ctx,

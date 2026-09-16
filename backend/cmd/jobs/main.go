@@ -20,6 +20,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/Manik2708/gitcherrypick/backend/internal/adapter/clock"
+	"github.com/Manik2708/gitcherrypick/backend/internal/adapter/github"
 	"github.com/Manik2708/gitcherrypick/backend/internal/adapter/resend"
 	"github.com/Manik2708/gitcherrypick/backend/internal/port"
 	"github.com/Manik2708/gitcherrypick/backend/internal/repository/postgres"
@@ -37,6 +38,12 @@ type config struct {
 	resendAPIURL string
 	resendAPIKey string
 	resendFrom   string
+	appURL       string
+
+	// GitHub, for verify-pull-requests (ADR-0019 §7). No OAuth here: this
+	// binary never signs anybody in, it only reads public pull request facts.
+	githubAPIURL string
+	githubToken  string
 }
 
 // job is one unit of scheduled work.
@@ -68,6 +75,18 @@ var jobs = map[string]job{
 		summary: "expire contact requests a contributor never answered",
 		run: func(ctx context.Context, svc port.JobService) (int, error) {
 			return svc.ExpireContactRequests(ctx)
+		},
+	},
+	"expire-onboarding": {
+		summary: "delete submitted companies whose confirmation code lapsed unused",
+		run: func(ctx context.Context, svc port.JobService) (int, error) {
+			return svc.ExpireOnboarding(ctx)
+		},
+	},
+	"verify-pull-requests": {
+		summary: "re-read pull requests whose first fetch could not be completed",
+		run: func(ctx context.Context, svc port.JobService) (int, error) {
+			return svc.VerifyPendingPRs(ctx)
 		},
 	},
 	"recompute-norms": {
@@ -108,6 +127,13 @@ func command() *cobra.Command {
 	root.PersistentFlags().StringVar(&cfg.resendAPIURL, "resend-api-url", resend.DefaultBaseURL,
 		"Resend API base URL")
 	root.PersistentFlags().StringVar(&cfg.resendAPIKey, "resend-api-key", "", "Resend API key")
+	root.PersistentFlags().StringVar(&cfg.appURL, "app-url", "",
+		"origin of the web client, used to build the links in notification emails")
+	root.PersistentFlags().StringVar(&cfg.githubAPIURL, "github-api-url", github.DefaultAPIBaseURL,
+		"GitHub API base URL — pointed at the stand-in in tests")
+	root.PersistentFlags().StringVar(&cfg.githubToken, "github-token", "",
+		"GitHub token, for the pull request reads verify-pull-requests makes")
+
 	root.PersistentFlags().StringVar(&cfg.resendFrom, "resend-from",
 		"GitCherryPick <no-reply@gitcherrypick.dev>", "envelope sender")
 
@@ -177,13 +203,24 @@ func runJob(ctx context.Context, cfg config, name string) error {
 	defer closeClock()
 
 	db := postgres.New(pool).WithClock(now)
+
+	// The profile service, for its verification half only. It is handed over as
+	// a port.ProfileVerifier — one method — so a sweep cannot reach the rest of
+	// somebody's profile, least of all their compensation (ADR-0018 §5).
+	profiles := service.NewProfileService(
+		db.Profiles(), db.Users(), nil,
+		github.New(github.Config{APIBaseURL: cfg.githubAPIURL, Token: cfg.githubToken}),
+		db, now,
+	)
+
 	svc := service.NewJobService(
 		db.Users(), db.Shortlists(), db.Contacts(), db.Norms(), db.Hirers(),
+		db.Onboarding(), profiles,
 		resend.New(resend.Config{
 			BaseURL:  cfg.resendAPIURL,
 			APIKey:   cfg.resendAPIKey,
 			From:     cfg.resendFrom,
-			Renderer: resend.NewDefaultRenderer(),
+			Renderer: resend.NewDefaultRenderer(cfg.appURL),
 		}),
 		now,
 	)

@@ -16,6 +16,10 @@ import (
 // serves is that a shortlisted contributor can never be un-shortlisted, and a
 // rule that strict is only tolerable if there is a moment before it binds.
 type ShortlistService struct {
+	// roles resolves the job a round is for. A round with no role could only
+	// tell a contributor that somebody is interested in them (ADR-0019 §3).
+	roles port.RoleRepository
+
 	shortlists port.ShortlistRepository
 	contacts   port.ContactRepository
 	users      port.UserRepository
@@ -29,6 +33,7 @@ type ShortlistService struct {
 // NewShortlistService wires hiring rounds.
 func NewShortlistService(
 	shortlists port.ShortlistRepository,
+	roles port.RoleRepository,
 	contacts port.ContactRepository,
 	users port.UserRepository,
 	hirers port.HirerRepository,
@@ -37,8 +42,9 @@ func NewShortlistService(
 	tx port.TxManager,
 	clock port.Clock,
 ) *ShortlistService {
-	return &ShortlistService{shortlists: shortlists, contacts: contacts, users: users,
-		hirers: hirers, notifier: notifier, access: access, tx: tx, clock: clock}
+	return &ShortlistService{shortlists: shortlists, roles: roles,
+		contacts: contacts, users: users, hirers: hirers, notifier: notifier,
+		access: access, tx: tx, clock: clock}
 }
 
 var _ port.ShortlistService = (*ShortlistService)(nil)
@@ -48,11 +54,35 @@ var _ port.ShortlistService = (*ShortlistService)(nil)
 // tentative_result_date is required and must be in the future: it is what the
 // contributor is told, and the overdue ratio is computed against it. A date
 // already past would be born overdue (ADR-0005).
-func (s *ShortlistService) Create(ctx context.Context, p domain.Principal, name, description string, date time.Time) (*domain.Shortlist, error) {
+func (s *ShortlistService) Create(ctx context.Context, p domain.Principal, role domain.RoleID, name, description string, date time.Time) (*domain.Shortlist, error) {
 	hirer, err := s.capable(ctx, p)
 	if err != nil {
 		return nil, err
 	}
+
+	// The round is FOR a job (ADR-0019 §3), and the job has to be one of this
+	// organisation's and actually open. An unopened role would put a salary
+	// nobody approved in front of everybody contacted; another company's role
+	// would put their salary there.
+	opening, err := s.roles.ByID(ctx, role)
+	if err != nil {
+		if errors.Is(err, port.ErrNotFound) {
+			return nil, Coded(ErrInvalid, CodeRoleNotFound,
+				"that role does not exist")
+		}
+		return nil, fmt.Errorf("reading the role: %w", err)
+	}
+	if opening.OrgID != hirer.OrganizationID {
+		// Not found rather than forbidden: whether another organisation has a
+		// role with this id is not this caller's business.
+		return nil, Coded(ErrInvalid, CodeRoleNotFound, "that role does not exist")
+	}
+	if !opening.IsOpen() {
+		return nil, Coded(ErrInvalid, CodeInvalidShortlist,
+			"that role is not open — a round can only approach people for a job "+
+				"the organisation has actually committed to")
+	}
+
 	if name == "" {
 		return nil, fmt.Errorf("a round needs a name: %w", ErrInvalid)
 	}
@@ -64,8 +94,9 @@ func (s *ShortlistService) Create(ctx context.Context, p domain.Principal, name,
 	}
 
 	created, err := s.shortlists.Create(ctx, &domain.Shortlist{
-		OrganizationID: hirer.OrganizationID, Name: name, Description: description,
-		TentativeResultDate: date, CreatedBy: hirer.ID,
+		OrganizationID: hirer.OrganizationID, RoleID: role,
+		Name: name, Description: description,
+		TentativeResultDate: date, CreatedBy: domain.RefTo(hirer),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("creating the round: %w", err)
@@ -158,7 +189,7 @@ func (s *ShortlistService) AddEntry(ctx context.Context, p domain.Principal, id 
 	}
 
 	entry, err := s.shortlists.AddEntry(ctx, &domain.ShortlistEntry{
-		ShortlistID: id, UserID: target, Note: note, AddedBy: hirer.ID,
+		ShortlistID: id, UserID: target, Note: note, AddedBy: domain.RefTo(hirer),
 	})
 	if err != nil {
 		switch {
@@ -273,8 +304,19 @@ func (s *ShortlistService) ContactRequests(ctx context.Context, p domain.Princip
 	return out, nil
 }
 
-// notifyContacts tells each contributor an organization is interested.
+// notifyContacts tells each contributor an organization is interested, and
+// WHAT IN (ADR-0019 §2).
+//
+// This message IS the contact request — the platform sends it, the address is
+// disclosed to nobody, and acceptance is still what releases it. Carrying the
+// role is what turns "somebody is interested in you" into something a person
+// can answer honestly, which produces fewer yeses that evaporate on the first
+// call and more informed declines.
 func (s *ShortlistService) notifyContacts(ctx context.Context, requests []domain.ContactRequest) {
+	// One role per round, read once. A company running a round against forty
+	// people produces forty requests pointing at one job.
+	roles := map[domain.RoleID]*domain.Role{}
+
 	for _, cr := range requests {
 		contributor, err := s.users.ByID(ctx, cr.UserID)
 		if err != nil {
@@ -284,17 +326,46 @@ func (s *ShortlistService) notifyContacts(ctx context.Context, requests []domain
 		if err != nil {
 			continue
 		}
+		role, ok := roles[cr.RoleID]
+		if !ok {
+			// A role we cannot read leaves the message thinner rather than
+			// unsent. The request is real either way, and withholding somebody's
+			// invitation because a row would not load helps nobody.
+			role, _ = s.roles.ByID(ctx, cr.RoleID)
+			roles[cr.RoleID] = role
+		}
+
 		// The payment disclosure (ADR-0002 §5). A contributor deciding whether
 		// to release their email is told what the platform knows.
+		data := map[string]any{
+			"organization":          org.Name,
+			"payment_verified":      org.PaymentVerified(),
+			"tentative_result_date": cr.TentativeResultDate,
+			"contact_request_id":    string(cr.ID),
+		}
+		if role != nil {
+			data["role_title"] = role.Title
+			// Words, not enum values. "full_time, remote" in somebody's inbox
+			// is the database leaking into a sentence.
+			data["role_engagement"] = role.Engagement.Label()
+			data["role_location"] = role.Location.Label()
+
+			// The process fields, disclosed HERE and nowhere else (ADR-0017).
+			if role.MaxInterviewRounds != nil {
+				data["max_interview_rounds"] = *role.MaxInterviewRounds
+			}
+			if role.AvgDaysToOffer != nil {
+				data["avg_days_to_offer"] = *role.AvgDaysToOffer
+			}
+			if role.RequiresOnlineTest != nil {
+				data["requires_online_test"] = *role.RequiresOnlineTest
+			}
+		}
+
 		_ = s.notifier.Send(ctx, port.Notification{
 			Kind:      port.NotifyContactRequest,
 			Recipient: contributor.Email,
-			Data: map[string]any{
-				"organization":          org.Name,
-				"payment_verified":      org.PaymentVerified(),
-				"tentative_result_date": cr.TentativeResultDate,
-				"contact_request_id":    string(cr.ID),
-			},
+			Data:      data,
 		})
 	}
 }
@@ -307,6 +378,25 @@ func (s *ShortlistService) capable(ctx context.Context, p domain.Principal) (*do
 	}
 	if err := s.access.RequireHiringCapability(ctx, p); err != nil {
 		return nil, err
+	}
+
+	// A round belongs to an ORGANIZATION, not to the recruiter who made it —
+	// one that vanished when a recruiter left would be worse than useless
+	// (ADR-0008 §3a), and shortlists.organization_id is NOT NULL because of it.
+	//
+	// An INDEPENDENT hirer has no organisation (ADR-0017 §1), so there is
+	// nothing for a round to belong to. Refused here, plainly, rather than
+	// passed down to fail as an invalid uuid and reach the caller as a 500.
+	//
+	// PROVISIONAL. ADR-0017 says an independent hirer is verified individually
+	// and hires, but the whole shortlist and contact model is organisation
+	// scoped, and the ADR does not say how the two meet. Reported to the
+	// Planner; a clear refusal is the honest placeholder until they decide,
+	// and is reversible in a way that inventing a one-person organisation
+	// here would not be.
+	if hirer.OrganizationID == "" {
+		return nil, Coded(ErrNotCapable, CodeOrganizationRequired,
+			"hiring rounds belong to an organisation, and this account has none")
 	}
 	return hirer, nil
 }

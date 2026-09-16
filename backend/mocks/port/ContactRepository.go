@@ -316,6 +316,78 @@ func (_c *ContactRepository_ListForUser_Call) RunAndReturn(run func(ctx context.
 	return _c
 }
 
+// ReleasedTo provides a mock function for the type ContactRepository
+func (_mock *ContactRepository) ReleasedTo(ctx context.Context, org domain.OrganizationID, email string) (domain.UserID, error) {
+	ret := _mock.Called(ctx, org, email)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ReleasedTo")
+	}
+
+	var r0 domain.UserID
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.OrganizationID, string) (domain.UserID, error)); ok {
+		return returnFunc(ctx, org, email)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.OrganizationID, string) domain.UserID); ok {
+		r0 = returnFunc(ctx, org, email)
+	} else {
+		r0 = ret.Get(0).(domain.UserID)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, domain.OrganizationID, string) error); ok {
+		r1 = returnFunc(ctx, org, email)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// ContactRepository_ReleasedTo_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ReleasedTo'
+type ContactRepository_ReleasedTo_Call struct {
+	*mock.Call
+}
+
+// ReleasedTo is a helper method to define mock.On call
+//   - ctx context.Context
+//   - org domain.OrganizationID
+//   - email string
+func (_e *ContactRepository_Expecter) ReleasedTo(ctx interface{}, org interface{}, email interface{}) *ContactRepository_ReleasedTo_Call {
+	return &ContactRepository_ReleasedTo_Call{Call: _e.mock.On("ReleasedTo", ctx, org, email)}
+}
+
+func (_c *ContactRepository_ReleasedTo_Call) Run(run func(ctx context.Context, org domain.OrganizationID, email string)) *ContactRepository_ReleasedTo_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 domain.OrganizationID
+		if args[1] != nil {
+			arg1 = args[1].(domain.OrganizationID)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *ContactRepository_ReleasedTo_Call) Return(userID domain.UserID, err error) *ContactRepository_ReleasedTo_Call {
+	_c.Call.Return(userID, err)
+	return _c
+}
+
+func (_c *ContactRepository_ReleasedTo_Call) RunAndReturn(run func(ctx context.Context, org domain.OrganizationID, email string) (domain.UserID, error)) *ContactRepository_ReleasedTo_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Respond provides a mock function for the type ContactRepository
 func (_mock *ContactRepository) Respond(ctx context.Context, tx port.Tx, id domain.ContactID, accept bool, at time.Time) (*domain.ContactRequest, error) {
 	ret := _mock.Called(ctx, tx, id, accept, at)

@@ -109,7 +109,7 @@ func TestHirerWithNoOrganizationSerializes(t *testing.T) {
 	h.auth.EXPECT().LoginHirer(mock.Anything, mock.Anything, mock.Anything).
 		Return(&domain.Hirer{ID: hankID, DisplayName: "Orphan"}, tokenPair(), nil)
 
-	got := h.do(t, http.MethodPost, "/auth/hirer/login", "", `{"email":"a@b.c","password":"pw"}`)
+	got := h.do(t, http.MethodPost, "/auth/hirer/login", "", `{"username":"orphan","password":"pw"}`)
 	require.Equal(t, http.StatusOK, got.Status)
 
 	var body struct {

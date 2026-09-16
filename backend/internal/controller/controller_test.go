@@ -41,9 +41,14 @@ type harness struct {
 	shortlists *mocks.ShortlistService
 	contacts   *mocks.ContactService
 	orgs       *mocks.OrganizationService
+	redemption *mocks.RedemptionService
+	onboarding *mocks.OnboardingService
 	admin      *mocks.AdminService
 	evaluation *mocks.EvaluationService
 	reeval     *mocks.ReevaluationService
+	profiles   *mocks.ProfileService
+	places     *mocks.PlaceService
+	roles      *mocks.RoleService
 }
 
 func newHarness(t *testing.T) *harness {
@@ -58,9 +63,14 @@ func newHarness(t *testing.T) *harness {
 		shortlists: mocks.NewShortlistService(t),
 		contacts:   mocks.NewContactService(t),
 		orgs:       mocks.NewOrganizationService(t),
+		redemption: mocks.NewRedemptionService(t),
+		onboarding: mocks.NewOnboardingService(t),
 		admin:      mocks.NewAdminService(t),
 		evaluation: mocks.NewEvaluationService(t),
 		reeval:     mocks.NewReevaluationService(t),
+		profiles:   mocks.NewProfileService(t),
+		places:     mocks.NewPlaceService(t),
+		roles:      mocks.NewRoleService(t),
 	}
 
 	// A fixed clock: the admin queue reports how long a request has waited,
@@ -71,14 +81,18 @@ func newHarness(t *testing.T) *harness {
 	h.server = controller.NewServer(controller.NewPrincipalResolver(h.tokens, h.auth))
 	h.server.Health()
 	h.server.Mount(
-		controller.NewAuthController(h.auth, false),
-		controller.NewMeController(h.auth, h.orgs, h.skills, h.discovery, h.contacts, h.reeval),
+		controller.NewAuthController(h.auth, h.redemption, false),
+		controller.NewMeController(h.auth, h.orgs, h.skills, h.discovery, h.contacts,
+			h.reeval, h.profiles, h.roles),
 		controller.NewClaimController(h.claims, h.reeval),
 		controller.NewSkillController(h.skills),
 		controller.NewSkillRequestController(h.skills),
 		controller.NewShortlistController(h.shortlists),
 		controller.NewOrganizationController(h.orgs),
-		controller.NewAdminController(h.admin, h.evaluation, clock),
+		controller.NewRoleController(h.roles),
+		controller.NewOrganizationsController(h.redemption, h.onboarding),
+		controller.NewPlacesController(h.places),
+		controller.NewAdminController(h.admin, h.evaluation, h.onboarding, clock),
 		controller.NewPublicController(h.auth),
 		controller.NewDiscoveryController(h.discovery),
 	)

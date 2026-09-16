@@ -26,11 +26,11 @@ func TestShortlistCapabilityRefusalCarriesTheDetail(t *testing.T) {
 
 	h.signIn("hank-token", p)
 	h.shortlists.EXPECT().Create(mock.Anything, mock.Anything, mock.Anything, mock.Anything,
-		mock.Anything).Return(nil,
+		mock.Anything, mock.Anything).Return(nil,
 		service.Coded(service.ErrNotCapable, service.CodeHiringCapability, "seat unverified"))
 
 	got := h.do(t, http.MethodPost, "/shortlists", "hank-token",
-		`{"name":"R","description":"","tentative_result_date":"2026-12-01T00:00:00Z"}`)
+		`{"role_id":"01920000-0000-7000-8000-0000000e0001","name":"R","description":"","tentative_result_date":"2026-12-01T00:00:00Z"}`)
 	require.Equal(t, http.StatusForbidden, got.Status)
 
 	var body struct {
@@ -59,26 +59,27 @@ func TestShortlistVerificationRefusalCarriesItsMessage(t *testing.T) {
 	require.Contains(t, body.Message, "48 hours")
 }
 
-func TestExpiredInvitationIsGone(t *testing.T) {
+func TestExpiredVerificationIsGone(t *testing.T) {
 	// A coded expiry maps to 410 directly, without going through the generic
 	// conflict path.
 	h := newHarness(t)
-	h.orgs.EXPECT().AcceptInvitation(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return(nil, nil, service.Coded(service.ErrConflict, service.CodeInvitationExpired, "expired"))
+	h.redemption.EXPECT().CompleteRedemption(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(nil, nil, service.Coded(service.ErrInvalidCredentials,
+			service.CodeVerificationExpired, "expired"))
 
-	got := h.do(t, http.MethodPost, "/orgs/invitations/stale/accept", "",
-		`{"display_name":"x","password":"pw"}`)
+	got := h.do(t, http.MethodPost, "/auth/hirer/redeem/complete", "",
+		`{"token":"stale","display_name":"x","password":"pw"}`)
 	require.Equal(t, http.StatusGone, got.Status)
-	require.Equal(t, service.CodeInvitationExpired, got.errorCode(t))
+	require.Equal(t, service.CodeVerificationExpired, got.errorCode(t))
 }
 
-func TestInvitationUnexpectedFailure(t *testing.T) {
+func TestRedemptionUnexpectedFailure(t *testing.T) {
 	h := newHarness(t)
-	h.orgs.EXPECT().AcceptInvitation(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+	h.redemption.EXPECT().CompleteRedemption(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(nil, nil, errBoom)
 
-	got := h.do(t, http.MethodPost, "/orgs/invitations/x/accept", "",
-		`{"display_name":"x","password":"pw"}`)
+	got := h.do(t, http.MethodPost, "/auth/hirer/redeem/complete", "",
+		`{"token":"x","display_name":"x","password":"pw"}`)
 	require.Equal(t, http.StatusInternalServerError, got.Status)
 }
 

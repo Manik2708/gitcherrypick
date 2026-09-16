@@ -91,6 +91,10 @@ func (s *Server) Handler() http.Handler {
 	// CLIENT of this server and never the reverse, so nothing in the API can
 	// call these even by accident.
 	r.Post("/_load", s.load)
+	// The country list (ADR-0018 §10). No live vendor is wired: this is the
+	// only provider, and choosing a real one later is an adapter and a flag.
+	r.Get("/places/countries", s.countries)
+
 	r.Get("/_clock", s.clockRead)
 	r.Post("/_clock/advance", s.clockAdvance)
 	r.Get("/_sent/emails", s.sentEmails)
@@ -110,6 +114,42 @@ func (s *Server) load(w http.ResponseWriter, r *http.Request) {
 	}
 	s.store.Load(state)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// countries answers the country picker.
+//
+// A short list rather than all 250: the suite and `make dev` need enough to
+// pick from and to prove the shape, not a complete gazetteer. The codes are
+// real ISO 3166-1 alpha-2 values, because a fixture asserting "GB" should be
+// asserting something true.
+func (s *Server) countries(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{"countries": fakeCountries})
+}
+
+// fakeCountries is the stand-in's world.
+//
+// Deliberately spread across continents and including one country with no
+// postcodes at all (IE had none until 2015, AE has none now), so that a form
+// exercising the "postcode is optional" path has somewhere to exercise it.
+var fakeCountries = []map[string]string{
+	{"code": "AE", "name": "United Arab Emirates"},
+	{"code": "AU", "name": "Australia"},
+	{"code": "BR", "name": "Brazil"},
+	{"code": "CA", "name": "Canada"},
+	{"code": "DE", "name": "Germany"},
+	{"code": "ES", "name": "Spain"},
+	{"code": "FR", "name": "France"},
+	{"code": "GB", "name": "United Kingdom"},
+	{"code": "IE", "name": "Ireland"},
+	{"code": "IN", "name": "India"},
+	{"code": "JP", "name": "Japan"},
+	{"code": "KE", "name": "Kenya"},
+	{"code": "NG", "name": "Nigeria"},
+	{"code": "NL", "name": "Netherlands"},
+	{"code": "PL", "name": "Poland"},
+	{"code": "SG", "name": "Singapore"},
+	{"code": "US", "name": "United States"},
+	{"code": "ZA", "name": "South Africa"},
 }
 
 func (s *Server) sentEmails(w http.ResponseWriter, _ *http.Request) {

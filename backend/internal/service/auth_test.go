@@ -116,25 +116,40 @@ func TestAuthGoogleCallback(t *testing.T) {
 	})
 }
 
+// Sign-in keys on the USERNAME (ADR-0016 §0). An address identifies nobody:
+// two seats may share one, and a work address outlives the person who held it.
 func TestAuthLogin(t *testing.T) {
 	t.Run("every sign-in failure is the same error", func(t *testing.T) {
 		// Distinguishing them turns sign-in into an enumeration oracle over
 		// which companies are recruiting.
 		f := newAuthFixture(t)
-		f.hirers.EXPECT().ByEmail(mock.Anything, "nobody@nowhere.example").
+		f.hirers.EXPECT().ByUsername(mock.Anything, "nobody").
 			Return(nil, port.ErrNotFound)
 
-		_, _, unknown := f.svc.LoginHirer(ctx(t), "nobody@nowhere.example", "whatever")
+		_, _, unknown := f.svc.LoginHirer(ctx(t), "nobody", "whatever")
 
 		g := newAuthFixture(t)
-		g.hirers.EXPECT().ByEmail(mock.Anything, "hank@acme.com").Return(emailHirer(), nil)
+		g.hirers.EXPECT().ByUsername(mock.Anything, "hank").Return(emailHirer(), nil)
 		g.hirers.EXPECT().PasswordHash(mock.Anything, hirerID).Return([]byte("hash"), nil)
 		g.hasher.EXPECT().Verify([]byte("hash"), "wrong").Return(false)
 
-		_, _, wrongPassword := g.svc.LoginHirer(ctx(t), "hank@acme.com", "wrong")
+		_, _, wrongPassword := g.svc.LoginHirer(ctx(t), "hank", "wrong")
 
 		if unknown.Error() != wrongPassword.Error() {
 			t.Errorf("the two failures are distinguishable:\n  %v\n  %v", unknown, wrongPassword)
+		}
+	})
+
+	t.Run("a disabled seat is indistinguishable from an unknown one", func(t *testing.T) {
+		// ByUsername filters disabled_at, so a removed seat comes back as
+		// not-found. Someone whose access was revoked learns nothing about
+		// whether their name still exists (ADR-0016 §5).
+		f := newAuthFixture(t)
+		f.hirers.EXPECT().ByUsername(mock.Anything, "hank").Return(nil, port.ErrNotFound)
+
+		_, _, err := f.svc.LoginHirer(ctx(t), "hank", "the right password")
+		if !errors.Is(err, service.ErrInvalidCredentials) {
+			t.Fatalf("expected ErrInvalidCredentials, got %v", err)
 		}
 	})
 
@@ -143,19 +158,22 @@ func TestAuthLogin(t *testing.T) {
 		f := newAuthFixture(t)
 		google := emailHirer()
 		google.AuthProvider = domain.ProviderGoogle
-		f.hirers.EXPECT().ByEmail(mock.Anything, "hank@acme.com").Return(google, nil)
+		f.hirers.EXPECT().ByUsername(mock.Anything, "hank").Return(google, nil)
 
-		_, _, err := f.svc.LoginHirer(ctx(t), "hank@acme.com", "guess")
+		_, _, err := f.svc.LoginHirer(ctx(t), "hank", "guess")
 		if !errors.Is(err, service.ErrInvalidCredentials) {
 			t.Fatalf("expected ErrInvalidCredentials, got %v", err)
 		}
 	})
 
-	t.Run("a contributor's email is not a hirer credential", func(t *testing.T) {
+	t.Run("an email is not a hirer credential", func(t *testing.T) {
+		// Passing the address where the username goes finds nothing: the two
+		// live in different columns, and hirer_accounts.username is what this
+		// path reads.
 		f := newAuthFixture(t)
-		f.hirers.EXPECT().ByEmail(mock.Anything, "alice@example.com").Return(nil, port.ErrNotFound)
+		f.hirers.EXPECT().ByUsername(mock.Anything, "hank@acme.com").Return(nil, port.ErrNotFound)
 
-		_, _, err := f.svc.LoginHirer(ctx(t), "alice@example.com", "anything")
+		_, _, err := f.svc.LoginHirer(ctx(t), "hank@acme.com", "anything")
 		if !errors.Is(err, service.ErrInvalidCredentials) {
 			t.Fatalf("expected ErrInvalidCredentials, got %v", err)
 		}
@@ -387,6 +405,46 @@ type authFixture struct {
 	txCommitted bool
 }
 
+// Revocation is immediate, not "within fifteen minutes".
+//
+// The account is read on every authenticated request precisely so that a
+// withdrawn seat stops working now rather than when its access token expires
+// (ADR-0011, ADR-0016 §5).
+func TestResolvePrincipalHonoursRevocation(t *testing.T) {
+	t.Run("a disabled hirer cannot act on a live token", func(t *testing.T) {
+		f := newAuthFixture(t)
+		gone := f.now.Add(-time.Minute)
+		disabled := emailHirer()
+		disabled.DisabledAt = &gone
+		f.hirers.EXPECT().ByID(mock.Anything, hirerID).Return(disabled, nil)
+
+		_, err := f.svc.ResolvePrincipal(ctx(t), port.AccessClaims{
+			Subject: string(hirerID), Kind: domain.KindHirer,
+		})
+		if !errors.Is(err, service.ErrInvalidCredentials) {
+			t.Fatalf("expected ErrInvalidCredentials, got %v", err)
+		}
+		if code := service.CodeOf(err); code != service.CodeSessionRevoked {
+			t.Errorf("code = %q, want %q", code, service.CodeSessionRevoked)
+		}
+	})
+
+	t.Run("a live hirer still resolves", func(t *testing.T) {
+		f := newAuthFixture(t)
+		f.hirers.EXPECT().ByID(mock.Anything, hirerID).Return(emailHirer(), nil)
+
+		p, err := f.svc.ResolvePrincipal(ctx(t), port.AccessClaims{
+			Subject: string(hirerID), Kind: domain.KindHirer,
+		})
+		if err != nil {
+			t.Fatalf("resolving: %v", err)
+		}
+		if p.Kind != domain.KindHirer {
+			t.Errorf("kind = %q", p.Kind)
+		}
+	})
+}
+
 func newAuthFixture(t *testing.T) *authFixture {
 	t.Helper()
 	f := &authFixture{
@@ -429,6 +487,7 @@ func (f *authFixture) expectSession() {
 func emailHirer() *domain.Hirer {
 	return &domain.Hirer{
 		ID: hirerID, OrganizationID: orgID, Email: "hank@acme.com",
+		Username:    "hank",
 		DisplayName: "Hank Rivera", AuthProvider: domain.ProviderEmail,
 	}
 }

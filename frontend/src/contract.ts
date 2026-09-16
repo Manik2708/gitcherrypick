@@ -36,7 +36,15 @@ export interface Principal {
   principal_type: PrincipalType;
   availability?: Availability | null;
   verified?: boolean;
-  organization?: { name: string; verified: boolean } | null;
+  /**
+   * The organisation this seat acts for.
+   *
+   * `id` arrives from SIGN-IN and not from `/me`, whose shape is pinned by the
+   * stage-3 fixtures and carries name and verification only. Screens that need
+   * the id — the roster and the seat list — read it from the stored principal,
+   * and say so plainly when it is absent rather than guessing a uuid.
+   */
+  organization?: { id?: string; name: string; verified: boolean } | null;
   capabilities?: {
     can_search: boolean;
     can_shortlist: boolean;
@@ -145,7 +153,24 @@ export interface SavedSearch {
   id: string;
   name: string;
   filters: Record<string, unknown>;
+  created_by?: HirerRef | null;
   created_at: string;
+}
+
+/* --- attribution (ADR-0016 §9) ------------------------------------------- */
+
+/**
+ * Whoever authored a round, an entry or an approach.
+ *
+ * `active: false` is a seat whose access was revoked. It is reported rather
+ * than hidden: that person did the work, and a round from two years ago still
+ * needs a name on it. Render them as departed, never as missing.
+ */
+export interface HirerRef {
+  id: string;
+  username: string;
+  display_name: string;
+  active: boolean;
 }
 
 /* --- shortlists ---------------------------------------------------------- */
@@ -157,6 +182,7 @@ export interface ShortlistEntry {
   shortlist_id: string;
   user: { id: string; display_name: string; github_login: string };
   note?: string | null;
+  added_by?: HirerRef | null;
   /** Null means this candidate has not been told. Removal is only legal then. */
   notified_at?: string | null;
   contact_status?: ContactStatus | null;
@@ -166,11 +192,14 @@ export interface ShortlistEntry {
 
 export interface ShortlistSummary {
   id: string;
+  /** The job this round is for. One round, one role (ADR-0019 §3). */
+  role_id: string;
   name: string;
   status: ShortlistStatus;
   tentative_result_date: string;
   entry_count?: number;
   unnotified_count?: number;
+  created_by?: HirerRef | null;
   created_at: string;
 }
 
@@ -361,7 +390,159 @@ export interface ContactRequest {
   tentative_result_date: string;
   /** The ADR-0002 §5 warning, or null when there is nothing to warn about. */
   disclosure: string | null;
+
+  /**
+   * What they are being approached FOR (ADR-0019 §2).
+   *
+   * The platform sends this; the address is still released only on acceptance.
+   * Carrying it is what lets somebody decline informed rather than on
+   * suspicion. Null only when the role could not be read.
+   */
+  role: ContactRole | null;
   expires_at: string;
+}
+
+/**
+ * The job, as the person being approached sees it.
+ *
+ * Narrower than the hirer's Role: no status, no draft history, no supersedes
+ * chain, no hires. What somebody needs in order to answer, and nothing about
+ * how the company runs its hiring.
+ *
+ * `expected` is deliberately absent from the questions. Telling somebody which
+ * answer is wanted before they answer turns a screening question into a leading
+ * one.
+ */
+export interface ContactRole {
+  id: string;
+  title: string;
+  description: string;
+  engagement: Engagement;
+  location: RoleLocation;
+
+  currency: string;
+  yearly_ctc: number | null;
+  yearly_base: number | null;
+  hourly_rate: number | null;
+  expected_hours: number | null;
+
+  /** EMPTY MEANS ANYWHERE, not nowhere. A client showing this has to say so. */
+  eligible_countries: string[];
+
+  /** The process, disclosed here and nowhere else (ADR-0017). */
+  requires_online_test: boolean | null;
+  max_interview_rounds: number | null;
+  avg_days_to_offer: number | null;
+
+  questions: Array<{ id: string; question: string }>;
+}
+
+/* --- roles (ADR-0019) ------------------------------------------------------ */
+
+export type Engagement = "full_time" | "contract" | "internship" | "freelance";
+export type RoleLocation = "remote" | "address";
+export type RoleStatus = "draft" | "open" | "closed";
+
+/**
+ * Why a role stopped being open.
+ *
+ * `superseded` is written by a revision and offered to nobody — a hirer
+ * claiming a role was replaced when nothing replaced it would leave a closed
+ * role that lies about why.
+ */
+export type CloseReason =
+  | "not_needed"
+  | "hired_elsewhere"
+  | "hired_via_platform"
+  | "superseded"
+  | "other";
+
+export interface RoleQuestion {
+  id?: string;
+  question: string;
+  /** What the organisation hopes for. Reported, never used to filter. */
+  expected: boolean | null;
+}
+
+export interface Role {
+  id: string;
+  organization_id: string;
+  status: RoleStatus;
+
+  title: string;
+  description: string;
+  engagement: Engagement;
+
+  location: RoleLocation;
+  address_id: string | null;
+
+  currency: string;
+  yearly_ctc: number | null;
+  yearly_base: number | null;
+  hourly_rate: number | null;
+  expected_hours: number | null;
+
+  /** Empty means anywhere (ADR-0019 §6). */
+  eligible_countries: string[];
+
+  min_office_yoe: number | null;
+  min_oss_yoe: number | null;
+
+  requires_online_test: boolean | null;
+  max_interview_rounds: number | null;
+  avg_days_to_offer: number | null;
+
+  questions: RoleQuestion[];
+
+  opened_at: string | null;
+  /** Somebody asked to close it. The role is STILL OPEN. */
+  close_requested_at: string | null;
+  closed_at: string | null;
+  close_reason: CloseReason | null;
+  close_note?: string;
+
+  hires: Array<{ user_id: string; recorded_at: string }>;
+
+  /** The role this one replaced. An open role is immutable, so a change is a new row. */
+  supersedes: string | null;
+
+  created_at: string;
+  updated_at: string;
+}
+
+/** What a role draft is written from. Every optional field stays nullable so
+ *  "not stated" and "zero" remain different answers. */
+export interface RoleDraft {
+  title: string;
+  description: string;
+  engagement: Engagement;
+  location: RoleLocation;
+  address_id?: string;
+
+  currency: string;
+  yearly_ctc: number | null;
+  yearly_base: number | null;
+  hourly_rate: number | null;
+  expected_hours: number | null;
+
+  eligible_countries: string[];
+  min_office_yoe: number | null;
+  min_oss_yoe: number | null;
+
+  requires_online_test: boolean | null;
+  max_interview_rounds: number | null;
+  avg_days_to_offer: number | null;
+
+  questions: RoleQuestion[];
+}
+
+/** Who in an organisation may do what with a role (ADR-0019 §11). */
+export type RoleAuthority = "any_hirer" | "draft_and_approve" | "owners_only";
+
+export interface OrgSettings {
+  role_create_authority: RoleAuthority;
+  role_update_authority: RoleAuthority;
+  role_close_authority: RoleAuthority;
 }
 
 export interface ShareLink {
@@ -371,6 +552,13 @@ export interface ShareLink {
   created_at: string;
 }
 
+/**
+ * A hirer's own review.
+ *
+ * `organization.id` is here and NOT on `/me`, whose shape is pinned by the
+ * approved fixtures. That makes this the one authenticated read a screen can
+ * recover the organisation id from — which the roster and seat lists need.
+ */
 export interface VerificationStatus {
   status: "pending" | "approved" | "rejected";
   hirer_verified: boolean;
@@ -424,4 +612,167 @@ export interface SweepResult {
   to_rubric_version: string;
   claims_enqueued: number;
   created_at: string;
+}
+
+/* --- the roster (ADR-0016) ----------------------------------------------- */
+
+export type OrgRole = "owner" | "member";
+
+/**
+ * One address an organisation is willing to seat.
+ *
+ * There is no token here, deliberately: an entry is an allowlist fact, not a
+ * credential. Being listed is guessable, so it is never sufficient — the person
+ * proves control of the address before a seat exists.
+ */
+export interface RosterEntry {
+  id: string;
+  email: string;
+  username: string;
+  role: OrgRole;
+  added_by: HirerRef;
+  /** Set once a seat was created from this entry. */
+  redeemed_at?: string | null;
+  redeemed_by?: string | null;
+  created_at: string;
+}
+
+export interface RosterResponse {
+  entries: RosterEntry[];
+}
+
+/** A seat, live or revoked. A revoked one stays listed (ADR-0016 §5a). */
+export interface Seat {
+  id: string;
+  username: string;
+  display_name: string;
+  email: string;
+  role: OrgRole;
+  active: boolean;
+  disabled_at?: string | null;
+}
+
+export interface SeatsResponse {
+  seats: Seat[];
+}
+
+/** Name and slug only — the public picker discloses nothing else. */
+export interface PublicOrganization {
+  name: string;
+  slug: string;
+}
+
+export interface OrganizationsResponse {
+  organizations: PublicOrganization[];
+}
+
+/* --- organisation onboarding (ADR-0017) ---------------------------------- */
+
+/**
+ * How many people work somewhere, approximately.
+ *
+ * A band rather than a number: the field means "approx", nobody knows whether
+ * 47 means 47, and a band is both easier to answer honestly and harder to
+ * answer misleadingly.
+ */
+export type HeadcountBand = "1-10" | "11-50" | "51-200" | "201-1000" | "1000+";
+
+export const HEADCOUNT_BANDS: HeadcountBand[] = ["1-10", "11-50", "51-200", "201-1000", "1000+"];
+
+export interface OnboardingAddress {
+  country: string;
+  city: string;
+  postal_code: string;
+  street1: string;
+  street2: string;
+}
+
+/**
+ * A company describing itself.
+ *
+ * No owner fields. Whoever proves the company address chooses the username and
+ * password, so a form anyone can submit cannot name who will own the result.
+ */
+export interface OnboardingForm {
+  name: string;
+  description: string;
+  email: string;
+  phone: string;
+  headcount: HeadcountBand | "";
+  address: OnboardingAddress;
+}
+
+/** A submission awaiting an administrator, as the admin queue shows it. */
+export interface OnboardingSubmission {
+  id: string;
+  name: string;
+  description: string;
+  email: string;
+  phone: string;
+  headcount: HeadcountBand | "";
+  address: OnboardingAddress | null;
+  owner: { username: string; display_name: string };
+  supersedes?: string | null;
+  created_at: string;
+  age_hours: number;
+}
+
+export interface OnboardingQueueResponse {
+  total: number;
+  submissions: OnboardingSubmission[];
+}
+
+/* --- the contributor profile (ADR-0018) ---------------------------------- */
+
+/** What shape of work somebody will take. No freelance flag — availability carries it. */
+export interface WorkPreferences {
+  open_to_remote: boolean;
+  open_to_internships: boolean;
+  open_to_onsite: boolean;
+  open_to_contract: boolean;
+  current_country: string;
+  /** Self-reported. Null is "not said", which is not zero. */
+  office_yoe: number | null;
+  /** Asked, not derived — and WRITE-ONCE. A second value is a 409. */
+  first_pr_url: string;
+  /** Editable, because it goes stale by definition. */
+  latest_pr_url: string;
+}
+
+export interface ContributorProfile {
+  preferences: WorkPreferences;
+  availability: Availability | null;
+  /**
+   * True when this person has never answered the form at all. Distinct from
+   * matchable: somebody who answered "none of these" has answered, and nagging
+   * them about it would be nagging them about a decision they made.
+   */
+  needs_attention: boolean;
+  /**
+   * False when the window is live and no shape is enabled — a state reachable
+   * by accident and invisible from outside. The screen must say so.
+   */
+  matchable: boolean;
+}
+
+/**
+ * What a contributor expects to be paid.
+ *
+ * A HIRER NEVER RECEIVES THIS. Minor units: 4500 is 45.00 of `currency`.
+ */
+export interface CompensationExpectation {
+  currency: string;
+  hourly_rate: number | null;
+  yearly_amount: number | null;
+}
+
+export interface Country {
+  code: string;
+  name: string;
+}
+
+export interface CountriesResponse {
+  countries: Country[];
+  /** True when the provider could not be reached — let the person type a code. */
+  degraded: boolean;
 }

@@ -15,11 +15,36 @@ const SKILL = "Go";
 const DIMS = ["substance", "complexity", "review", "craft", "specificity"];
 
 const PRS = [
-  { repo: "kubernetes/kubernetes", title: "scheduler: fix preemption race", score: 84.2, dims: [88, 79, 74, 86, 92] },
-  { repo: "grpc/grpc-go", title: "balancer: drain on shutdown", score: 79.6, dims: [76, 82, 71, 80, 88] },
-  { repo: "etcd-io/etcd", title: "raft: bound the proposal queue", score: 88.1, dims: [91, 87, 83, 89, 90] },
-  { repo: "prometheus/prometheus", title: "tsdb: cut head compaction lock", score: 81.4, dims: [83, 85, 70, 78, 86] },
-  { repo: "hashicorp/vault", title: "core: retry seal migration", score: 86.3, dims: [87, 84, 88, 85, 84] },
+  {
+    repo: "kubernetes/kubernetes",
+    title: "scheduler: fix preemption race",
+    score: 84.2,
+    dims: [88, 79, 74, 86, 92],
+  },
+  {
+    repo: "grpc/grpc-go",
+    title: "balancer: drain on shutdown",
+    score: 79.6,
+    dims: [76, 82, 71, 80, 88],
+  },
+  {
+    repo: "etcd-io/etcd",
+    title: "raft: bound the proposal queue",
+    score: 88.1,
+    dims: [91, 87, 83, 89, 90],
+  },
+  {
+    repo: "prometheus/prometheus",
+    title: "tsdb: cut head compaction lock",
+    score: 81.4,
+    dims: [83, 85, 70, 78, 86],
+  },
+  {
+    repo: "hashicorp/vault",
+    title: "core: retry seal migration",
+    score: 86.3,
+    dims: [87, 84, 88, 85, 84],
+  },
 ];
 
 const OVERALL = 82;

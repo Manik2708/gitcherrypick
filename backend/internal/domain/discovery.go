@@ -218,17 +218,58 @@ const (
 	ShortlistClosed ShortlistStatus = "closed"
 )
 
+// HirerRef names the seat that authored something.
+//
+// A bare HirerID is not enough since ADR-0016 §9: a round from two years ago
+// may name a seat that has since been revoked, and a uuid tells the reader
+// nothing about who it was. The name travels WITH the row, resolved by the
+// repository, so reading a round never means fetching its author separately.
+//
+// Active is false for a revoked seat. It is reported rather than hidden: the
+// person did the work, and erasing them from their own rounds would be a
+// falsification, not a tidy-up.
+type HirerRef struct {
+	ID          HirerID
+	Username    string
+	DisplayName string
+	Active      bool
+}
+
+// RefTo names a seat for attribution.
+//
+// Active follows DisabledAt rather than being passed in, so a caller cannot
+// record a revoked seat as live by forgetting a flag.
+func RefTo(h *Hirer) HirerRef {
+	if h == nil {
+		return HirerRef{}
+	}
+	return HirerRef{
+		ID: h.ID, Username: h.Username, DisplayName: h.DisplayName,
+		Active: h.DisabledAt == nil,
+	}
+}
+
 // Shortlist is a hiring round, owned by the ORGANIZATION rather than the
 // recruiter who made it — one that vanished when a recruiter left the company
 // would be worse than useless.
 type Shortlist struct {
-	ID                  ShortlistID
-	OrganizationID      OrganizationID
+	ID             ShortlistID
+	OrganizationID OrganizationID
+
+	// RoleID is the job this round is for (ADR-0019 §3). One shortlist, one
+	// role: a hirer wanting the same contributor for a second opening opens a
+	// second shortlist, which raises a second, separate contact request.
+	//
+	// Required. Without it a contact request can only say "somebody is
+	// interested in you", and the role details have no route to the person
+	// being contacted.
+	RoleID RoleID
+
 	Name                string
 	Description         string
 	Status              ShortlistStatus
 	TentativeResultDate time.Time
-	CreatedBy           HirerID
+	CreatedBy           HirerRef
 	CreatedAt           time.Time
 	UpdatedAt           time.Time
 	FirstConfirmedAt    *time.Time
@@ -259,7 +300,7 @@ type ShortlistEntry struct {
 	Email         string
 
 	Note       string
-	AddedBy    HirerID
+	AddedBy    HirerRef
 	NotifiedAt *time.Time
 	AddedAt    time.Time
 }
@@ -286,12 +327,29 @@ type ContactRequest struct {
 	ShortlistID    ShortlistID
 	UserID         UserID
 	OrganizationID OrganizationID
-	RequestedBy    HirerID
+	RequestedBy    HirerRef
 	Status         ContactRequestStatus
 
 	// Copied from the shortlist at confirm time, so the record of what the
 	// contributor was told survives a later edit.
 	TentativeResultDate time.Time
+
+	// RoleID is the job, read through the shortlist this request came from
+	// (ADR-0019 §3).
+	RoleID RoleID
+
+	// Role is the opening itself, hydrated for the CONTRIBUTOR'S view.
+	//
+	// This is what turns "somebody is interested in you" into "somebody is
+	// interested in you, for this, at this salary, in these countries". The
+	// platform sends it; the contributor's address is still released only on
+	// acceptance, so nothing about the consent model moves (ADR-0019 §2).
+	//
+	// An OPEN ROLE IS IMMUTABLE, which is what makes this trustworthy: the
+	// request points at the row it was raised against, so a company revising
+	// its salary today cannot change what somebody agreed to talk about last
+	// week.
+	Role *Role
 
 	// The organization, resolved. A contributor decides about a COMPANY, not
 	// about the recruiter who clicked (ADR-0005), so the name and whether the
@@ -321,6 +379,6 @@ type SavedSearch struct {
 	OrganizationID OrganizationID
 	Name           string
 	Filters        SearchQuery
-	CreatedBy      HirerID
+	CreatedBy      HirerRef
 	CreatedAt      time.Time
 }

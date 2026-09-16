@@ -39,144 +39,51 @@ func (_m *OrganizationService) EXPECT() *OrganizationService_Expecter {
 	return &OrganizationService_Expecter{mock: &_m.Mock}
 }
 
-// AcceptInvitation provides a mock function for the type OrganizationService
-func (_mock *OrganizationService) AcceptInvitation(ctx context.Context, token string, displayName string, password string) (*domain.Hirer, *domain.TokenPair, error) {
-	ret := _mock.Called(ctx, token, displayName, password)
+// AddToRoster provides a mock function for the type OrganizationService
+func (_mock *OrganizationService) AddToRoster(ctx context.Context, p domain.Principal, orgID domain.OrganizationID, email string, username string, role domain.OrgRole) (*port.RosterEntry, error) {
+	ret := _mock.Called(ctx, p, orgID, email, username, role)
 
 	if len(ret) == 0 {
-		panic("no return value specified for AcceptInvitation")
+		panic("no return value specified for AddToRoster")
 	}
 
-	var r0 *domain.Hirer
-	var r1 *domain.TokenPair
-	var r2 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string) (*domain.Hirer, *domain.TokenPair, error)); ok {
-		return returnFunc(ctx, token, displayName, password)
+	var r0 *port.RosterEntry
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.Principal, domain.OrganizationID, string, string, domain.OrgRole) (*port.RosterEntry, error)); ok {
+		return returnFunc(ctx, p, orgID, email, username, role)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string) *domain.Hirer); ok {
-		r0 = returnFunc(ctx, token, displayName, password)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.Principal, domain.OrganizationID, string, string, domain.OrgRole) *port.RosterEntry); ok {
+		r0 = returnFunc(ctx, p, orgID, email, username, role)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*domain.Hirer)
+			r0 = ret.Get(0).(*port.RosterEntry)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string, string) *domain.TokenPair); ok {
-		r1 = returnFunc(ctx, token, displayName, password)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, domain.Principal, domain.OrganizationID, string, string, domain.OrgRole) error); ok {
+		r1 = returnFunc(ctx, p, orgID, email, username, role)
 	} else {
-		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*domain.TokenPair)
-		}
+		r1 = ret.Error(1)
 	}
-	if returnFunc, ok := ret.Get(2).(func(context.Context, string, string, string) error); ok {
-		r2 = returnFunc(ctx, token, displayName, password)
-	} else {
-		r2 = ret.Error(2)
-	}
-	return r0, r1, r2
+	return r0, r1
 }
 
-// OrganizationService_AcceptInvitation_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'AcceptInvitation'
-type OrganizationService_AcceptInvitation_Call struct {
+// OrganizationService_AddToRoster_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'AddToRoster'
+type OrganizationService_AddToRoster_Call struct {
 	*mock.Call
 }
 
-// AcceptInvitation is a helper method to define mock.On call
-//   - ctx context.Context
-//   - token string
-//   - displayName string
-//   - password string
-func (_e *OrganizationService_Expecter) AcceptInvitation(ctx interface{}, token interface{}, displayName interface{}, password interface{}) *OrganizationService_AcceptInvitation_Call {
-	return &OrganizationService_AcceptInvitation_Call{Call: _e.mock.On("AcceptInvitation", ctx, token, displayName, password)}
-}
-
-func (_c *OrganizationService_AcceptInvitation_Call) Run(run func(ctx context.Context, token string, displayName string, password string)) *OrganizationService_AcceptInvitation_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 context.Context
-		if args[0] != nil {
-			arg0 = args[0].(context.Context)
-		}
-		var arg1 string
-		if args[1] != nil {
-			arg1 = args[1].(string)
-		}
-		var arg2 string
-		if args[2] != nil {
-			arg2 = args[2].(string)
-		}
-		var arg3 string
-		if args[3] != nil {
-			arg3 = args[3].(string)
-		}
-		run(
-			arg0,
-			arg1,
-			arg2,
-			arg3,
-		)
-	})
-	return _c
-}
-
-func (_c *OrganizationService_AcceptInvitation_Call) Return(hirer *domain.Hirer, tokenPair *domain.TokenPair, err error) *OrganizationService_AcceptInvitation_Call {
-	_c.Call.Return(hirer, tokenPair, err)
-	return _c
-}
-
-func (_c *OrganizationService_AcceptInvitation_Call) RunAndReturn(run func(ctx context.Context, token string, displayName string, password string) (*domain.Hirer, *domain.TokenPair, error)) *OrganizationService_AcceptInvitation_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
-// Invite provides a mock function for the type OrganizationService
-func (_mock *OrganizationService) Invite(ctx context.Context, p domain.Principal, orgID domain.OrganizationID, email string, role domain.OrgRole) (*port.Invitation, string, error) {
-	ret := _mock.Called(ctx, p, orgID, email, role)
-
-	if len(ret) == 0 {
-		panic("no return value specified for Invite")
-	}
-
-	var r0 *port.Invitation
-	var r1 string
-	var r2 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.Principal, domain.OrganizationID, string, domain.OrgRole) (*port.Invitation, string, error)); ok {
-		return returnFunc(ctx, p, orgID, email, role)
-	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.Principal, domain.OrganizationID, string, domain.OrgRole) *port.Invitation); ok {
-		r0 = returnFunc(ctx, p, orgID, email, role)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*port.Invitation)
-		}
-	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, domain.Principal, domain.OrganizationID, string, domain.OrgRole) string); ok {
-		r1 = returnFunc(ctx, p, orgID, email, role)
-	} else {
-		r1 = ret.Get(1).(string)
-	}
-	if returnFunc, ok := ret.Get(2).(func(context.Context, domain.Principal, domain.OrganizationID, string, domain.OrgRole) error); ok {
-		r2 = returnFunc(ctx, p, orgID, email, role)
-	} else {
-		r2 = ret.Error(2)
-	}
-	return r0, r1, r2
-}
-
-// OrganizationService_Invite_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Invite'
-type OrganizationService_Invite_Call struct {
-	*mock.Call
-}
-
-// Invite is a helper method to define mock.On call
+// AddToRoster is a helper method to define mock.On call
 //   - ctx context.Context
 //   - p domain.Principal
 //   - orgID domain.OrganizationID
 //   - email string
+//   - username string
 //   - role domain.OrgRole
-func (_e *OrganizationService_Expecter) Invite(ctx interface{}, p interface{}, orgID interface{}, email interface{}, role interface{}) *OrganizationService_Invite_Call {
-	return &OrganizationService_Invite_Call{Call: _e.mock.On("Invite", ctx, p, orgID, email, role)}
+func (_e *OrganizationService_Expecter) AddToRoster(ctx interface{}, p interface{}, orgID interface{}, email interface{}, username interface{}, role interface{}) *OrganizationService_AddToRoster_Call {
+	return &OrganizationService_AddToRoster_Call{Call: _e.mock.On("AddToRoster", ctx, p, orgID, email, username, role)}
 }
 
-func (_c *OrganizationService_Invite_Call) Run(run func(ctx context.Context, p domain.Principal, orgID domain.OrganizationID, email string, role domain.OrgRole)) *OrganizationService_Invite_Call {
+func (_c *OrganizationService_AddToRoster_Call) Run(run func(ctx context.Context, p domain.Principal, orgID domain.OrganizationID, email string, username string, role domain.OrgRole)) *OrganizationService_AddToRoster_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -194,9 +101,13 @@ func (_c *OrganizationService_Invite_Call) Run(run func(ctx context.Context, p d
 		if args[3] != nil {
 			arg3 = args[3].(string)
 		}
-		var arg4 domain.OrgRole
+		var arg4 string
 		if args[4] != nil {
-			arg4 = args[4].(domain.OrgRole)
+			arg4 = args[4].(string)
+		}
+		var arg5 domain.OrgRole
+		if args[5] != nil {
+			arg5 = args[5].(domain.OrgRole)
 		}
 		run(
 			arg0,
@@ -204,17 +115,235 @@ func (_c *OrganizationService_Invite_Call) Run(run func(ctx context.Context, p d
 			arg2,
 			arg3,
 			arg4,
+			arg5,
 		)
 	})
 	return _c
 }
 
-func (_c *OrganizationService_Invite_Call) Return(invitation *port.Invitation, s string, err error) *OrganizationService_Invite_Call {
-	_c.Call.Return(invitation, s, err)
+func (_c *OrganizationService_AddToRoster_Call) Return(rosterEntry *port.RosterEntry, err error) *OrganizationService_AddToRoster_Call {
+	_c.Call.Return(rosterEntry, err)
 	return _c
 }
 
-func (_c *OrganizationService_Invite_Call) RunAndReturn(run func(ctx context.Context, p domain.Principal, orgID domain.OrganizationID, email string, role domain.OrgRole) (*port.Invitation, string, error)) *OrganizationService_Invite_Call {
+func (_c *OrganizationService_AddToRoster_Call) RunAndReturn(run func(ctx context.Context, p domain.Principal, orgID domain.OrganizationID, email string, username string, role domain.OrgRole) (*port.RosterEntry, error)) *OrganizationService_AddToRoster_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ListRoster provides a mock function for the type OrganizationService
+func (_mock *OrganizationService) ListRoster(ctx context.Context, p domain.Principal, orgID domain.OrganizationID) ([]port.RosterEntry, error) {
+	ret := _mock.Called(ctx, p, orgID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListRoster")
+	}
+
+	var r0 []port.RosterEntry
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.Principal, domain.OrganizationID) ([]port.RosterEntry, error)); ok {
+		return returnFunc(ctx, p, orgID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.Principal, domain.OrganizationID) []port.RosterEntry); ok {
+		r0 = returnFunc(ctx, p, orgID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]port.RosterEntry)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, domain.Principal, domain.OrganizationID) error); ok {
+		r1 = returnFunc(ctx, p, orgID)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// OrganizationService_ListRoster_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ListRoster'
+type OrganizationService_ListRoster_Call struct {
+	*mock.Call
+}
+
+// ListRoster is a helper method to define mock.On call
+//   - ctx context.Context
+//   - p domain.Principal
+//   - orgID domain.OrganizationID
+func (_e *OrganizationService_Expecter) ListRoster(ctx interface{}, p interface{}, orgID interface{}) *OrganizationService_ListRoster_Call {
+	return &OrganizationService_ListRoster_Call{Call: _e.mock.On("ListRoster", ctx, p, orgID)}
+}
+
+func (_c *OrganizationService_ListRoster_Call) Run(run func(ctx context.Context, p domain.Principal, orgID domain.OrganizationID)) *OrganizationService_ListRoster_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 domain.Principal
+		if args[1] != nil {
+			arg1 = args[1].(domain.Principal)
+		}
+		var arg2 domain.OrganizationID
+		if args[2] != nil {
+			arg2 = args[2].(domain.OrganizationID)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *OrganizationService_ListRoster_Call) Return(rosterEntrys []port.RosterEntry, err error) *OrganizationService_ListRoster_Call {
+	_c.Call.Return(rosterEntrys, err)
+	return _c
+}
+
+func (_c *OrganizationService_ListRoster_Call) RunAndReturn(run func(ctx context.Context, p domain.Principal, orgID domain.OrganizationID) ([]port.RosterEntry, error)) *OrganizationService_ListRoster_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ListSeats provides a mock function for the type OrganizationService
+func (_mock *OrganizationService) ListSeats(ctx context.Context, p domain.Principal, orgID domain.OrganizationID) ([]domain.Hirer, error) {
+	ret := _mock.Called(ctx, p, orgID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListSeats")
+	}
+
+	var r0 []domain.Hirer
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.Principal, domain.OrganizationID) ([]domain.Hirer, error)); ok {
+		return returnFunc(ctx, p, orgID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.Principal, domain.OrganizationID) []domain.Hirer); ok {
+		r0 = returnFunc(ctx, p, orgID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]domain.Hirer)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, domain.Principal, domain.OrganizationID) error); ok {
+		r1 = returnFunc(ctx, p, orgID)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// OrganizationService_ListSeats_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ListSeats'
+type OrganizationService_ListSeats_Call struct {
+	*mock.Call
+}
+
+// ListSeats is a helper method to define mock.On call
+//   - ctx context.Context
+//   - p domain.Principal
+//   - orgID domain.OrganizationID
+func (_e *OrganizationService_Expecter) ListSeats(ctx interface{}, p interface{}, orgID interface{}) *OrganizationService_ListSeats_Call {
+	return &OrganizationService_ListSeats_Call{Call: _e.mock.On("ListSeats", ctx, p, orgID)}
+}
+
+func (_c *OrganizationService_ListSeats_Call) Run(run func(ctx context.Context, p domain.Principal, orgID domain.OrganizationID)) *OrganizationService_ListSeats_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 domain.Principal
+		if args[1] != nil {
+			arg1 = args[1].(domain.Principal)
+		}
+		var arg2 domain.OrganizationID
+		if args[2] != nil {
+			arg2 = args[2].(domain.OrganizationID)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *OrganizationService_ListSeats_Call) Return(hirers []domain.Hirer, err error) *OrganizationService_ListSeats_Call {
+	_c.Call.Return(hirers, err)
+	return _c
+}
+
+func (_c *OrganizationService_ListSeats_Call) RunAndReturn(run func(ctx context.Context, p domain.Principal, orgID domain.OrganizationID) ([]domain.Hirer, error)) *OrganizationService_ListSeats_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// RemoveFromRoster provides a mock function for the type OrganizationService
+func (_mock *OrganizationService) RemoveFromRoster(ctx context.Context, p domain.Principal, orgID domain.OrganizationID, id domain.RosterEntryID) error {
+	ret := _mock.Called(ctx, p, orgID, id)
+
+	if len(ret) == 0 {
+		panic("no return value specified for RemoveFromRoster")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.Principal, domain.OrganizationID, domain.RosterEntryID) error); ok {
+		r0 = returnFunc(ctx, p, orgID, id)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// OrganizationService_RemoveFromRoster_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RemoveFromRoster'
+type OrganizationService_RemoveFromRoster_Call struct {
+	*mock.Call
+}
+
+// RemoveFromRoster is a helper method to define mock.On call
+//   - ctx context.Context
+//   - p domain.Principal
+//   - orgID domain.OrganizationID
+//   - id domain.RosterEntryID
+func (_e *OrganizationService_Expecter) RemoveFromRoster(ctx interface{}, p interface{}, orgID interface{}, id interface{}) *OrganizationService_RemoveFromRoster_Call {
+	return &OrganizationService_RemoveFromRoster_Call{Call: _e.mock.On("RemoveFromRoster", ctx, p, orgID, id)}
+}
+
+func (_c *OrganizationService_RemoveFromRoster_Call) Run(run func(ctx context.Context, p domain.Principal, orgID domain.OrganizationID, id domain.RosterEntryID)) *OrganizationService_RemoveFromRoster_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 domain.Principal
+		if args[1] != nil {
+			arg1 = args[1].(domain.Principal)
+		}
+		var arg2 domain.OrganizationID
+		if args[2] != nil {
+			arg2 = args[2].(domain.OrganizationID)
+		}
+		var arg3 domain.RosterEntryID
+		if args[3] != nil {
+			arg3 = args[3].(domain.RosterEntryID)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *OrganizationService_RemoveFromRoster_Call) Return(err error) *OrganizationService_RemoveFromRoster_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *OrganizationService_RemoveFromRoster_Call) RunAndReturn(run func(ctx context.Context, p domain.Principal, orgID domain.OrganizationID, id domain.RosterEntryID) error) *OrganizationService_RemoveFromRoster_Call {
 	_c.Call.Return(run)
 	return _c
 }

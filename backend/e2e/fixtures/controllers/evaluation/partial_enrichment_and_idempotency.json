@@ -245,6 +245,9 @@
             {
               "position": 1,
               "pr_number": 101,
+              "repo_owner": "acme",
+              "repo_name": "bigrepo",
+              "url": "https://github.com/acme/bigrepo/pull/101",
               "scores": [
                 {
                   "skill": "go",
@@ -277,6 +280,9 @@
             {
               "position": 2,
               "pr_number": 102,
+              "repo_owner": "acme",
+              "repo_name": "bigrepo",
+              "url": "https://github.com/acme/bigrepo/pull/102",
               "scores": [
                 {
                   "skill": "go",
@@ -309,6 +315,9 @@
             {
               "position": 3,
               "pr_number": 905,
+              "repo_owner": "acme",
+              "repo_name": "bigrepo",
+              "url": "https://github.com/acme/bigrepo/pull/905",
               "skipped": true,
               "reason": "unreachable",
               "message": "We could not read this pull request from GitHub, so it was not scored. Check the URL is correct and still public."

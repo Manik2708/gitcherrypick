@@ -59,7 +59,7 @@ type AuthService interface {
 	// platform, so a token pair here would be a credential with no use that
 	// still has to be stored and expired.
 	RegisterHirer(ctx context.Context, req RegisterHirerRequest) (*HirerRegistration, error)
-	LoginHirer(ctx context.Context, email, password string) (*domain.Hirer, *domain.TokenPair, error)
+	LoginHirer(ctx context.Context, username, password string) (*domain.Hirer, *domain.TokenPair, error)
 	LoginAdmin(ctx context.Context, email, password string) (*domain.Admin, *domain.TokenPair, error)
 
 	// ResolvePrincipal turns a verified token's claims into the account acting.
@@ -86,15 +86,27 @@ type AuthService interface {
 	PublicScorecard(ctx context.Context, token string) (*domain.Scorecard, error)
 }
 
-// RegisterHirerRequest is a new organization signing up.
+// RegisterHirerRequest is an INDEPENDENT hirer signing up — someone hiring on
+// their own account rather than a company's (ADR-0017 §1).
 type RegisterHirerRequest struct {
-	DisplayName      string
-	Email            string
-	Password         string
-	OrganizationName string
-	Website          string
-	LinkedInURL      string
-	Proofs           []domain.VerificationProof
+	DisplayName string
+
+	// Username is the sign-in name, and is required (ADR-0016 §1).
+	//
+	// ADR-0016 tabulates only the roster path, where the organization pins the
+	// name. Self-serve registration has no organization to pin it, so the
+	// registrant chooses — reported to the Planner as a gap in the ADR rather
+	// than settled here.
+	Username string
+
+	Email    string
+	Password string
+
+	// No organisation. Registration creates an INDEPENDENT hirer and nothing
+	// else; onboarding is the only thing that creates a company
+	// (ADR-0017 §1). Someone whose company is already here was rostered and
+	// uses /auth/hirer/redeem instead.
+	Proofs []domain.VerificationProof
 }
 
 // HirerRegistration is what a completed registration produced.
@@ -110,8 +122,22 @@ type HirerRegistration struct {
 // OrganizationService owns seats. An org self-administers them, with no admin
 // involvement (ADR-0002).
 type OrganizationService interface {
-	Invite(ctx context.Context, p domain.Principal, orgID domain.OrganizationID, email string, role domain.OrgRole) (*Invitation, string, error)
-	AcceptInvitation(ctx context.Context, token, displayName, password string) (*domain.Hirer, *domain.TokenPair, error)
+	// AddToRoster names an address, a username and a role. Owners only: an
+	// owner entry grants the power to grant further seats, so a member who
+	// could roster could promote themselves (ADR-0016 §7).
+	AddToRoster(ctx context.Context, p domain.Principal, orgID domain.OrganizationID, email, username string, role domain.OrgRole) (*RosterEntry, error)
+
+	ListRoster(ctx context.Context, p domain.Principal, orgID domain.OrganizationID) ([]RosterEntry, error)
+
+	// RemoveFromRoster deletes the entry AND revokes the seat it created, if
+	// one exists. It never deletes the seat: that row authored shortlists and
+	// the permanent record of who was told (ADR-0016 §5).
+	RemoveFromRoster(ctx context.Context, p domain.Principal, orgID domain.OrganizationID, id domain.RosterEntryID) error
+
+	// ListSeats returns live and revoked seats, readable by any hirer in the
+	// organization — every seat already sees every round, so naming the author
+	// exposes no row that was not already visible (ADR-0016 §5a).
+	ListSeats(ctx context.Context, p domain.Principal, orgID domain.OrganizationID) ([]domain.Hirer, error)
 
 	// Verification tells a hirer where their own review stands.
 	//
@@ -119,6 +145,145 @@ type OrganizationService interface {
 	// waiting, and folding it into every profile read would cost a second
 	// query on requests that never look at it.
 	Verification(ctx context.Context, p domain.Principal) (*VerificationStatus, error)
+}
+
+// RedemptionService turns a roster entry into a seat, and proves addresses.
+//
+// Separate from OrganizationService because its callers hold no session: a
+// person redeeming an entry has no account yet, and the endpoints are
+// unauthenticated by necessity.
+type RedemptionService interface {
+	// StartRedemption answers the same way for a roster miss and an unknown
+	// organization: telling them apart turns the endpoint into an oracle for
+	// who an organization is hiring (ADR-0016 §3).
+	StartRedemption(ctx context.Context, orgSlug, email string) error
+
+	// CompleteRedemption consumes the proof and creates the seat. The username
+	// and role come from the entry, not from the caller.
+	CompleteRedemption(ctx context.Context, token, displayName, password string) (*domain.Hirer, *domain.TokenPair, error)
+
+	// ResendVerification re-sends an outstanding proof rather than minting a
+	// second live one. Silent about whether anything was found, for the same
+	// reason StartRedemption is.
+	ResendVerification(ctx context.Context, email string) error
+
+	// ListOrganizations backs the picker a redeemer finds their employer in
+	// (ADR-0016 §3a).
+	//
+	// It lives here rather than on OrganizationService because it is the one
+	// organization read with no principal behind it, and the caller it serves
+	// is mid-redemption.
+	ListOrganizations(ctx context.Context) ([]domain.Organization, error)
+}
+
+// OnboardingService owns the path from a submitted form to a real company.
+//
+// Every method here is UNAUTHENTICATED except the queue and the decision,
+// necessarily: the person describing a company has no account, and the whole
+// point of ADR-0017 is that they do not get one until an administrator agrees.
+type OnboardingService interface {
+	// Submit records a form and emails a code. It creates no organisation, no
+	// seat, and reserves no slug (ADR-0017 §2).
+	//
+	// Returns nothing. A caller told "that name is taken" could enumerate the
+	// companies mid-onboarding before the public picker would list them.
+	Submit(ctx context.Context, in OnboardingForm) error
+
+	// Verify spends the code, claims the username and records how the owner
+	// will sign in. It returns no session: there is no account to sign in as
+	// until an administrator approves (ADR-0017 §6).
+	Verify(ctx context.Context, token string, owner OnboardingOwnerInput) error
+
+	// Revise records a correction to a REJECTED submission as a new row
+	// pointing at the old one. The table is append-only, so an administrator
+	// can see what changed (ADR-0017 §8).
+	Revise(ctx context.Context, token string, in OnboardingForm) error
+
+	// Queue is the administrator's view: proven, undecided, oldest first.
+	Queue(ctx context.Context, p domain.Principal) ([]OnboardingSubmission, error)
+
+	// Decide approves or refuses. Approving creates the organisation, its
+	// address, the owner seat and the membership in one transaction — and can
+	// FAIL, because two submissions may name one company and only the first
+	// approved can have the slug.
+	Decide(ctx context.Context, p domain.Principal, id domain.OnboardingID, approve bool, reason string) error
+
+	// ExpireUnproven deletes submissions whose code lapsed unused. Driven by
+	// cmd/jobs, like every other sweep.
+	ExpireUnproven(ctx context.Context) (int, error)
+}
+
+// OnboardingForm is a company describing itself.
+//
+// Every field but Name and Email is optional: a fully remote company has no
+// office to name, a registered address is often an accountant's rather than the
+// company's, and several countries have no postcode (ADR-0017 §5).
+type OnboardingForm struct {
+	Name        string
+	Description string
+	Email       string
+	Phone       string
+	Headcount   domain.HeadcountBand
+
+	Country    string
+	City       string
+	PostalCode string
+	Street1    string
+	Street2    string
+}
+
+// OnboardingOwnerInput is how the first person at a company chooses to sign in.
+//
+// The username is chosen here, unlike roster redemption where the organisation
+// pins it — there is no organisation yet to pin it (ADR-0017 §Identity).
+type OnboardingOwnerInput struct {
+	Username    string
+	DisplayName string
+	Password    string
+}
+
+// ProfileService owns a contributor's own account of themselves (ADR-0018).
+type ProfileService interface {
+	// A domain.UserID rather than a principal, matching every other
+	// contributor-facing service: extracting the id is the controller's job,
+	// and taking it directly leaves these callable from a worker that holds no
+	// principal at all (see the note above requireAdmin).
+
+	// Profile returns work preferences, country, both year figures, and
+	// whether anything could match this person at all.
+	Profile(ctx context.Context, id domain.UserID) (*ContributorProfile, error)
+
+	SaveProfile(ctx context.Context, id domain.UserID, in domain.WorkPreferences) (*ContributorProfile, error)
+
+	// Compensation is returned to THE PERSON WHO TYPED IT and to nobody else.
+	// There is no hirer-facing caller and there must never be (ADR-0018 §2).
+	Compensation(ctx context.Context, id domain.UserID) (*domain.Compensation, error)
+	SaveCompensation(ctx context.Context, id domain.UserID, in domain.Compensation) (*domain.Compensation, error)
+}
+
+// ContributorProfile is the profile screen's whole answer.
+//
+// Availability travels with it because the two COMPOSE (ADR-0018 §4): a person
+// is available for the shapes they enabled and for nothing else, so showing
+// the flags without the window would show half a sentence.
+type ContributorProfile struct {
+	Preferences  domain.WorkPreferences
+	Availability *domain.Availability
+
+	// NeedsAttention is whether this person should be PROMPTED to fill the
+	// form in. True when they have never stated anything at all.
+	//
+	// Separate from Matchable, which can be false for a perfectly deliberate
+	// reason — somebody who is not looking. Nobody should be nagged about an
+	// answer they have given.
+	NeedsAttention bool
+
+	// Matchable is false when the window is live and no flag is enabled — a
+	// state reachable by accident and invisible from outside (ADR-0018
+	// §The unmatchable state). Computed here rather than left to a client,
+	// because a client that forgot would leave somebody wondering why nobody
+	// ever writes to them.
+	Matchable bool
 }
 
 // VerificationStatus is a hirer's view of their own review.
@@ -263,7 +428,7 @@ type DiscoveryService interface {
 
 // ShortlistService owns hiring rounds and the two-phase disclosure.
 type ShortlistService interface {
-	Create(ctx context.Context, p domain.Principal, name, description string, date time.Time) (*domain.Shortlist, error)
+	Create(ctx context.Context, p domain.Principal, role domain.RoleID, name, description string, date time.Time) (*domain.Shortlist, error)
 	List(ctx context.Context, p domain.Principal, status *domain.ShortlistStatus) ([]domain.Shortlist, error)
 	Get(ctx context.Context, p domain.Principal, id domain.ShortlistID) (*domain.Shortlist, error)
 	Update(ctx context.Context, p domain.Principal, id domain.ShortlistID, name, description *string, date *time.Time) (*domain.Shortlist, error)
@@ -326,4 +491,82 @@ type JobService interface {
 	FlagOverdueShortlists(ctx context.Context) (flagged int, err error)
 	ExpireContactRequests(ctx context.Context) (expired int, err error)
 	RecomputeNorms(ctx context.Context) error
+
+	// ExpireOnboarding deletes submitted companies whose code lapsed unused.
+	//
+	// The only sweep that DELETES rather than stamping a column. A submission
+	// that was never proven can never be proven — its code is gone — so it is
+	// not stale data, it is data that has become unreachable (ADR-0017 §2).
+	ExpireOnboarding(ctx context.Context) (int, error)
+
+	// VerifyPendingPRs re-attempts the pull-request fetches that could not be
+	// completed (ADR-0019 §When the fetch fails).
+	//
+	// A job rather than a request, because the contributor whose save hit a
+	// rate limit is not the person who should have to notice. Until it lands,
+	// their open-source years read as unknown and clear no minimum.
+	VerifyPendingPRs(ctx context.Context) (verified int, err error)
+}
+
+// RoleService owns openings (ADR-0019).
+type RoleService interface {
+	// Create writes a DRAFT. A role is never born open: opening is a separate
+	// act, which is what makes the authority setting enforceable at all.
+	Create(ctx context.Context, p domain.Principal, org domain.OrganizationID, in domain.Role) (*domain.Role, error)
+
+	// Update replaces a DRAFT's contents. An open role is refused: the two are
+	// different acts with different consequences, and a client that meant one
+	// must not silently get the other.
+	Update(ctx context.Context, p domain.Principal, org domain.OrganizationID, id domain.RoleID, in domain.Role) (*domain.Role, error)
+
+	// Revise publishes a successor to an OPEN role and closes the original, so
+	// everybody already contacted keeps reading the role they were shown.
+	Revise(ctx context.Context, p domain.Principal, org domain.OrganizationID, id domain.RoleID, in domain.Role) (*domain.Role, error)
+
+	Open(ctx context.Context, p domain.Principal, org domain.OrganizationID, id domain.RoleID) (*domain.Role, error)
+
+	// Close ends a role and records WHY. A seat that may stage but not commit
+	// gets its request recorded and the role stays open.
+	Close(ctx context.Context, p domain.Principal, org domain.OrganizationID, id domain.RoleID, in CloseRequest) (*domain.Role, error)
+
+	List(ctx context.Context, p domain.Principal, org domain.OrganizationID, status *domain.RoleStatus) ([]domain.Role, error)
+	Role(ctx context.Context, p domain.Principal, org domain.OrganizationID, id domain.RoleID) (*domain.Role, error)
+
+	Settings(ctx context.Context, p domain.Principal, org domain.OrganizationID) (*domain.OrgSettings, error)
+	SaveSettings(ctx context.Context, p domain.Principal, org domain.OrganizationID, in domain.OrgSettings) (*domain.OrgSettings, error)
+
+	// Matching is the CONTRIBUTOR'S view, and the one place their compensation
+	// expectation is used — to keep roles paying less than they asked for out
+	// of their way, and no further (ADR-0018 §5).
+	//
+	// A domain.UserID rather than a principal, matching every other
+	// contributor-facing service.
+	Matching(ctx context.Context, id domain.UserID, limit, offset int) ([]domain.Role, error)
+}
+
+// CloseRequest is what a hirer says when they close a role.
+//
+// HiredEmails carries ADDRESSES rather than ids because that is what a hirer
+// has: they know who they hired, not what this platform calls them. The service
+// resolves each against the contact requests the organisation was already
+// given, and stores ids.
+type CloseRequest struct {
+	Reason domain.CloseReason
+
+	// Note is required when Reason is CloseOther.
+	Note string
+
+	// HiredEmails is non-empty exactly when Reason is CloseHiredViaPlatform. A
+	// role may fill several seats.
+	HiredEmails []string
+}
+
+// ProfileVerifier re-establishes pull request dates that could not be read the
+// first time (ADR-0019 §7).
+//
+// A narrow interface of its own rather than a method on ProfileService: the job
+// binary needs exactly this one call, and handing it the whole profile surface
+// would let a sweep save somebody's compensation by accident.
+type ProfileVerifier interface {
+	VerifyPending(ctx context.Context, limit int) (int, error)
 }

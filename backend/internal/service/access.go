@@ -74,14 +74,21 @@ func NewAccessService(hirers port.HirerRepository) *AccessService {
 
 var _ port.AccessService = (*AccessService)(nil)
 
-// RequireHiringCapability fails unless the hirer is verified AND their
-// organization is verified.
+// RequireHiringCapability fails unless whoever carries capability is verified.
 //
-// The ORGANIZATION is what carries capability (ADR-0002, ADR-0008 §3a).
-// Verifying one lifts every seat, and an invited member inherits whatever the
-// org already has — so this reads through the organization rather than
-// trusting a seat's own column, which could be stale for a seat invited before
-// the org was approved.
+// WHO that is depends on the account, and there are now two kinds (ADR-0017 §1):
+//
+//   - a seat at an organisation — the ORGANIZATION carries it (ADR-0002,
+//     ADR-0008 §3a). Verifying one lifts every seat, and a rostered member
+//     inherits whatever the org already has, so this reads through the
+//     organization rather than trusting a seat's own column, which could be
+//     stale for a seat created before the org was approved.
+//   - an INDEPENDENT hirer, who has no organisation at all. They were reviewed
+//     as themselves, so their own column is the only thing there is to read.
+//
+// Reading through the organisation unconditionally is how this used to refuse
+// an independent hirer forever: no org meant ErrNotFound meant not capable,
+// even after an administrator had approved them personally.
 //
 // Payment verification is NOT checked. Missing payment evidence is disclosed
 // to the contributor at contact time rather than blocking the org (ADR-0002
@@ -89,6 +96,13 @@ var _ port.AccessService = (*AccessService)(nil)
 func (s *AccessService) RequireHiringCapability(ctx context.Context, p domain.Principal) error {
 	if p.Kind != domain.KindHirer || p.Hirer == nil {
 		return fmt.Errorf("only a hirer may search or shortlist: %w", ErrForbidden)
+	}
+
+	if p.Hirer.OrganizationID == "" {
+		if p.Hirer.VerifiedAt == nil {
+			return fmt.Errorf("this hiring account is not verified: %w", ErrNotCapable)
+		}
+		return nil
 	}
 
 	org, err := s.hirers.Organization(ctx, p.Hirer.OrganizationID)

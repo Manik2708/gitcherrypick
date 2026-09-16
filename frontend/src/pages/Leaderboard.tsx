@@ -10,15 +10,7 @@ import { Link } from "react-router-dom";
 import { useLeaderboard } from "../hooks/hirer";
 import * as format from "../logic/format";
 import { SkillPicker } from "../ui/SkillPicker";
-import {
-  Avatar,
-  Card,
-  Empty,
-  Failure,
-  Loading,
-  PageHead,
-  Pill,
-} from "../ui/primitives";
+import { Avatar, Card, Empty, Failure, Loading, PageHead, Pill } from "../ui/primitives";
 
 type Kind = "overall" | "generalist" | "skill";
 
@@ -90,7 +82,11 @@ export function LeaderboardPage() {
         <Card>
           <div className="section__head">
             <h2 className="section__title">
-              {board.data.skill ? board.data.skill.name : kind === "overall" ? "Overall" : "Generalist"}
+              {board.data.skill
+                ? board.data.skill.name
+                : kind === "overall"
+                  ? "Overall"
+                  : "Generalist"}
             </h2>
             <span className="section__note mono">rubric {board.data.rubric_version}</span>
           </div>

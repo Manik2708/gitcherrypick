@@ -231,7 +231,7 @@ type savedSearchBody struct {
 	Name         string               `json:"name"`
 	Filters      domain.SearchQuery   `json:"filters"`
 	Organization *orgRef              `json:"organization,omitempty"`
-	CreatedBy    domain.HirerID       `json:"created_by,omitempty"`
+	CreatedBy    *hirerRefBody        `json:"created_by,omitempty"`
 	CreatedAt    time.Time            `json:"created_at"`
 }
 
@@ -379,9 +379,10 @@ func (c *DiscoveryController) savedSearches(w http.ResponseWriter, r *http.Reque
 	for _, s := range searches {
 		// No organization: every row in this list belongs to the caller's own
 		// org, so repeating it once per row says nothing the request did not.
+		createdBy := hirerRefBodyOf(s.CreatedBy)
 		out = append(out, savedSearchBody{
 			ID: s.ID, Name: s.Name, Filters: s.Filters,
-			CreatedBy: s.CreatedBy, CreatedAt: s.CreatedAt,
+			CreatedBy: &createdBy, CreatedAt: s.CreatedAt,
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"total": len(out), "saved_searches": out})
@@ -418,9 +419,10 @@ func (c *DiscoveryController) saveSearch(w http.ResponseWriter, r *http.Request)
 		c.writeCapabilityError(w, p, err)
 		return
 	}
+	createdBy := hirerRefBodyOf(saved.CreatedBy)
 	writeJSON(w, http.StatusCreated, savedSearchBody{
 		ID: saved.ID, Name: saved.Name, Filters: saved.Filters,
-		Organization: orgRefOf(p), CreatedBy: saved.CreatedBy, CreatedAt: saved.CreatedAt,
+		Organization: orgRefOf(p), CreatedBy: &createdBy, CreatedAt: saved.CreatedAt,
 	})
 }
 

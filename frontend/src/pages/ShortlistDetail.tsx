@@ -21,6 +21,7 @@ import {
   Avatar,
   Banner,
   Button,
+  By,
   Card,
   Empty,
   Failure,
@@ -55,6 +56,11 @@ function EntryRow({
         </div>
         {entry.email ? (
           <p className="row__meta mono">{entry.email} — released when they accepted.</p>
+        ) : null}
+        {entry.added_by ? (
+          <p className="row__meta">
+            <By who={entry.added_by} verb="Staged by" />
+          </p>
         ) : null}
       </div>
       <div className="row__right">
@@ -94,7 +100,12 @@ export function ShortlistDetailPage() {
 
   const [acknowledged, setAcknowledged] = useState(false);
 
-  if (round.loading) return <div className="page"><Loading what="the round" /></div>;
+  if (round.loading)
+    return (
+      <div className="page">
+        <Loading what="the round" />
+      </div>
+    );
   if (round.error) {
     return (
       <div className="page page--narrow">
@@ -129,6 +140,12 @@ export function ShortlistDetailPage() {
           <>
             Result by {format.date(data.tentative_result_date)} ·{" "}
             <span className="mono">{data.status}</span>
+            {data.created_by ? (
+              <>
+                {" · "}
+                <By who={data.created_by} verb="opened by" />
+              </>
+            ) : null}
           </>
         }
       />
@@ -223,7 +240,11 @@ export function ShortlistDetailPage() {
               Closing stops it accepting anyone new. The record of who was told stays.
             </span>
           </div>
-          <Button variant="ghost" disabled={close.pending} onClick={() => void close.run().then(reload)}>
+          <Button
+            variant="ghost"
+            disabled={close.pending}
+            onClick={() => void close.run().then(reload)}
+          >
             Close
           </Button>
         </Card>

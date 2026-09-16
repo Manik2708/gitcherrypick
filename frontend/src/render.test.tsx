@@ -30,7 +30,7 @@ function asHirer() {
       id: "h1",
       display_name: "Maya Renner",
       principal_type: "hirer",
-      organization: { name: "Northfield Labs", verified: true },
+      organization: { id: "o1", name: "Northfield Labs", verified: true },
     }),
   );
 }
@@ -114,10 +114,13 @@ describe("the app renders", () => {
       "fetch",
       vi.fn(async (url: string) => {
         calls.push(url);
-        return new Response(JSON.stringify({ kind: "overall", rubric_version: "v1", entries: [] }), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        });
+        return new Response(
+          JSON.stringify({ kind: "overall", rubric_version: "v1", entries: [] }),
+          {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          },
+        );
       }),
     );
     mount("/leaderboard");
@@ -245,5 +248,454 @@ describe("the app renders", () => {
     expect(screen.getByText(/2 more make this primary/)).toBeTruthy();
     // overall_score is null: it must read as a dash, never 0.0.
     expect(screen.queryByText("0.0")).toBeNull();
+  });
+
+  /* --- ADR-0016: usernames, the roster, redemption --------------------- */
+
+  // Email stopped being an identity: two seats may share one, and a work
+  // address outlives the person who held it. A form still asking for an email
+  // would send an address where the server reads a username.
+  it("asks a hirer for a username, not an email", async () => {
+    const sent: unknown[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init: RequestInit) => {
+        sent.push(JSON.parse(String(init.body)));
+        return new Response(
+          JSON.stringify({
+            hirer: {
+              id: "h1",
+              display_name: "Maya Renner",
+              principal_type: "hirer",
+              organization: { id: "o1", name: "Northfield Labs", verified: true },
+            },
+            access_token: "a",
+            refresh_token: "r",
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }),
+    );
+
+    mount("/signin");
+    fireEvent.change(screen.getByLabelText("Username"), { target: { value: "maya" } });
+    fireEvent.change(screen.getAllByLabelText("Password")[0]!, { target: { value: "pw" } });
+    fireEvent.click(screen.getByText("Sign in as a hirer"));
+
+    await screen.findByText("Search the pool");
+    expect(sent).toEqual([{ username: "maya", password: "pw" }]);
+  });
+
+  // The admin path still keys on an email, and the two credentials must not
+  // share a box: one field would quietly send an address where a username goes.
+  it("keeps the admin credential separate and still an email", () => {
+    mount("/signin");
+    expect(screen.getByLabelText("Username")).toBeTruthy();
+    expect(screen.getByLabelText("Email")).toBeTruthy();
+  });
+
+  // Redemption must not become an oracle for who a company is hiring. The
+  // server answers the same whether or not an address is rostered, and the
+  // screen must not claim more than the server said.
+  it("never says whether an address was on the roster", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url.includes("/organizations")) {
+          return new Response(JSON.stringify({ organizations: [{ name: "Acme", slug: "acme" }] }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          });
+        }
+        return new Response(null, { status: 202 });
+      }),
+    );
+
+    mount("/redeem");
+    fireEvent.change(await screen.findByLabelText("Your company"), {
+      target: { value: "acme" },
+    });
+    fireEvent.change(screen.getByLabelText("Your work email"), {
+      target: { value: "stranger@nowhere.example" },
+    });
+    fireEvent.click(screen.getByText("Send me a link"));
+
+    expect(await screen.findByText(/is on that organisation/)).toBeTruthy();
+    expect(screen.getByText(/would let anyone with this form discover/)).toBeTruthy();
+  });
+
+  // The username comes from the roster entry. A field for it here would let a
+  // redeemer take a colleague's name.
+  it("offers no username field when redeeming", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(null, { status: 202 })),
+    );
+
+    mount("/redeem?token=proof");
+    expect(await screen.findByText("Set your password")).toBeTruthy();
+    expect(screen.queryByLabelText("Username")).toBeNull();
+    expect(screen.getByText(/Your organisation pinned it/)).toBeTruthy();
+  });
+
+  // A revoked seat is listed, not dropped: a round from two years ago carries
+  // their name, and a list that hid them would leave it unresolvable.
+  it("lists a revoked seat, marked inactive", async () => {
+    asHirer();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        const body = url.includes("/seats")
+          ? {
+              seats: [
+                {
+                  id: "h1",
+                  username: "maya",
+                  display_name: "Maya Renner",
+                  email: "maya@northfield.example",
+                  role: "owner",
+                  active: true,
+                },
+                {
+                  id: "h2",
+                  username: "rita",
+                  display_name: "Rita Sandoval",
+                  email: "rita@northfield.example",
+                  role: "member",
+                  active: false,
+                  disabled_at: "2026-01-04T00:00:00Z",
+                },
+              ],
+            }
+          : { entries: [] };
+        return new Response(JSON.stringify(body), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }),
+    );
+
+    mount("/team");
+    expect(await screen.findByText("Rita Sandoval")).toBeTruthy();
+    expect(screen.getByText("Access revoked")).toBeTruthy();
+    expect(screen.getByText(/still carries their name/)).toBeTruthy();
+  });
+
+  // Removal revokes; it never deletes. The button must not promise otherwise.
+  it("calls removing a claimed entry a revocation, not a deletion", async () => {
+    asHirer();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        const body = url.includes("/seats")
+          ? { seats: [] }
+          : {
+              entries: [
+                {
+                  id: "r1",
+                  email: "rita@northfield.example",
+                  username: "rita",
+                  role: "member",
+                  added_by: "h1",
+                  redeemed_at: "2026-01-02T00:00:00Z",
+                  created_at: "2026-01-01T00:00:00Z",
+                },
+              ],
+            };
+        return new Response(JSON.stringify(body), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }),
+    );
+
+    mount("/team");
+    expect(await screen.findByText("Revoke access")).toBeTruthy();
+    expect(screen.queryByText("Delete")).toBeNull();
+  });
+
+  /* --- ADR-0017: listing a company ------------------------------------- */
+
+  // Onboarding is how an OWNER comes to exist, so it must be reachable with no
+  // account at all. A signed-out visitor hitting a redirect here could never
+  // start a company.
+  it("lets a visitor with no session list an organisation", () => {
+    mount("/organisation");
+    // By ROLE: the public nav carries a button with the same words, and
+    // getByText would match both.
+    expect(screen.getByRole("heading", { name: "List your organisation" })).toBeTruthy();
+    expect(screen.getByLabelText("Company name")).toBeTruthy();
+    // Sign-in is not forced on the way.
+    expect(screen.queryByText("Sign in as a hirer")).toBeNull();
+  });
+
+  // The form must not name who will own the result. Whoever proves the company
+  // address chooses that, which is what stops a submission handing someone
+  // else's company to its author.
+  it("asks for no username or password when submitting a company", () => {
+    mount("/organisation");
+    expect(screen.queryByLabelText("Username")).toBeNull();
+    expect(screen.queryByLabelText("Password")).toBeNull();
+  });
+
+  // Headcount is a band. A free-text number invites false precision on a field
+  // whose own name says "approx".
+  it("offers headcount as a range rather than a number", () => {
+    mount("/organisation");
+    const select = screen.getByLabelText(/how many people/i) as HTMLSelectElement;
+    expect(select.tagName).toBe("SELECT");
+    expect([...select.options].map((o) => o.value)).toContain("11-50");
+  });
+
+  // The single most important thing this screen says. A submitter who believed
+  // their company now existed would stop watching for the email, and would also
+  // believe the name was theirs.
+  it("says plainly that nothing has been created yet", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(null, { status: 202 })),
+    );
+
+    mount("/organisation");
+    fireEvent.change(screen.getByLabelText("Company name"), {
+      target: { value: "Acme Corp" },
+    });
+    fireEvent.change(screen.getByLabelText("Company email"), {
+      target: { value: "hiring@acme.example" },
+    });
+    fireEvent.click(screen.getByText("Send me a confirmation code"));
+
+    expect(await screen.findByText("Check your email")).toBeTruthy();
+    expect(screen.getByText(/Nothing has been created yet/)).toBeTruthy();
+    expect(screen.getByText(/the name is not/)).toBeTruthy();
+  });
+
+  // The verify screen is where a username IS chosen — and it must not imply an
+  // account now exists, because approval is what creates one.
+  it("chooses the owner's credentials at verify, and says no account exists yet", () => {
+    mount("/organisation/verify?token=abc");
+    expect(screen.getByLabelText("Username")).toBeTruthy();
+    expect(screen.getByLabelText("Password")).toBeTruthy();
+    expect(screen.getByText(/No account exists yet/)).toBeTruthy();
+  });
+
+  // Registration is the INDEPENDENT hirer's route now. An organisation field
+  // here would create a second way to make a company.
+  it("asks an independent hirer for no organisation", () => {
+    mount("/register");
+    expect(screen.getByText("Register as an independent hirer")).toBeTruthy();
+    expect(screen.queryByText("Your organisation")).toBeNull();
+  });
+
+  // Approving a company CREATES it, which is unlike every other admin decision
+  // on this screen. The queue has to say so, or an administrator reads it as
+  // one more rubber stamp.
+  it("tells an administrator that approving a company creates it", async () => {
+    sessionStorage.setItem("gcp.access", "t");
+    sessionStorage.setItem("gcp.refresh", "r");
+    sessionStorage.setItem(
+      "gcp.principal",
+      JSON.stringify({ id: "ad1", display_name: "Root", principal_type: "admin" }),
+    );
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        const body = url.includes("/admin/onboarding")
+          ? {
+              total: 1,
+              submissions: [
+                {
+                  id: "01920000-0000-7000-8000-00000000e001",
+                  name: "Acme Corp",
+                  description: "We build things.",
+                  email: "hiring@acme.example",
+                  phone: "+44 20 7946 0958",
+                  headcount: "11-50",
+                  address: null,
+                  owner: { username: "jo", display_name: "Jo Mensah" },
+                  created_at: "2026-09-13T09:00:00Z",
+                  age_hours: 4,
+                },
+              ],
+            }
+          : { requests: [] };
+        return new Response(JSON.stringify(body), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }),
+    );
+
+    mount("/admin");
+    expect(await screen.findByText("Acme Corp")).toBeTruthy();
+    expect(screen.getByText(/Nothing here exists yet/)).toBeTruthy();
+    // No address given is a fact about the company, not a blank.
+    expect(screen.getByText("No office address given")).toBeTruthy();
+    // The name the approval will make permanent is shown before it is made.
+    expect(screen.getByText("jo")).toBeTruthy();
+  });
+
+  /* --- ADR-0018: the contributor profile -------------------------------- */
+
+  function asContributor() {
+    sessionStorage.setItem("gcp.access", "t");
+    sessionStorage.setItem("gcp.refresh", "r");
+    sessionStorage.setItem(
+      "gcp.principal",
+      JSON.stringify({ id: "u1", display_name: "Ada Okonkwo", principal_type: "contributor" }),
+    );
+  }
+
+  function profileStub(over: Record<string, unknown> = {}) {
+    return vi.fn(async (url: string) => {
+      let body: unknown = {};
+      if (url.includes("/me/profile")) {
+        body = {
+          preferences: {
+            open_to_remote: false,
+            open_to_internships: false,
+            open_to_onsite: false,
+            open_to_contract: false,
+            current_country: "",
+            office_yoe: null,
+            first_pr_url: "",
+            latest_pr_url: "",
+          },
+          needs_attention: false,
+          availability: { status: "looking_for_job", expires_at: "2026-12-01T00:00:00Z" },
+          matchable: false,
+          ...over,
+        };
+      } else if (url.includes("/me/compensation")) {
+        body = { currency: "", hourly_rate: null, yearly_amount: null };
+      } else if (url.includes("/places/countries")) {
+        body = { countries: [{ code: "GB", name: "United Kingdom" }], degraded: false };
+      } else if (url.includes("/me/contact-requests")) {
+        body = { requests: [] };
+      } else {
+        body = { id: "u1", display_name: "Ada Okonkwo", principal_type: "contributor" };
+      }
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+  }
+
+  // The trap this screen exists to close: looking, but having said nothing about
+  // what work you would take. Invisible to every role, and undiagnosable from
+  // outside — the person just never hears from anybody.
+  it("warns a contributor who is looking but matches nothing", async () => {
+    asContributor();
+    vi.stubGlobal("fetch", profileStub());
+
+    mount("/being-found");
+    expect(await screen.findByText(/no role can reach you/)).toBeTruthy();
+  });
+
+  it("drops the warning once a shape is ticked", async () => {
+    asContributor();
+    vi.stubGlobal("fetch", profileStub());
+
+    mount("/being-found");
+    await screen.findByText(/no role can reach you/);
+    fireEvent.click(screen.getByRole("checkbox", { name: /Remote roles/ }));
+    expect(screen.queryByText(/no role can reach you/)).toBeNull();
+  });
+
+  // A hirer never sees expected pay, and the person typing it should be told so
+  // where they type it — otherwise the honest answer is the one that costs them.
+  it("says plainly that no hirer sees expected pay", async () => {
+    asContributor();
+    vi.stubGlobal("fetch", profileStub());
+
+    mount("/being-found");
+    expect(await screen.findByText(/No hirer ever sees this/)).toBeTruthy();
+    expect(screen.getByText(/could offer exactly that and no more/)).toBeTruthy();
+  });
+
+  // The first pull request is ASKED, not read off a claim — a contributor's
+  // first contribution is often years old in a repository they never claimed
+  // here. And it is write-once, so the field must say so BEFORE somebody types
+  // into it and gets a 409 back.
+  it("locks the first pull request once it is recorded", async () => {
+    asContributor();
+    vi.stubGlobal(
+      "fetch",
+      profileStub({
+        preferences: {
+          open_to_remote: true,
+          open_to_internships: false,
+          open_to_onsite: false,
+          open_to_contract: false,
+          current_country: "GB",
+          office_yoe: 6,
+          first_pr_url: "https://github.com/acme/platform/pull/1",
+          latest_pr_url: "https://github.com/acme/platform/pull/9",
+        },
+      }),
+    );
+
+    mount("/being-found");
+    const first = (await screen.findByLabelText("Your first pull request")) as HTMLInputElement;
+    expect(first.readOnly).toBe(true);
+    expect(screen.getByText(/cannot be changed/)).toBeTruthy();
+
+    // The latest one is meant to change.
+    const latest = screen.getByLabelText("Your latest pull request") as HTMLInputElement;
+    expect(latest.readOnly).toBe(false);
+  });
+
+  it("leaves the first pull request editable until it is set", async () => {
+    asContributor();
+    vi.stubGlobal("fetch", profileStub());
+
+    mount("/being-found");
+    const first = (await screen.findByLabelText("Your first pull request")) as HTMLInputElement;
+    expect(first.readOnly).toBe(false);
+    expect(screen.getByText(/does not have to be one you have claimed here/)).toBeTruthy();
+  });
+
+  // The picker fails open: a provider that is down must not block the form.
+  it("lets a contributor type a country code when the picker is degraded", async () => {
+    asContributor();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        const body = url.includes("/places/countries")
+          ? { countries: [], degraded: true }
+          : url.includes("/me/profile")
+            ? {
+                preferences: {
+                  open_to_remote: true,
+                  open_to_internships: false,
+                  open_to_onsite: false,
+                  open_to_contract: false,
+                  current_country: "",
+                  office_yoe: null,
+                  first_pr_url: "",
+                  latest_pr_url: "",
+                },
+                needs_attention: false,
+                availability: { status: "looking_for_job", expires_at: "2026-12-01T00:00:00Z" },
+                matchable: true,
+              }
+            : url.includes("/me/compensation")
+              ? { currency: "", hourly_rate: null, yearly_amount: null }
+              : url.includes("/me/contact-requests")
+                ? { requests: [] }
+                : { id: "u1", display_name: "Ada", principal_type: "contributor" };
+        return new Response(JSON.stringify(body), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }),
+    );
+
+    mount("/being-found");
+    const field = (await screen.findByLabelText("Where you are")) as HTMLElement;
+    expect(field.tagName).toBe("INPUT");
+    expect(screen.getByText(/Type a two-letter code/)).toBeTruthy();
   });
 });

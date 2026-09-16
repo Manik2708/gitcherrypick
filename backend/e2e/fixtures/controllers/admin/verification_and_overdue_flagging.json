@@ -1,15 +1,17 @@
 {
   "name": "manual verification, alternative evidence, and overdue-shortlist flagging",
-  "description": "ADR-0002: verification is manual, targets 48 hours, and must be satisfiable by a small firm with no company domain or LinkedIn page — a three-person studio hiring a contractor is exactly the customer the alternative-evidence path exists for. A scheme only large companies can pass would exclude most freelance hiring.\n\nAlso ADR-0005: an organization with 80% or more of its open shortlists past their tentative date is flagged. Nothing is blocked — blocking would punish a hirer for a candidate's silence as readily as for their own neglect.\n\nUpdated for RFC-0008 §3a. The overdue ratio counts CONFIRMED rounds only: a draft promised nothing to anyone, so counting it would flag an organization for failing to deliver on a search it never announced. Each round here is therefore confirmed before the clock advances, and Round D is deliberately left as a draft to prove a draft cannot be overdue.",
+  "description": "ADR-0002: verification is manual, targets 48 hours, and must be satisfiable by a small firm with no company domain or LinkedIn page — a three-person studio hiring a contractor is exactly the customer the alternative-evidence path exists for. A scheme only large companies can pass would exclude most freelance hiring.\n\nREWRITTEN FOR ADR-0017 §7. POST /auth/hirer/register no longer creates an organisation: it is the INDEPENDENT hirer's route, someone hiring on their own account, and the request it queues names the HIRER rather than a company. A company now arrives through POST /organizations, which creates nothing until an administrator approves it (see orgs/onboarding_creates_nothing_until_approved). So this case holds the other half of the split: registration creates a seat with no organisation, the queue shows a hirer-scoped request with no organisation attached, and approving it verifies the person alone. A body still carrying an `organization` object is refused outright rather than silently ignored — every body here decodes with DisallowUnknownFields, and a client with a stale field must be told its request did nothing rather than left believing it founded a company.\n\nAlso ADR-0005: an organization with 80% or more of its open shortlists past their tentative date is flagged. Nothing is blocked — blocking would punish a hirer for a candidate's silence as readily as for their own neglect.\n\nUpdated for RFC-0008 §3a. The overdue ratio counts CONFIRMED rounds only: a draft promised nothing to anyone, so counting it would flag an organization for failing to deliver on a search it never announced. Each round here is therefore confirmed before the clock advances, and Round D is deliberately left as a draft to prove a draft cannot be overdue.",
   "seed": ["principals", "catalogue"],
   "steps": [
     {
+      "_step": "THE ORGANISATION HALF IS GONE (ADR-0017 §7). Registration is no longer a way to found a company, and a body that still tries is refused rather than quietly stripped of the field.",
       "as": "anonymous",
       "request": {
         "method": "POST",
         "path": "/auth/hirer/register",
         "body": {
           "email": "jo@threepersonstudio.example",
+          "username": "jo",
           "password": "correct-horse-battery-staple",
           "display_name": "Jo Bergström",
           "organization": {
@@ -28,6 +30,58 @@
           ]
         }
       },
+      "expect": {
+        "status": 400,
+        "_note": "400 rather than 201-with-the-field-ignored. A caller that believes it created an organisation would go looking for a roster to fill, and find a seat that belongs to nobody.",
+        "body": {
+          "error": "invalid_registration"
+        },
+        "db": {
+          "organizations": {
+            "_note": "The three seeded ones and nothing else. A refused body must not leave a company behind.",
+            "count": 3
+          },
+          "hirer_accounts": {
+            "where": {
+              "email": "jo@threepersonstudio.example"
+            },
+            "count": 0
+          },
+          "hirer_usernames": {
+            "_note": "Not even the name is taken. Decoding fails before any service runs, so a stale client cannot burn the username it asked for.",
+            "where": {
+              "username": "jo"
+            },
+            "count": 0
+          }
+        }
+      }
+    },
+    {
+      "_step": "The same person, registering as the independent hirer they are. No company, and none created.",
+      "as": "anonymous",
+      "request": {
+        "method": "POST",
+        "path": "/auth/hirer/register",
+        "body": {
+          "email": "jo@threepersonstudio.example",
+          "username": "jo",
+          "password": "correct-horse-battery-staple",
+          "display_name": "Jo Bergström",
+          "proofs": [
+            {
+              "kind": "alternative",
+              "notes": "We are three people, no company domain and no LinkedIn page. Attaching our business registration and a client reference.",
+              "attachment_url": "https://files.example/registration.pdf"
+            },
+            {
+              "kind": "payment_capability",
+              "notes": "Two prior contractor engagements paid through Wise; references available."
+            }
+          ]
+        },
+        "_note": "A username, since ADR-0016 §1: a self-serve registration names the seat it is asking for, and the column is NOT NULL. The address beside it is a contact field and no longer identifies anybody."
+      },
       "capture": {
         "jo": "$.id"
       },
@@ -41,10 +95,49 @@
             "id": "<uuid>",
             "status": "pending"
           }
+        },
+        "db": {
+          "organizations": {
+            "_note": "STILL THREE. This is the decision, stated as an absence: registration creates a seat and nothing else (ADR-0017 §7).",
+            "count": 3
+          },
+          "hirer_accounts": {
+            "where": {
+              "email": "jo@threepersonstudio.example"
+            },
+            "count": 1,
+            "all_match": {
+              "organization_id": null,
+              "verified_at": null
+            }
+          },
+          "organization_members": {
+            "_note": "Four memberships, exactly the seeded ones. There is nothing for an independent hirer to be a member of, which is the whole shape of the route (ADR-0017 §7).",
+            "count": 4
+          },
+          "verification_requests": {
+            "_note": "The request names the HIRER. ck_verification_single_subject allows exactly one subject, and with no organisation to name it has to be the person — which is what 'verified individually through ADR-0002's proof kinds' means (ADR-0017 §7).",
+            "where": {
+              "hirer_email": "jo@threepersonstudio.example"
+            },
+            "count": 1,
+            "all_match": {
+              "organization_id": null,
+              "status": "pending"
+            },
+            "none_match": {
+              "hirer_account_id": null
+            }
+          },
+          "verification_proofs": {
+            "_note": "Both kinds reached the queue. The alternative path is the one a three-person studio has, and it must survive the route losing its organisation half.",
+            "count": 2
+          }
         }
       }
     },
     {
+      "_step": "The queue now carries two shapes of pending request: an ORGANISATION-scoped one (Pat's, seeded) and a HIRER-scoped one (Jo's). Jo's carries no `organization` key at all — an independent hirer has none, and reporting an empty company would invite an admin to verify a business that does not exist.",
       "as": "root",
       "request": {
         "method": "GET",
@@ -99,10 +192,6 @@
                 "display_name": "Jo Bergström",
                 "email": "jo@threepersonstudio.example"
               },
-              "organization": {
-                "id": "<uuid>",
-                "name": "Three Person Studio"
-              },
               "status": "pending"
             }
           ]
@@ -110,7 +199,7 @@
       }
     },
     {
-      "_step": "Approved on identity. Payment evidence was supplied but is judged insufficient to verify — so it is disclosed rather than blocking.",
+      "_step": "Approved on identity, and the approval lands on the PERSON. Payment evidence was supplied but is judged insufficient to verify — so it is disclosed rather than blocking.",
       "as": "root",
       "request": {
         "method": "POST",
@@ -139,9 +228,73 @@
               "verified_at": null
             },
             "all_match": {
-              "payment_verified_at": null
+              "payment_verified_at": null,
+              "organization_id": null
             }
+          },
+          "organizations": {
+            "_note": "Still three. Verifying an independent hirer creates no company either — the approval stamps the seat the request named, and nothing more.",
+            "count": 3
           }
+        }
+      }
+    },
+    {
+      "_step": "AND THE APPROVAL IS WORTH SOMETHING. An independent hirer reviewed as themselves must be able to hire; otherwise ADR-0017 §7's 'verified individually through ADR-0002's proof kinds' verifies nobody for nothing.",
+      "as": "anonymous",
+      "request": {
+        "method": "POST",
+        "path": "/auth/hirer/login",
+        "body": {
+          "username": "jo",
+          "password": "correct-horse-battery-staple"
+        }
+      },
+      "capture": {
+        "jo_token": "$.access_token"
+      },
+      "expect": {
+        "status": 200,
+        "_note": "The `organization` object is reported as empty strings rather than omitted, because an independent hirer has none. ADR-0017 does not settle which of the two an org-less seat should answer, so the snapshot records what it is rather than inventing the tidier shape; the choice is the Planner's.",
+        "body": {
+          "hirer": {
+            "id": "<uuid>",
+            "display_name": "Jo Bergström",
+            "email": "jo@threepersonstudio.example",
+            "principal_type": "hirer",
+            "verified": true,
+            "organization": {
+              "id": "",
+              "name": "",
+              "verified": false,
+              "payment_verified": false
+            }
+          },
+          "access_token": "<token>",
+          "refresh_token": "<token>",
+          "expires_in": 900
+        }
+      }
+    },
+    {
+      "_step": "The gate reads the person when there is no company to read. Nothing else in the platform can verify an account with no organisation, so this is the only route by which this principal exists at all.",
+      "as": "anonymous",
+      "request": {
+        "method": "GET",
+        "path": "/search?skills=go",
+        "headers": {
+          "Authorization": "Bearer {{jo_token}}"
+        }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "total": 0,
+          "inactive_hidden": 0,
+          "ranked_by": "skill:go",
+          "page": 1,
+          "per_page": 20,
+          "results": []
         }
       }
     },
@@ -197,6 +350,7 @@
         "method": "POST",
         "path": "/shortlists",
         "body": {
+          "role_id": "{{acme.role}}",
           "name": "Round A",
           "tentative_result_date": "2026-08-20"
         }
@@ -205,6 +359,7 @@
         "status": 201,
         "body": {
           "id": "<uuid>",
+          "role_id": "<uuid>",
           "name": "Round A",
           "status": "draft",
           "tentative_result_date": "2026-08-20",
@@ -221,6 +376,7 @@
         "method": "POST",
         "path": "/shortlists",
         "body": {
+          "role_id": "{{acme.role}}",
           "name": "Round B",
           "tentative_result_date": "2026-08-22"
         }
@@ -229,6 +385,7 @@
         "status": 201,
         "body": {
           "id": "<uuid>",
+          "role_id": "<uuid>",
           "name": "Round B",
           "status": "draft",
           "tentative_result_date": "2026-08-22",
@@ -245,6 +402,7 @@
         "method": "POST",
         "path": "/shortlists",
         "body": {
+          "role_id": "{{acme.role}}",
           "name": "Round C",
           "tentative_result_date": "2026-12-01"
         }
@@ -253,6 +411,7 @@
         "status": 201,
         "body": {
           "id": "<uuid>",
+          "role_id": "<uuid>",
           "name": "Round C",
           "status": "draft",
           "tentative_result_date": "2026-12-01",
@@ -282,7 +441,12 @@
             "github_login": "<string>"
           },
           "note": null,
-          "added_by": "01920000-0000-7000-8000-00000000c001",
+          "added_by": {
+            "id": "01920000-0000-7000-8000-00000000c001",
+            "username": "hank",
+            "display_name": "Hank Rivera",
+            "active": true
+          },
           "notified_at": null,
           "added_at": "<timestamp>"
         }
@@ -334,7 +498,12 @@
             "github_login": "<string>"
           },
           "note": null,
-          "added_by": "01920000-0000-7000-8000-00000000c001",
+          "added_by": {
+            "id": "01920000-0000-7000-8000-00000000c001",
+            "username": "hank",
+            "display_name": "Hank Rivera",
+            "active": true
+          },
           "notified_at": null,
           "added_at": "<timestamp>"
         }
@@ -386,7 +555,12 @@
             "github_login": "<string>"
           },
           "note": null,
-          "added_by": "01920000-0000-7000-8000-00000000c001",
+          "added_by": {
+            "id": "01920000-0000-7000-8000-00000000c001",
+            "username": "hank",
+            "display_name": "Hank Rivera",
+            "active": true
+          },
           "notified_at": null,
           "added_at": "<timestamp>"
         }
@@ -501,6 +675,7 @@
         "method": "POST",
         "path": "/shortlists",
         "body": {
+          "role_id": "{{acme.role}}",
           "name": "Round D",
           "tentative_result_date": "2026-10-01"
         }
@@ -509,6 +684,7 @@
         "status": 201,
         "body": {
           "id": "<uuid>",
+          "role_id": "<uuid>",
           "name": "Round D",
           "status": "draft",
           "tentative_result_date": "2026-10-01",

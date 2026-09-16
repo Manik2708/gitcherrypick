@@ -358,6 +358,9 @@
             {
               "position": 1,
               "pr_number": 101,
+              "repo_owner": "acme",
+              "repo_name": "bigrepo",
+              "url": "https://github.com/acme/bigrepo/pull/101",
               "scores": [
                 {
                   "skill": "go",
@@ -390,6 +393,9 @@
             {
               "position": 2,
               "pr_number": 102,
+              "repo_owner": "acme",
+              "repo_name": "bigrepo",
+              "url": "https://github.com/acme/bigrepo/pull/102",
               "scores": [
                 {
                   "skill": "go",
@@ -422,6 +428,9 @@
             {
               "position": 3,
               "pr_number": 55,
+              "repo_owner": "acme",
+              "repo_name": "platform",
+              "url": "https://github.com/acme/platform/pull/55",
               "scores": [
                 {
                   "skill": "go",
@@ -454,6 +463,9 @@
             {
               "position": 4,
               "pr_number": 56,
+              "repo_owner": "acme",
+              "repo_name": "platform",
+              "url": "https://github.com/acme/platform/pull/56",
               "scores": [
                 {
                   "skill": "go",
@@ -486,6 +498,9 @@
             {
               "position": 5,
               "pr_number": 900,
+              "repo_owner": "acme",
+              "repo_name": "bigrepo",
+              "url": "https://github.com/acme/bigrepo/pull/900",
               "rejected": true,
               "rejection_reason": "typo_or_wording",
               "message": "This PR did not count toward any skill. A typo or wording correction does not evidence engineering work."

@@ -32,8 +32,18 @@ type seedRepository struct {
 
 // seedPullRequest is one pull request as the seed file states it.
 type seedPullRequest struct {
-	Merged         bool    `json:"merged"`
-	MergedAt       *string `json:"merged_at"`
+	Merged   bool    `json:"merged"`
+	MergedAt *string `json:"merged_at"`
+
+	// When the pull request was OPENED. Open-source experience is dated from
+	// this and not from the merge (ADR-0019 §7).
+	//
+	// Optional, and absent means "the same as merged_at". Most fixtures do not
+	// care when a PR was opened, and forcing every one of them to state a
+	// second date would be noise in thirty files to serve two. A fixture that
+	// asserts on experience states it, and the difference is then deliberate
+	// and visible.
+	CreatedAt      *string `json:"created_at"`
 	AuthorID       int64   `json:"author_github_user_id"`
 	Title          string  `json:"title"`
 	Additions      int     `json:"additions"`
@@ -88,6 +98,7 @@ type githubPR struct {
 	Title          string     `json:"title"`
 	Merged         bool       `json:"merged"`
 	MergedAt       *string    `json:"merged_at"`
+	CreatedAt      *string    `json:"created_at"`
 	Additions      int        `json:"additions"`
 	Deletions      int        `json:"deletions"`
 	ChangedFiles   int        `json:"changed_files"`
@@ -154,8 +165,14 @@ func LoadRepositories(sets []string) (json.RawMessage, error) {
 			return nil, fmt.Errorf("pull request key %q is not owner/name#number", key)
 		}
 
+		created := pr.CreatedAt
+		if created == nil {
+			created = pr.MergedAt
+		}
+
 		prs[key] = githubPR{
 			Title: pr.Title, Merged: pr.Merged, MergedAt: pr.MergedAt,
+			CreatedAt: created,
 			Additions: pr.Additions, Deletions: pr.Deletions,
 			ChangedFiles: pr.ChangedFiles, ReviewComments: pr.ReviewComments,
 			User: userRef{ID: pr.AuthorID},

@@ -66,7 +66,10 @@ func TestEveryAuthenticatedRouteRefusesAnonymousCallers(t *testing.T) {
 		{http.MethodDelete, "/shortlists/" + shortlistID + "/entries/" + aliceID},
 		{http.MethodGet, "/shortlists/" + shortlistID + "/contact-requests"},
 
-		{http.MethodPost, "/orgs/" + orgID + "/invitations"},
+		{http.MethodGet, "/orgs/" + orgID + "/roster"},
+		{http.MethodPost, "/orgs/" + orgID + "/roster"},
+		{http.MethodDelete, "/orgs/" + orgID + "/roster/" + requestID},
+		{http.MethodGet, "/orgs/" + orgID + "/seats"},
 
 		{http.MethodGet, "/admin/verifications"},
 		{http.MethodPost, "/admin/verifications/" + requestID + "/decide"},
