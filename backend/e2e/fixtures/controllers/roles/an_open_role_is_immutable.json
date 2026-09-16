@@ -1,0 +1,506 @@
+{
+  "name": "a role is drafted, signed, and then never edited again",
+  "description": "ADR-0019 decisions 11, 13 and 14, and the reason they belong together.\n\nA role is the first thing a hirer can create that makes a FINANCIAL STATEMENT on the company's behalf: a salary, a base, a number of interview rounds, sent in writing to everybody contacted and held to afterwards. A mistyped yearly_ctc is not a mistake somebody notices internally, it is a promise already delivered.\n\nSo authority is the organisation's choice, not the platform's, and it is held per action. Under the default draft_and_approve, any seat may WRITE a role and only an owner may OPEN it. dave_hiring is the member who proves the first half and is refused the second.\n\nOnce open, the role is IMMUTABLE. The salary somebody was shown is the salary they agreed to talk about, and a request raised last week keeps pointing at the row it was raised against. An edit is therefore refused outright and a revision writes a NEW role that supersedes the old one, closing it in the same act — which is why the revise response is a 201 with a different id rather than a 200 that would suggest the original had changed.\n\nClosing asks WHY. 'other' with nothing after it is not a reason, and 'superseded' is written by a revision and offered to nobody — a hirer claiming a role was replaced when nothing replaced it would leave a closed role that lies about why. The last three steps are the sharpest: hired_via_platform must name somebody, and the address must be one an accepted contact request already released to THIS organisation. A real contributor who never accepted and an address with no account here are refused identically, because a refusal that told them apart would answer the question the rule exists to withhold.",
+  "seed": ["principals"],
+  "steps": [
+    {
+      "_step": "A MEMBER drafts. Under draft_and_approve the work stays with whoever is doing it — the source diagram has the person shortlisting create a role mid-task, which is a recruiter, not an owner doing an administrative round.",
+      "as": "dave_hiring",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles",
+        "body": {
+          "title": "Staff backend engineer",
+          "description": "Go and Kubernetes, on the platform team.",
+          "engagement": "full_time",
+          "location": "remote",
+          "currency": "GBP",
+          "yearly_ctc": 12000000,
+          "yearly_base": 9500000,
+          "eligible_countries": ["GB", "de"],
+          "min_office_yoe": 5,
+          "requires_online_test": false,
+          "max_interview_rounds": 3,
+          "avg_days_to_offer": 14,
+          "questions": [
+            {
+              "question": "Do you need visa sponsorship?",
+              "expected": false
+            }
+          ]
+        }
+      },
+      "capture": {
+        "role": "$.id"
+      },
+      "expect": {
+        "status": 201,
+        "_note": "DRAFT, not open. A role is never born open: opening is a separate act, which is what makes the authority setting enforceable at all. Countries are upper-cased — 'de' and 'DE' cannot be two countries, because a contributor's current_country is matched against this.",
+        "body": {
+          "id": "<uuid>",
+          "organization_id": "01920000-0000-7000-8000-00000000b001",
+          "status": "draft",
+          "title": "Staff backend engineer",
+          "description": "Go and Kubernetes, on the platform team.",
+          "engagement": "full_time",
+          "location": "remote",
+          "address_id": null,
+          "currency": "GBP",
+          "yearly_ctc": 12000000,
+          "yearly_base": 9500000,
+          "hourly_rate": null,
+          "expected_hours": null,
+          "eligible_countries": ["DE", "GB"],
+          "min_office_yoe": 5,
+          "min_oss_yoe": null,
+          "requires_online_test": false,
+          "max_interview_rounds": 3,
+          "avg_days_to_offer": 14,
+          "questions": [
+            {
+              "id": "<uuid>",
+              "question": "Do you need visa sponsorship?",
+              "expected": false
+            }
+          ],
+          "opened_at": null,
+          "close_requested_at": null,
+          "closed_at": null,
+          "close_reason": null,
+          "hires": [],
+          "supersedes": null,
+          "created_at": "<timestamp>",
+          "updated_at": "<timestamp>"
+        }
+      }
+    },
+    {
+      "_step": "The member cannot SIGN it. This is the whole of draft_and_approve: the work is theirs, the commitment is the owner's.",
+      "as": "dave_hiring",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles/{{role}}/open"
+      },
+      "expect": {
+        "status": 403,
+        "body": {
+          "error": "owner_approval_required"
+        }
+      }
+    },
+    {
+      "_step": "A base above the total package it is part of is refused. Two numbers that cannot both be true would be shown to everybody contacted.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles",
+        "body": {
+          "title": "Impossible",
+          "engagement": "full_time",
+          "location": "remote",
+          "currency": "GBP",
+          "yearly_ctc": 5000000,
+          "yearly_base": 9000000
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "invalid_role"
+        }
+      }
+    },
+    {
+      "_step": "An amount with no currency is refused: a number without one cannot be compared against anybody's expectation.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles",
+        "body": {
+          "title": "Unpriceable",
+          "engagement": "full_time",
+          "location": "remote",
+          "yearly_ctc": 9000000
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "invalid_role"
+        }
+      }
+    },
+    {
+      "_step": "A hirer at ANOTHER organisation is refused before the role is even looked up — they are not a member, which is a fact about them rather than about Acme's roles.",
+      "as": "sam_studio",
+      "request": {
+        "method": "GET",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles/{{role}}"
+      },
+      "expect": {
+        "status": 403,
+        "body": {
+          "error": "not_an_org_member"
+        }
+      }
+    },
+    {
+      "_step": "The OWNER signs it. opened_at appears, and from here the role is a commitment.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles/{{role}}/open"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "id": "<uuid>",
+          "organization_id": "01920000-0000-7000-8000-00000000b001",
+          "status": "open",
+          "title": "Staff backend engineer",
+          "description": "Go and Kubernetes, on the platform team.",
+          "engagement": "full_time",
+          "location": "remote",
+          "address_id": null,
+          "currency": "GBP",
+          "yearly_ctc": 12000000,
+          "yearly_base": 9500000,
+          "hourly_rate": null,
+          "expected_hours": null,
+          "eligible_countries": ["DE", "GB"],
+          "min_office_yoe": 5,
+          "min_oss_yoe": null,
+          "requires_online_test": false,
+          "max_interview_rounds": 3,
+          "avg_days_to_offer": 14,
+          "questions": [
+            {
+              "id": "<uuid>",
+              "question": "Do you need visa sponsorship?",
+              "expected": false
+            }
+          ],
+          "opened_at": "<timestamp>",
+          "close_requested_at": null,
+          "closed_at": null,
+          "close_reason": null,
+          "hires": [],
+          "supersedes": null,
+          "created_at": "<timestamp>",
+          "updated_at": "<timestamp>"
+        }
+      }
+    },
+    {
+      "_step": "AND NOW IT IS FIXED. Even the owner cannot edit it. Guarding an UPDATE would have held only for as long as everybody remembered the guard; a row nobody updates holds permanently.",
+      "as": "hank",
+      "request": {
+        "method": "PATCH",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles/{{role}}",
+        "body": {
+          "title": "Staff backend engineer",
+          "engagement": "full_time",
+          "location": "remote",
+          "currency": "GBP",
+          "yearly_ctc": 7000000
+        }
+      },
+      "expect": {
+        "status": 409,
+        "body": {
+          "error": "role_is_open"
+        }
+      }
+    },
+    {
+      "_step": "A change is a NEW role. 201 with a different id, pointing at what it replaced — answering 200 would suggest the role in the path had changed, which is the exact belief this endpoint exists to prevent.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles/{{role}}/revise",
+        "body": {
+          "title": "Staff backend engineer",
+          "engagement": "full_time",
+          "location": "remote",
+          "currency": "GBP",
+          "yearly_ctc": 13000000,
+          "yearly_base": 10000000
+        }
+      },
+      "capture": {
+        "revision": "$.id"
+      },
+      "expect": {
+        "status": 201,
+        "_note": "A DRAFT again: opening it is the commitment, and a revision that opened itself would route around the owner the setting exists to involve.",
+        "body": {
+          "id": "<uuid>",
+          "organization_id": "01920000-0000-7000-8000-00000000b001",
+          "status": "draft",
+          "title": "Staff backend engineer",
+          "description": "",
+          "engagement": "full_time",
+          "location": "remote",
+          "address_id": null,
+          "currency": "GBP",
+          "yearly_ctc": 13000000,
+          "yearly_base": 10000000,
+          "hourly_rate": null,
+          "expected_hours": null,
+          "eligible_countries": [],
+          "min_office_yoe": null,
+          "min_oss_yoe": null,
+          "requires_online_test": null,
+          "max_interview_rounds": null,
+          "avg_days_to_offer": null,
+          "questions": [],
+          "opened_at": null,
+          "close_requested_at": null,
+          "closed_at": null,
+          "close_reason": null,
+          "hires": [],
+          "supersedes": "<uuid>",
+          "created_at": "<timestamp>",
+          "updated_at": "<timestamp>"
+        }
+      }
+    },
+    {
+      "_step": "The original is closed as SUPERSEDED, in the same act. A successor without the close would leave two open roles for one job.",
+      "as": "hank",
+      "request": {
+        "method": "GET",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles/{{role}}"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "id": "<uuid>",
+          "organization_id": "01920000-0000-7000-8000-00000000b001",
+          "status": "closed",
+          "title": "Staff backend engineer",
+          "description": "Go and Kubernetes, on the platform team.",
+          "engagement": "full_time",
+          "location": "remote",
+          "address_id": null,
+          "currency": "GBP",
+          "yearly_ctc": 12000000,
+          "yearly_base": 9500000,
+          "hourly_rate": null,
+          "expected_hours": null,
+          "eligible_countries": ["DE", "GB"],
+          "min_office_yoe": 5,
+          "min_oss_yoe": null,
+          "requires_online_test": false,
+          "max_interview_rounds": 3,
+          "avg_days_to_offer": 14,
+          "questions": [
+            {
+              "id": "<uuid>",
+              "question": "Do you need visa sponsorship?",
+              "expected": false
+            }
+          ],
+          "opened_at": "<timestamp>",
+          "close_requested_at": null,
+          "closed_at": "<timestamp>",
+          "close_reason": "superseded",
+          "hires": [],
+          "supersedes": null,
+          "created_at": "<timestamp>",
+          "updated_at": "<timestamp>"
+        }
+      }
+    },
+    {
+      "_step": "A second revision of the same role conflicts. Two successors would leave two rows each claiming to be current, and nothing able to say which a contributor should be shown.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles/{{role}}/revise",
+        "body": {
+          "title": "Third go",
+          "engagement": "full_time",
+          "location": "remote"
+        }
+      },
+      "expect": {
+        "status": 409,
+        "body": {
+          "error": "role_is_open"
+        }
+      }
+    },
+    {
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles/{{revision}}/open"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "id": "<uuid>",
+          "organization_id": "01920000-0000-7000-8000-00000000b001",
+          "status": "open",
+          "title": "Staff backend engineer",
+          "description": "",
+          "engagement": "full_time",
+          "location": "remote",
+          "address_id": null,
+          "currency": "GBP",
+          "yearly_ctc": 13000000,
+          "yearly_base": 10000000,
+          "hourly_rate": null,
+          "expected_hours": null,
+          "eligible_countries": [],
+          "min_office_yoe": null,
+          "min_oss_yoe": null,
+          "requires_online_test": null,
+          "max_interview_rounds": null,
+          "avg_days_to_offer": null,
+          "questions": [],
+          "opened_at": "<timestamp>",
+          "close_requested_at": null,
+          "closed_at": null,
+          "close_reason": null,
+          "hires": [],
+          "supersedes": "<uuid>",
+          "created_at": "<timestamp>",
+          "updated_at": "<timestamp>"
+        }
+      }
+    },
+    {
+      "_step": "Closing asks WHY, and 'other' with nothing after it is not a reason.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles/{{revision}}/close",
+        "body": {
+          "reason": "other"
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "invalid_role"
+        }
+      }
+    },
+    {
+      "_step": "'superseded' is written by a revision and offered to nobody.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles/{{revision}}/close",
+        "body": {
+          "reason": "superseded"
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "invalid_role"
+        }
+      }
+    },
+    {
+      "_step": "Closing as hired-through-the-platform without naming anybody is refused. This is the one field that closes the loop between a ranked contributor and a job, and an anonymous claim of it measures nothing.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles/{{revision}}/close",
+        "body": {
+          "reason": "hired_via_platform"
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "invalid_role"
+        }
+      }
+    },
+    {
+      "_step": "AND AN ADDRESS THE ORGANISATION WAS NEVER GIVEN IS REFUSED. alice@example.com is a real contributor who never accepted a request from Acme.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles/{{revision}}/close",
+        "body": {
+          "reason": "hired_via_platform",
+          "hired_emails": ["alice@example.com"]
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "hire_email_not_released"
+        }
+      }
+    },
+    {
+      "_step": "An address with NO account here is refused identically. The two must be indistinguishable, or the refusal itself answers the question the rule exists to withhold.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles/{{revision}}/close",
+        "body": {
+          "reason": "hired_via_platform",
+          "hired_emails": ["nobody-at-all@example.com"]
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "hire_email_not_released"
+        }
+      }
+    },
+    {
+      "_step": "Closed as hired elsewhere — the honest alternative the refusal offers. Not a consolation answer: a company that keeps filling roles from elsewhere is telling us something specific, and tells us honestly only because that answer is as easy to give as the flattering one.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles/{{revision}}/close",
+        "body": {
+          "reason": "hired_elsewhere"
+        }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "id": "<uuid>",
+          "organization_id": "01920000-0000-7000-8000-00000000b001",
+          "status": "closed",
+          "title": "Staff backend engineer",
+          "description": "",
+          "engagement": "full_time",
+          "location": "remote",
+          "address_id": null,
+          "currency": "GBP",
+          "yearly_ctc": 13000000,
+          "yearly_base": 10000000,
+          "hourly_rate": null,
+          "expected_hours": null,
+          "eligible_countries": [],
+          "min_office_yoe": null,
+          "min_oss_yoe": null,
+          "requires_online_test": null,
+          "max_interview_rounds": null,
+          "avg_days_to_offer": null,
+          "questions": [],
+          "opened_at": "<timestamp>",
+          "close_requested_at": null,
+          "closed_at": "<timestamp>",
+          "close_reason": "hired_elsewhere",
+          "hires": [],
+          "supersedes": "<uuid>",
+          "created_at": "<timestamp>",
+          "updated_at": "<timestamp>"
+        }
+      }
+    }
+  ]
+}

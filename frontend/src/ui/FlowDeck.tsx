@@ -136,7 +136,6 @@ export function FlowDeck() {
             </p>
             <HireFlow active={slide === 1} onCycleEnd={() => handOver(0)} />
           </div>
-
         </div>
       </div>
 

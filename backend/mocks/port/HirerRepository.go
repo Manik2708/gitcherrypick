@@ -6,6 +6,7 @@ package mocks
 
 import (
 	"context"
+	"time"
 
 	"github.com/Manik2708/gitcherrypick/backend/internal/domain"
 	"github.com/Manik2708/gitcherrypick/backend/internal/port"
@@ -243,6 +244,279 @@ func (_c *HirerRepository_ByID_Call) RunAndReturn(run func(ctx context.Context, 
 	return _c
 }
 
+// ByUsername provides a mock function for the type HirerRepository
+func (_mock *HirerRepository) ByUsername(ctx context.Context, username string) (*domain.Hirer, error) {
+	ret := _mock.Called(ctx, username)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ByUsername")
+	}
+
+	var r0 *domain.Hirer
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (*domain.Hirer, error)); ok {
+		return returnFunc(ctx, username)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *domain.Hirer); ok {
+		r0 = returnFunc(ctx, username)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*domain.Hirer)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = returnFunc(ctx, username)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// HirerRepository_ByUsername_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ByUsername'
+type HirerRepository_ByUsername_Call struct {
+	*mock.Call
+}
+
+// ByUsername is a helper method to define mock.On call
+//   - ctx context.Context
+//   - username string
+func (_e *HirerRepository_Expecter) ByUsername(ctx interface{}, username interface{}) *HirerRepository_ByUsername_Call {
+	return &HirerRepository_ByUsername_Call{Call: _e.mock.On("ByUsername", ctx, username)}
+}
+
+func (_c *HirerRepository_ByUsername_Call) Run(run func(ctx context.Context, username string)) *HirerRepository_ByUsername_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *HirerRepository_ByUsername_Call) Return(hirer *domain.Hirer, err error) *HirerRepository_ByUsername_Call {
+	_c.Call.Return(hirer, err)
+	return _c
+}
+
+func (_c *HirerRepository_ByUsername_Call) RunAndReturn(run func(ctx context.Context, username string) (*domain.Hirer, error)) *HirerRepository_ByUsername_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// Disable provides a mock function for the type HirerRepository
+func (_mock *HirerRepository) Disable(ctx context.Context, tx port.Tx, id domain.HirerID, by domain.HirerID, now time.Time) error {
+	ret := _mock.Called(ctx, tx, id, by, now)
+
+	if len(ret) == 0 {
+		panic("no return value specified for Disable")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, port.Tx, domain.HirerID, domain.HirerID, time.Time) error); ok {
+		r0 = returnFunc(ctx, tx, id, by, now)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// HirerRepository_Disable_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Disable'
+type HirerRepository_Disable_Call struct {
+	*mock.Call
+}
+
+// Disable is a helper method to define mock.On call
+//   - ctx context.Context
+//   - tx port.Tx
+//   - id domain.HirerID
+//   - by domain.HirerID
+//   - now time.Time
+func (_e *HirerRepository_Expecter) Disable(ctx interface{}, tx interface{}, id interface{}, by interface{}, now interface{}) *HirerRepository_Disable_Call {
+	return &HirerRepository_Disable_Call{Call: _e.mock.On("Disable", ctx, tx, id, by, now)}
+}
+
+func (_c *HirerRepository_Disable_Call) Run(run func(ctx context.Context, tx port.Tx, id domain.HirerID, by domain.HirerID, now time.Time)) *HirerRepository_Disable_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 port.Tx
+		if args[1] != nil {
+			arg1 = args[1].(port.Tx)
+		}
+		var arg2 domain.HirerID
+		if args[2] != nil {
+			arg2 = args[2].(domain.HirerID)
+		}
+		var arg3 domain.HirerID
+		if args[3] != nil {
+			arg3 = args[3].(domain.HirerID)
+		}
+		var arg4 time.Time
+		if args[4] != nil {
+			arg4 = args[4].(time.Time)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+			arg4,
+		)
+	})
+	return _c
+}
+
+func (_c *HirerRepository_Disable_Call) Return(err error) *HirerRepository_Disable_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *HirerRepository_Disable_Call) RunAndReturn(run func(ctx context.Context, tx port.Tx, id domain.HirerID, by domain.HirerID, now time.Time) error) *HirerRepository_Disable_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ListSeats provides a mock function for the type HirerRepository
+func (_mock *HirerRepository) ListSeats(ctx context.Context, orgID domain.OrganizationID) ([]domain.Hirer, error) {
+	ret := _mock.Called(ctx, orgID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListSeats")
+	}
+
+	var r0 []domain.Hirer
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.OrganizationID) ([]domain.Hirer, error)); ok {
+		return returnFunc(ctx, orgID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.OrganizationID) []domain.Hirer); ok {
+		r0 = returnFunc(ctx, orgID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]domain.Hirer)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, domain.OrganizationID) error); ok {
+		r1 = returnFunc(ctx, orgID)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// HirerRepository_ListSeats_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ListSeats'
+type HirerRepository_ListSeats_Call struct {
+	*mock.Call
+}
+
+// ListSeats is a helper method to define mock.On call
+//   - ctx context.Context
+//   - orgID domain.OrganizationID
+func (_e *HirerRepository_Expecter) ListSeats(ctx interface{}, orgID interface{}) *HirerRepository_ListSeats_Call {
+	return &HirerRepository_ListSeats_Call{Call: _e.mock.On("ListSeats", ctx, orgID)}
+}
+
+func (_c *HirerRepository_ListSeats_Call) Run(run func(ctx context.Context, orgID domain.OrganizationID)) *HirerRepository_ListSeats_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 domain.OrganizationID
+		if args[1] != nil {
+			arg1 = args[1].(domain.OrganizationID)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *HirerRepository_ListSeats_Call) Return(hirers []domain.Hirer, err error) *HirerRepository_ListSeats_Call {
+	_c.Call.Return(hirers, err)
+	return _c
+}
+
+func (_c *HirerRepository_ListSeats_Call) RunAndReturn(run func(ctx context.Context, orgID domain.OrganizationID) ([]domain.Hirer, error)) *HirerRepository_ListSeats_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ListVerifiedOrganizations provides a mock function for the type HirerRepository
+func (_mock *HirerRepository) ListVerifiedOrganizations(ctx context.Context) ([]domain.Organization, error) {
+	ret := _mock.Called(ctx)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListVerifiedOrganizations")
+	}
+
+	var r0 []domain.Organization
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context) ([]domain.Organization, error)); ok {
+		return returnFunc(ctx)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context) []domain.Organization); ok {
+		r0 = returnFunc(ctx)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]domain.Organization)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context) error); ok {
+		r1 = returnFunc(ctx)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// HirerRepository_ListVerifiedOrganizations_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ListVerifiedOrganizations'
+type HirerRepository_ListVerifiedOrganizations_Call struct {
+	*mock.Call
+}
+
+// ListVerifiedOrganizations is a helper method to define mock.On call
+//   - ctx context.Context
+func (_e *HirerRepository_Expecter) ListVerifiedOrganizations(ctx interface{}) *HirerRepository_ListVerifiedOrganizations_Call {
+	return &HirerRepository_ListVerifiedOrganizations_Call{Call: _e.mock.On("ListVerifiedOrganizations", ctx)}
+}
+
+func (_c *HirerRepository_ListVerifiedOrganizations_Call) Run(run func(ctx context.Context)) *HirerRepository_ListVerifiedOrganizations_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *HirerRepository_ListVerifiedOrganizations_Call) Return(organizations []domain.Organization, err error) *HirerRepository_ListVerifiedOrganizations_Call {
+	_c.Call.Return(organizations, err)
+	return _c
+}
+
+func (_c *HirerRepository_ListVerifiedOrganizations_Call) RunAndReturn(run func(ctx context.Context) ([]domain.Organization, error)) *HirerRepository_ListVerifiedOrganizations_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Members provides a mock function for the type HirerRepository
 func (_mock *HirerRepository) Members(ctx context.Context, id domain.OrganizationID) ([]domain.Hirer, error) {
 	ret := _mock.Called(ctx, id)
@@ -375,6 +649,74 @@ func (_c *HirerRepository_Organization_Call) Return(organization *domain.Organiz
 }
 
 func (_c *HirerRepository_Organization_Call) RunAndReturn(run func(ctx context.Context, id domain.OrganizationID) (*domain.Organization, error)) *HirerRepository_Organization_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// OrganizationBySlug provides a mock function for the type HirerRepository
+func (_mock *HirerRepository) OrganizationBySlug(ctx context.Context, slug string) (*domain.Organization, error) {
+	ret := _mock.Called(ctx, slug)
+
+	if len(ret) == 0 {
+		panic("no return value specified for OrganizationBySlug")
+	}
+
+	var r0 *domain.Organization
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (*domain.Organization, error)); ok {
+		return returnFunc(ctx, slug)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *domain.Organization); ok {
+		r0 = returnFunc(ctx, slug)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*domain.Organization)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = returnFunc(ctx, slug)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// HirerRepository_OrganizationBySlug_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'OrganizationBySlug'
+type HirerRepository_OrganizationBySlug_Call struct {
+	*mock.Call
+}
+
+// OrganizationBySlug is a helper method to define mock.On call
+//   - ctx context.Context
+//   - slug string
+func (_e *HirerRepository_Expecter) OrganizationBySlug(ctx interface{}, slug interface{}) *HirerRepository_OrganizationBySlug_Call {
+	return &HirerRepository_OrganizationBySlug_Call{Call: _e.mock.On("OrganizationBySlug", ctx, slug)}
+}
+
+func (_c *HirerRepository_OrganizationBySlug_Call) Run(run func(ctx context.Context, slug string)) *HirerRepository_OrganizationBySlug_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *HirerRepository_OrganizationBySlug_Call) Return(organization *domain.Organization, err error) *HirerRepository_OrganizationBySlug_Call {
+	_c.Call.Return(organization, err)
+	return _c
+}
+
+func (_c *HirerRepository_OrganizationBySlug_Call) RunAndReturn(run func(ctx context.Context, slug string) (*domain.Organization, error)) *HirerRepository_OrganizationBySlug_Call {
 	_c.Call.Return(run)
 	return _c
 }

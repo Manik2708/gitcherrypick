@@ -101,6 +101,23 @@ const (
 	CodeTokenReuseDetected  = "token_reuse_detected"
 	CodeSessionRevoked      = "session_revoked"
 	CodeOAuthExchangeFailed = "oauth_exchange_failed"
+
+	// CodeUsernameTaken names nothing about who holds it or where. A message
+	// that said "taken at Acme" would turn the roster endpoint into an oracle
+	// over other organizations' hiring (ADR-0016 §0).
+	CodeUsernameTaken = "username_taken"
+
+	// CodeVerificationRequired means the address has not been proven yet.
+	CodeVerificationRequired = "email_verification_required"
+
+	// CodeVerificationSpent distinguishes a token already used from one that
+	// never existed. The holder of a spent token is entitled to the first
+	// answer; a bare refusal would send them to support.
+	CodeVerificationSpent = "verification_already_used"
+
+	// CodeVerificationExpired is separated from spent for the same reason:
+	// the remedy is a resend, not a new roster entry.
+	CodeVerificationExpired = "verification_expired"
 	CodeEmailNotVerified    = "email_not_verified"
 	CodeUnauthenticated     = "unauthenticated"
 	CodeAuthRequired        = "authentication_required"
@@ -110,10 +127,20 @@ const (
 	CodeHirerRequired       = "hirer_required"
 	CodeAdminRequired       = "admin_required"
 	CodeHiringCapability    = "hiring_capability_required"
-	CodeVerificationNeeded  = "verification_required"
-	CodeNotAnOrgMember      = "not_an_org_member"
-	CodeCannotShortlistSelf = "cannot_shortlist_self"
-	CodeForbidden           = "forbidden"
+
+	// CodeOrganizationRequired marks the gap ADR-0017 left between an
+	// INDEPENDENT hirer and the organisation-scoped hiring model: shortlists,
+	// saved searches and contact requests all have organization_id NOT NULL,
+	// and such an account has none.
+	//
+	// Distinct from hiring_capability_required so the two are tellable apart:
+	// that one means "you are not verified yet", which waiting fixes, and this
+	// one means "this account cannot do this at all", which waiting does not.
+	CodeOrganizationRequired = "organization_required"
+	CodeVerificationNeeded   = "verification_required"
+	CodeNotAnOrgMember       = "not_an_org_member"
+	CodeCannotShortlistSelf  = "cannot_shortlist_self"
+	CodeForbidden            = "forbidden"
 
 	// Absence (404).
 	CodeNotFound            = "not_found"
@@ -122,8 +149,12 @@ const (
 	CodeShortlistNotFound   = "shortlist_not_found"
 	CodeSavedSearchNotFound = "saved_search_not_found"
 	CodeScorecardNotFound   = "scorecard_not_found"
-	CodeInvitationNotFound  = "invitation_not_found"
 	CodeNoHirerAccount      = "no_hirer_account"
+
+	// CodeRosterEntryNotFound is raised on an OWNER's path — removing an entry
+	// that is not there. It is never raised on redemption, which stays silent
+	// about whether an address is rostered (ADR-0016 §3).
+	CodeRosterEntryNotFound = "roster_entry_not_found"
 
 	// Conflict (409).
 	CodeClaimLocked              = "claim_locked"
@@ -142,13 +173,61 @@ const (
 	CodeSuggestionAlreadyDecided = "suggestion_already_decided"
 	CodeSweepInProgress          = "sweep_in_progress"
 
-	// Gone (410).
-	CodeInvitationExpired  = "invitation_expired"
-	CodeInvitationAccepted = "invitation_already_accepted"
+	// Gone (410). A proof that WAS valid and is no longer.
+	//
+	// Distinct from 401: the holder of a spent or expired link is entitled to
+	// know which happened, because the remedies differ — sign in, or ask for
+	// another link (ADR-0016 §4).
 
 	// Unprocessable (422).
-	CodeInvalidRegistration    = "invalid_registration"
-	CodeInvalidClaim           = "invalid_claim"
+	CodeInvalidRegistration = "invalid_registration"
+	CodeInvalidClaim        = "invalid_claim"
+
+	// CodeInvalidProfile is a contributor's own profile, not a skill claim.
+	// Reusing invalid_claim here would name the wrong thing: "claim" is a
+	// specific noun on this platform, and a client branching on it would think
+	// their evidence was rejected.
+	CodeInvalidProfile = "invalid_profile"
+
+	// CodeFirstPRIsFixed is a second, different first pull request. When
+	// somebody started is a fact about the past (ADR-0018).
+	CodeFirstPRIsFixed = "first_pr_is_fixed"
+
+	// CodePRNotYours is a pull request GitHub says somebody else wrote.
+	//
+	// Checked BEFORE the URL is stored, because first_pr_url is write-once: a
+	// stranger's 2011 pull request accepted here would make "years
+	// contributing" permanently wrong and unfixable (ADR-0019 §7).
+	CodePRNotYours = "pull_request_not_yours"
+
+	// CodePRNotMerged is a pull request that exists but was never merged. An
+	// unmerged contribution is not a contribution the platform counts.
+	CodePRNotMerged = "pull_request_not_merged"
+
+	// CodePRUnreachable is a pull request GitHub says nothing about — deleted,
+	// private, or never there.
+	CodePRUnreachable = "pull_request_unreachable"
+
+	// CodeInvalidRole is a role whose fields do not describe an opening.
+	CodeInvalidRole = "invalid_role"
+
+	// CodeRoleNotFound is an opening that is not this organisation's.
+	CodeRoleNotFound = "role_not_found"
+
+	// CodeRoleImmutable is an attempt to edit a role that has been opened.
+	// A change writes a successor instead (ADR-0019 §13).
+	CodeRoleImmutable = "role_is_open"
+
+	// CodeOwnerApprovalRequired is a seat that may stage a change but not
+	// commit it, under the organisation's authority setting (ADR-0019 §11).
+	CodeOwnerApprovalRequired = "owner_approval_required"
+
+	// CodeHireNotReleased is an email the organisation was never given.
+	//
+	// A company can only report hiring somebody who agreed to talk to it. The
+	// rule also stops this being an oracle for testing whether an address has
+	// an account here (ADR-0019 §15).
+	CodeHireNotReleased        = "hire_email_not_released"
 	CodeInvalidEvidence        = "invalid_evidence"
 	CodeInvalidShortlist       = "invalid_shortlist"
 	CodeInvalidQuery           = "invalid_query"

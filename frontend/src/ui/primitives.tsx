@@ -8,6 +8,7 @@
 // the authority on how these look; this file only decides what exists.
 
 import type { ReactNode } from "react";
+import type { HirerRef } from "../contract";
 
 /* --- icons ---------------------------------------------------------------- */
 
@@ -96,6 +97,13 @@ const PATHS: Record<string, ReactNode> = {
       <circle cx="7.5" cy="17" r="3.2" />
       <circle cx="16.5" cy="17" r="3.2" />
       <path d="M12 13.8V9.2M12 9.2c0-2.6 1.7-4.6 4.3-5.2M12 9.2C12 6.6 10.3 4.6 7.7 4" />
+    </>
+  ),
+  people: (
+    <>
+      <circle cx="9" cy="8" r="3.4" />
+      <path d="M3.5 19.5a5.5 5.5 0 0 1 11 0" />
+      <path d="M16 5.3a3.4 3.4 0 0 1 0 5.4M17.5 14.2a5.5 5.5 0 0 1 3 5.3" />
     </>
   ),
 };
@@ -191,15 +199,7 @@ export function Pill({ tone, children }: { tone?: PillTone; children: ReactNode 
 }
 
 /** A named fact: the label is its own line, never an inline sibling span. */
-export function Stat({
-  n,
-  label,
-  muted,
-}: {
-  n: ReactNode;
-  label: ReactNode;
-  muted?: boolean;
-}) {
+export function Stat({ n, label, muted }: { n: ReactNode; label: ReactNode; muted?: boolean }) {
   return (
     <span className="stat">
       <span className={muted ? "stat__n stat__n--muted" : "stat__n"}>{n}</span>
@@ -356,6 +356,54 @@ export function Failure({ message, onRetry }: { message: string; onRetry?: () =>
   );
 }
 
+/**
+ * Who authored something, including someone who has since left.
+ *
+ * A revoked seat is named and marked departed rather than dropped: they did the
+ * work, and a round from two years ago whose author simply vanished would be a
+ * falsified record rather than a tidy one (ADR-0016 §9).
+ */
+export function By({ who, verb = "By" }: { who?: HirerRef | null; verb?: string }) {
+  if (!who) return null;
+  return (
+    <span>
+      {verb} {who.display_name}
+      <span className="muted"> ({who.username})</span>
+      {who.active ? null : <span className="muted"> — no longer here</span>}
+    </span>
+  );
+}
+
+/**
+ * A standing prompt for something a person has not done yet.
+ *
+ * Distinct from Banner, which states a fact about what is on screen. This one
+ * is about something ELSEWHERE that needs attention, and it carries the way to
+ * get there — a prompt with no route is a nag.
+ */
+export function Prompt({
+  title,
+  children,
+  action,
+}: {
+  title: ReactNode;
+  children: ReactNode;
+  action: ReactNode;
+}) {
+  return (
+    <div className="banner banner--info">
+      <Icon name="info" />
+      <div className="banner__body">
+        <p>
+          <b>{title}</b>
+        </p>
+        <p>{children}</p>
+        <p>{action}</p>
+      </div>
+    </div>
+  );
+}
+
 /** Two letters, so a row of people is scannable without a photograph. */
 export function Avatar({
   name,
@@ -368,7 +416,9 @@ export function Avatar({
   tint?: number;
   square?: boolean;
 }) {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
+  // Defensive: a principal reaching here with no name is a bug elsewhere, but
+  // it is a bug that should show as a blank avatar rather than a white screen.
+  const parts = (name ?? "").trim().split(/\s+/).filter(Boolean);
   const first = parts[0] ?? "";
   const last = parts.length > 1 ? (parts[parts.length - 1] ?? "") : "";
   const initials = (
@@ -380,7 +430,11 @@ export function Avatar({
     .join(" ");
 
   return (
-    <span className={classes} data-tint={tint == null ? undefined : String(tint)} aria-hidden="true">
+    <span
+      className={classes}
+      data-tint={tint == null ? undefined : String(tint)}
+      aria-hidden="true"
+    >
       {initials}
     </span>
   );

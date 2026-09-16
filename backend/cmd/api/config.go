@@ -53,6 +53,21 @@ type config struct {
 	resendAPIKey string
 	resendFrom   string
 
+	// placesAPIURL is the country-list provider (ADR-0018 §10).
+	//
+	// No live vendor is chosen: in development and in the suite this points at
+	// cmd/fakethirdparty. Choosing a real one later is this flag and an
+	// adapter, and nothing above them.
+	placesAPIURL string
+
+	// appURL is where a person lands when they click a link in a mail.
+	//
+	// The API's own origin is not it: the verification link opens a form, and
+	// the form is served by the frontend. Config rather than derived, because
+	// the two are separately deployable and in development they are not even
+	// the same port.
+	appURL string
+
 	// rubricVersion stamps every score computed by this process, so a
 	// leaderboard can tell which version judged whom (ADR-0004). Changing it
 	// is a deliberate act followed by an admin sweep.
@@ -99,6 +114,10 @@ func (c *config) bind(cmd *cobra.Command) {
 	f.StringVar(&c.resendAPIKey, "resend-api-key", "", "Resend API key")
 	f.StringVar(&c.resendFrom, "resend-from",
 		"GitCherryPick <no-reply@gitcherrypick.dev>", "envelope sender")
+	f.StringVar(&c.placesAPIURL, "places-api-url", "",
+		"country-list provider; the third-party stand-in in development")
+	f.StringVar(&c.appURL, "app-url", "",
+		"origin of the web client, used to build the links in notification emails")
 
 	f.StringVar(&c.rubricVersion, "rubric-version", "v1",
 		"rubric version stamped onto every score this process computes")

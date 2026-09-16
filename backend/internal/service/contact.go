@@ -17,6 +17,13 @@ import (
 // and — only after acceptance — an address.
 type ContactService struct {
 	contacts port.ContactRepository
+
+	// roles hydrates the job each request is about (ADR-0019 §2). The details
+	// travel WITH the request rather than through a separate lookup a client
+	// might skip, because an invitation somebody cannot evaluate is one they
+	// have to decline on suspicion.
+	roles port.RoleRepository
+
 	users    port.UserRepository
 	hirers   port.HirerRepository
 	notifier port.Notifier
@@ -27,14 +34,15 @@ type ContactService struct {
 // NewContactService wires the consent flow.
 func NewContactService(
 	contacts port.ContactRepository,
+	roles port.RoleRepository,
 	users port.UserRepository,
 	hirers port.HirerRepository,
 	notifier port.Notifier,
 	tx port.TxManager,
 	clock port.Clock,
 ) *ContactService {
-	return &ContactService{contacts: contacts, users: users, hirers: hirers,
-		notifier: notifier, tx: tx, clock: clock}
+	return &ContactService{contacts: contacts, roles: roles, users: users,
+		hirers: hirers, notifier: notifier, tx: tx, clock: clock}
 }
 
 var _ port.ContactService = (*ContactService)(nil)
@@ -45,7 +53,45 @@ func (s *ContactService) List(ctx context.Context, id domain.UserID, status *dom
 	if err != nil {
 		return nil, fmt.Errorf("listing contact requests: %w", err)
 	}
+	if err := s.withRoles(ctx, out); err != nil {
+		return nil, err
+	}
 	return out, nil
+}
+
+// withRoles attaches the job each request is about.
+//
+// Cached by id across the list, because a company running one round against
+// forty people produces forty requests pointing at one role — and reading it
+// forty times would be forty round trips for one answer.
+//
+// A role that cannot be read is left NIL rather than failing the list. The
+// request is still real and still answerable, and refusing to show somebody
+// their invitations because one company's role row is unreadable would be
+// punishing the wrong person.
+func (s *ContactService) withRoles(ctx context.Context, requests []domain.ContactRequest) error {
+	seen := map[domain.RoleID]*domain.Role{}
+	for i := range requests {
+		id := requests[i].RoleID
+		if id == "" {
+			continue
+		}
+		if role, ok := seen[id]; ok {
+			requests[i].Role = role
+			continue
+		}
+		role, err := s.roles.ByID(ctx, id)
+		if err != nil {
+			if errors.Is(err, port.ErrNotFound) {
+				seen[id] = nil
+				continue
+			}
+			return fmt.Errorf("reading role %s: %w", id, err)
+		}
+		seen[id] = role
+		requests[i].Role = role
+	}
+	return nil
 }
 
 // Respond records the contributor's answer.
@@ -106,7 +152,7 @@ func (s *ContactService) notify(ctx context.Context, cr *domain.ContactRequest) 
 	if cr == nil {
 		return
 	}
-	hirer, err := s.hirers.ByID(ctx, cr.RequestedBy)
+	hirer, err := s.hirers.ByID(ctx, cr.RequestedBy.ID)
 	if err != nil {
 		return
 	}

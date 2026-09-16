@@ -206,6 +206,23 @@ type TokenMinter interface {
 	Hash(plaintext string) []byte
 }
 
+// --- places ------------------------------------------------------------------
+
+// PlaceService answers what countries exist (ADR-0018 §9).
+//
+// One method, deliberately. A COUNTRY CODE is a closed vocabulary two systems
+// must agree on — it is matched against a role's eligible countries, so "UK"
+// and "GB" being different strings is a bug. A postcode is matched against
+// nothing, is read by a person and posted to by a courier, and is not looked
+// up at all.
+//
+// Callers must FAIL OPEN. A provider that is down falls back to accepting any
+// well-formed alpha-2 code: nothing here is a security decision, and a signup
+// path that depends on a third party's uptime stops working on their bad day.
+type PlaceService interface {
+	Countries(ctx context.Context) ([]domain.Country, error)
+}
+
 // --- notifier ----------------------------------------------------------------
 
 // Notifier delivers email.
@@ -227,7 +244,21 @@ const (
 	NotifyContactAccepted     NotificationKind = "contact_accepted"
 	NotifyEvaluationComplete  NotificationKind = "evaluation_complete"
 	NotifyAvailabilityLapsing NotificationKind = "availability_lapsing"
-	NotifyOrgInvitation       NotificationKind = "org_invitation"
+	NotifyEmailVerification   NotificationKind = "email_verification"
+
+	// NotifyOnboardingVerification proves a COMPANY address (ADR-0017 §2).
+	//
+	// Its own kind rather than a reuse of NotifyEmailVerification: the two
+	// carry the reader somewhere different — one to claim a seat, one to
+	// finish describing a company — and a template that had to ask which
+	// would be one template serving two messages.
+	NotifyOnboardingVerification NotificationKind = "onboarding_verification"
+
+	// NotifyOnboardingDecided is an administrator's answer on a submitted
+	// company: approved and ready to sign in, or refused with a reason and a
+	// way to correct it (ADR-0017 §8).
+	NotifyOnboardingDecided NotificationKind = "onboarding_decided"
+
 	NotifyVerificationDecided NotificationKind = "verification_decided"
 	NotifySkillRequestDecided NotificationKind = "skill_request_decided"
 	NotifyReevaluationDecided NotificationKind = "reevaluation_decided"

@@ -189,20 +189,60 @@ log "applying the schema and seeding"
 
 # --- api ---------------------------------------------------------------------
 
+# GitHub: the stand-in by default, github.com when credentials are supplied.
+#
+# Set GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET to sign in against the real
+# github.com. The OAuth App must be created by a human (nothing here can mint
+# one) and its "Authorization callback URL" must be exactly:
+#
+#     ${CLIENT_URL}/auth/github/callback
+#
+# GitHub redirects to whatever is registered on the App — the authorize URL
+# sends no redirect_uri — so a mismatch there fails at github.com, not here.
+# GITHUB_TOKEN is a separate thing: a PAT for reading PR metadata, unrelated
+# to sign-in, and still the stand-in unless you set it.
+# The read token is whichever of these is set. It needs no scopes: the adapter
+# reads only public repositories, pull requests and their reviews, so the token
+# exists to lift the rate limit from 60/hour to 5,000 — not to grant access.
+GH_PAT="${GITHUB_TOKEN:-${GITHUB_GITCHERRYPICK_PAT_DEV:-}}"
+
+if [[ -n "${GITHUB_CLIENT_ID:-}" && -n "${GITHUB_CLIENT_SECRET:-}" ]]; then
+  log "github: live — client id ${GITHUB_CLIENT_ID:0:6}…, callback ${CLIENT_URL}/auth/github/callback"
+  GITHUB_FLAGS=(
+    --github-client-id="${GITHUB_CLIENT_ID}"
+    --github-client-secret="${GITHUB_CLIENT_SECRET}"
+    --github-token="${GH_PAT:-dev}"
+  )
+  # No --github-api-url / --github-oauth-url: the binary already defaults to
+  # api.github.com and github.com.
+  if [[ -z "${GH_PAT}" ]]; then
+    warn "no PAT (GITHUB_TOKEN or GITHUB_GITCHERRYPICK_PAT_DEV), so PR metadata still comes from the stand-in"
+    GITHUB_FLAGS+=(--github-api-url="${CONTROL_URL}/github")
+  else
+    log "github: PR metadata live too — pat ${GH_PAT:0:11}…"
+  fi
+else
+  GITHUB_FLAGS=(
+    --github-api-url="${CONTROL_URL}/github"
+    --github-oauth-url="${CONTROL_URL}/github"
+    --github-client-id=dev --github-client-secret=dev --github-token=dev
+  )
+fi
+
 log "starting the api on ${API_PORT}"
 "${STATE_DIR}/api" \
   --addr="127.0.0.1:${API_PORT}" \
   --database-url="${DATABASE_URL}" \
   --signing-key="${STATE_DIR}/signing.pem" \
   --verify-key="dev:${STATE_DIR}/signing.pub" \
-  --github-api-url="${CONTROL_URL}/github" \
-  --github-oauth-url="${CONTROL_URL}/github" \
-  --github-client-id=dev --github-client-secret=dev --github-token=dev \
+  "${GITHUB_FLAGS[@]}" \
   --google-oidc-issuer="${CONTROL_URL}/google" \
   --google-client-id=dev --google-client-secret=dev \
   --google-redirect-uri="${CLIENT_URL}/auth/google/callback" \
   --resend-api-url="${CONTROL_URL}/resend" \
   --resend-api-key=dev \
+  --app-url="${CLIENT_URL}" \
+  --places-api-url="${CONTROL_URL}/places" \
   >"${STATE_DIR}/api.log" 2>&1 &
 API_PID=$!
 
@@ -229,9 +269,12 @@ cat <<EOF
     Seeded: alice (5 scored PRs), bob, carol (lapsed), dave.
 
   sign in — hirer         password: ${SEEDED_PASSWORD}
-    POST ${API_URL}/auth/hirer/login
-      sam@tinystudio.example    verified
-      pat@unknown.example       UNVERIFIED — cannot search or shortlist
+    POST ${API_URL}/auth/hirer/login  {"username": …, "password": …}
+      sam   verified      (sam@tinystudio.example)
+      pat   UNVERIFIED    (pat@unknown.example) — cannot search or shortlist
+
+    A USERNAME, not an email (ADR-0016). Two seats may share a contact
+    address, so an address identifies nobody.
 
   sign in — admin         password: ${SEEDED_PASSWORD}
     POST ${API_URL}/auth/admin/login  admin@gitcherrypick.test

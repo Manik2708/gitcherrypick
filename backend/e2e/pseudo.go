@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-// The five harness pseudo-methods (ADR-0012).
+// The harness pseudo-methods (ADR-0012, and READ_EMAIL for ADR-0016).
 //
 // None of them is an endpoint, and none adds a route to cmd/api. Time moves
 // through the configured clock source; background work runs as a separate
@@ -41,6 +41,12 @@ type advanceRequest struct {
 }
 
 // runPseudo dispatches a harness-driven step.
+//
+// It returns a payload only when the step PRODUCES one — READ_EMAIL does, and
+// the runner then compares and captures from it exactly as it would an HTTP
+// response. The rest return nil: running a job or moving the clock answers
+// nothing, and synthesizing a body for them would invite fixtures to assert
+// against the harness instead of the system.
 func runPseudo(
 	ctx context.Context,
 	t *testing.T,
@@ -50,31 +56,34 @@ func runPseudo(
 	bindings map[string]string,
 	step Step,
 	schema string,
-) error {
+) ([]byte, error) {
 	t.Helper()
 
 	switch step.Request.Method {
+	case MethodReadEmail:
+		return readEmail(ctx, control, bindings, step)
+
 	case MethodAdvanceClock:
 		if err := advanceClock(ctx, control, step); err != nil {
-			return err
+			return nil, err
 		}
 		// Access tokens live 15 minutes (ADR-0002). Every advance a fixture
 		// makes is measured in days, so the cached bearer tokens are now
 		// expired — correctly. Dropping them makes the next step sign in
 		// again, which is what a real client would do.
 		sessions.Reset()
-		return nil
+		return nil, nil
 
 	case MethodRunOverdueSweep:
-		return runJob(ctx, "overdue-sweep", schema)
+		return nil, runJob(ctx, "overdue-sweep", schema)
 
 	case MethodRunEvaluator:
 		// Stage 5 (CLAUDE.md). Fixtures that judge evidence stay red until
 		// cmd/evaluator exists, which is the pipeline working rather than a
 		if err := control.ApplyFake(ctx, step.Fake); err != nil {
-			return err
+			return nil, err
 		}
-		return runEvaluator(ctx, t, schema)
+		return nil, runEvaluator(ctx, t, schema)
 
 	case MethodRedeliverLastJob:
 		// Delivery is at-least-once: a worker that died after processing but
@@ -83,15 +92,15 @@ func runPseudo(
 		// fixture asserts it changes nothing, which is ADR-0004's idempotency
 		// requirement stated as an observation rather than a claim.
 		if err := control.ApplyFake(ctx, step.Fake); err != nil {
-			return err
+			return nil, err
 		}
-		return runEvaluator(ctx, t, schema)
+		return nil, runEvaluator(ctx, t, schema)
 
 	case MethodRejectNReevals:
-		return rejectReevaluations(ctx, t, sessions, client, bindings, step)
+		return nil, rejectReevaluations(ctx, t, sessions, client, bindings, step)
 	}
 
-	return fmt.Errorf("unknown pseudo-method %q", step.Request.Method)
+	return nil, fmt.Errorf("unknown pseudo-method %q", step.Request.Method)
 }
 
 // advanceClock moves the API's clock forward.

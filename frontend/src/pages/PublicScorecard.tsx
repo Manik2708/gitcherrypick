@@ -26,7 +26,12 @@ export function PublicScorecardPage() {
     Boolean(token),
   );
 
-  if (card.loading) return <div className="page page--narrow"><Loading what="this scorecard" /></div>;
+  if (card.loading)
+    return (
+      <div className="page page--narrow">
+        <Loading what="this scorecard" />
+      </div>
+    );
 
   if (card.error || !card.data) {
     return (

@@ -128,7 +128,10 @@ function Row({
 
       <div className="row__right">
         <div className="row__scores">
-          <Stat n={<span className="mono">{format.n1(result.overall_score)}</span>} label="Overall" />
+          <Stat
+            n={<span className="mono">{format.n1(result.overall_score)}</span>}
+            label="Overall"
+          />
           <Stat
             n={<span className="mono">{format.n1(result.generalist_score)}</span>}
             label="Generalist"
@@ -218,9 +221,7 @@ export function SearchPage() {
 
   const toggle = (list: string[] | undefined, value: string) => {
     const current = list ?? [];
-    return current.includes(value)
-      ? current.filter((v) => v !== value)
-      : [...current, value];
+    return current.includes(value) ? current.filter((v) => v !== value) : [...current, value];
   };
 
   return (
@@ -237,7 +238,13 @@ export function SearchPage() {
       />
 
       <div className="discovery">
-        <form className="filters" onSubmit={(e) => { e.preventDefault(); apply({ ...draft, page: 1 }); }}>
+        <form
+          className="filters"
+          onSubmit={(e) => {
+            e.preventDefault();
+            apply({ ...draft, page: 1 });
+          }}
+        >
           <div className="filters__head">
             <span className="panel-title">Filters</span>
             <Button variant="quiet" size="sm" onClick={reset}>
@@ -382,9 +389,7 @@ export function SearchPage() {
                   className="select"
                   id="per_page"
                   value={String(draft.perPage ?? 20)}
-                  onChange={(event) =>
-                    setDraft({ ...draft, perPage: Number(event.target.value) })
-                  }
+                  onChange={(event) => setDraft({ ...draft, perPage: Number(event.target.value) })}
                 >
                   {[10, 20, 50].map((v) => (
                     <option key={v} value={v}>
@@ -417,7 +422,8 @@ export function SearchPage() {
               ) : null}
             </p>
             <span className="ranked-by">
-              Ranked by <code className="mono">{format.rankedBy(data?.ranked_by ?? "overall")}</code>
+              Ranked by{" "}
+              <code className="mono">{format.rankedBy(data?.ranked_by ?? "overall")}</code>
             </span>
           </div>
 
@@ -572,7 +578,9 @@ export function SearchPage() {
                 variant="ghost"
                 size="sm"
                 disabled={save.pending || saveName.trim().length === 0}
-                onClick={() => void save.run(saveName, applied).then(() => navigate("/saved-searches"))}
+                onClick={() =>
+                  void save.run(saveName, applied).then(() => navigate("/saved-searches"))
+                }
               >
                 <Icon name="bookmark" size="sm" />
                 Save this search

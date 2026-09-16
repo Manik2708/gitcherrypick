@@ -21,6 +21,7 @@ import (
 	"github.com/Manik2708/gitcherrypick/backend/internal/adapter/crypto"
 	"github.com/Manik2708/gitcherrypick/backend/internal/adapter/github"
 	"github.com/Manik2708/gitcherrypick/backend/internal/adapter/google"
+	"github.com/Manik2708/gitcherrypick/backend/internal/adapter/places"
 	"github.com/Manik2708/gitcherrypick/backend/internal/adapter/resend"
 	"github.com/Manik2708/gitcherrypick/backend/internal/controller"
 	"github.com/Manik2708/gitcherrypick/backend/internal/port"
@@ -142,9 +143,10 @@ func build(ctx context.Context, cfg *config) (*application, error) {
 		IssuerURL: cfg.googleIssuerURL, ClientID: cfg.googleClientID,
 		ClientSecret: cfg.googleSecret, RedirectURI: cfg.googleRedirectURI,
 	})
+	places := places.New(places.Config{BaseURL: cfg.placesAPIURL})
 	notifier := resend.New(resend.Config{
 		BaseURL: cfg.resendAPIURL, APIKey: cfg.resendAPIKey, From: cfg.resendFrom,
-		Renderer: resend.NewDefaultRenderer(),
+		Renderer: resend.NewDefaultRenderer(cfg.appURL),
 	})
 
 	// --- storage ---------------------------------------------------------
@@ -177,6 +179,14 @@ func build(ctx context.Context, cfg *config) (*application, error) {
 		db.Organizations(), db.Hirers(), db.Sessions(), notifier,
 		minter, tokens, hasher, db, now,
 	)
+	onboarding := service.NewOnboardingService(
+		db.Onboarding(), db.Organizations(), db.EmailVerifications(),
+		notifier, minter, hasher, db, now,
+	)
+	redemption := service.NewRedemptionService(
+		db.Organizations(), db.Hirers(), db.EmailVerifications(), db.Sessions(),
+		notifier, minter, tokens, hasher, db, now,
+	)
 	claims := service.NewClaimService(
 		db.Claims(), db.Skills(), db.Evaluations(), db.Users(), githubClient, db.Queue(), db, now,
 	)
@@ -184,14 +194,20 @@ func build(ctx context.Context, cfg *config) (*application, error) {
 		db.Claims(), db.Evaluations(), now, cfg.rubricVersion)
 	discovery := service.NewDiscoveryService(db.Search(), db.Skills(), db.SavedSearches(), access, cfg.rubricVersion)
 	shortlists := service.NewShortlistService(
-		db.Shortlists(), db.Contacts(), db.Users(), db.Hirers(), notifier, access, db, now,
+		db.Shortlists(), db.Roles(), db.Contacts(), db.Users(), db.Hirers(),
+		notifier, access, db, now,
 	)
 	contacts := service.NewContactService(
-		db.Contacts(), db.Users(), db.Hirers(), notifier, db, now,
+		db.Contacts(), db.Roles(), db.Users(), db.Hirers(), notifier, db, now,
 	)
 	admin := service.NewAdminService(
 		db.Admins(), db.Skills(), db.Organizations(), db.Reevaluations(),
 		db.Claims(), db.Queue(), db,
+	)
+	profiles := service.NewProfileService(db.Profiles(), db.Users(), places, githubClient, db, now)
+	roles := service.NewRoleService(
+		db.Roles(), db.OrgSettings(), db.Contacts(), db.Profiles(), db.Users(),
+		db.Organizations(), db, now,
 	)
 	reeval := service.NewReevaluationService(db.Reevaluations(), db.Claims(), now)
 	evaluation := service.NewEvaluationService(
@@ -203,15 +219,18 @@ func build(ctx context.Context, cfg *config) (*application, error) {
 	server := controller.NewServer(controller.NewPrincipalResolver(tokens, auth))
 	server.Health()
 	server.Mount(
-		controller.NewAuthController(auth, cfg.secureCookies),
-		controller.NewMeController(auth, orgs, skills, discovery, contacts, reeval),
+		controller.NewAuthController(auth, redemption, cfg.secureCookies),
+		controller.NewMeController(auth, orgs, skills, discovery, contacts, reeval, profiles, roles),
 		controller.NewClaimController(claims, reeval),
 		controller.NewSkillController(skills),
 		controller.NewSkillRequestController(skills),
 		controller.NewShortlistController(shortlists),
 		controller.NewOrganizationController(orgs),
-		controller.NewAdminController(admin, evaluation, now),
+		controller.NewRoleController(roles),
+		controller.NewAdminController(admin, evaluation, onboarding, now),
 		controller.NewPublicController(auth),
+		controller.NewOrganizationsController(redemption, onboarding),
+		controller.NewPlacesController(places),
 
 		// Mounted last: it claims "/" and chi resolves the more specific
 		// prefixes above it first.

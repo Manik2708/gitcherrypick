@@ -220,7 +220,9 @@ func seededIDs(ctx context.Context, pool *pgxpool.Pool, schema string) (map[stri
 	out := map[string]string{}
 	for _, source := range []struct{ key, query string }{
 		{"users", `SELECT display_name, id::text FROM users`},
-		{"hirers", `SELECT email, id::text FROM hirer_accounts`},
+		// Keyed by USERNAME since ADR-0016: that is what a developer signs in
+		// with, and two seats may share an email.
+		{"hirers", `SELECT username, id::text FROM hirer_accounts`},
 		{"admins", `SELECT email, id::text FROM admin_accounts`},
 		{"orgs", `SELECT name, id::text FROM organizations`},
 	} {

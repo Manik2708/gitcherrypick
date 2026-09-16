@@ -1,0 +1,1092 @@
+{
+  "name": "redeeming a roster entry proves the address, and removal revokes without deleting",
+  "description": "ADR-0016 §3: a roster entry is an allowlist, not a credential. Being listed is a guessable fact — anyone can guess that alex@acme.com works at Acme — so being listed is never sufficient, and the seat is created only by somebody who can read the address's inbox.\n\nTHE SILENCE COMES FIRST, because it is the property most easily lost. /auth/hirer/redeem/start answers 202 for a roster miss, for an organisation that does not exist, and for one that exists but is unverified, exactly as it does for a hit. Answering differently for any of them turns the endpoint into an oracle for who a company is hiring, which is the thing a roster must never become. Since the status cannot differ, these steps assert the ABSENCE of a message: the only observable difference between a hit and a miss is whether an inbox received anything, and for a miss it did not. ADR-0016's endpoint table says '401' here while §3 and §5 require indistinguishability; a 401 for a miss beside a 202 for a hit IS the oracle §3 forbids, so the decision list wins and the discrepancy is the Planner's to settle.\n\nTHE ORGANISATION PINS THE NAME AND THE ROLE (§2). The redeemer chooses a password and nothing else. This case sends a username and a role in the redemption body and asserts that both are ignored: a redeemer who could name themselves could take a colleague's name, or claim an owner seat and roster further people from it.\n\nTHE PROOF IS SINGLE-USE AND LIVES 24 HOURS (§7), with resend. A resend leaves exactly one live token, because the stored form is a hash and two outstanding proofs would be two ways in.\n\nREMOVAL REVOKES AND NEVER DELETES (§8, §9). The seat is stamped, its session families die, it stays listed as active:false so the author of an old round remains resolvable, and its username is never reissued.",
+  "seed": ["principals"],
+  "steps": [
+    {
+      "_step": "A ROSTER MISS. Acme is real and verified; ghost@acme.com is on nobody's roster.",
+      "as": "anonymous",
+      "request": {
+        "method": "POST",
+        "path": "/auth/hirer/redeem/start",
+        "body": {
+          "org_slug": "acme",
+          "email": "ghost@acme.com"
+        }
+      },
+      "expect": {
+        "status": 202,
+        "_note": "202, and byte-identical to the hit later in this case. Nothing is minted.",
+        "body": null,
+        "db": {
+          "email_verifications": {
+            "where": {
+              "email": "ghost@acme.com"
+            },
+            "count": 0
+          }
+        }
+      }
+    },
+    {
+      "as": "system",
+      "request": {
+        "method": "READ_EMAIL",
+        "path": "/",
+        "body": {
+          "to": "ghost@acme.com",
+          "count": 0
+        }
+      },
+      "expect": {
+        "status": 200,
+        "_note": "The real assertion. The status cannot tell a hit from a miss, so what must be checked is that no inbox was touched.",
+        "body": null
+      }
+    },
+    {
+      "_step": "An organisation that does not exist. Same answer again.",
+      "as": "anonymous",
+      "request": {
+        "method": "POST",
+        "path": "/auth/hirer/redeem/start",
+        "body": {
+          "org_slug": "no-such-company",
+          "email": "hopeful@nowhere.example"
+        }
+      },
+      "expect": {
+        "status": 202,
+        "body": null,
+        "db": {
+          "email_verifications": {
+            "where": {
+              "email": "hopeful@nowhere.example"
+            },
+            "count": 0
+          }
+        }
+      }
+    },
+    {
+      "as": "system",
+      "request": {
+        "method": "READ_EMAIL",
+        "path": "/",
+        "body": {
+          "to": "hopeful@nowhere.example",
+          "count": 0
+        }
+      },
+      "expect": {
+        "status": 200,
+        "body": null
+      }
+    },
+    {
+      "_step": "An UNVERIFIED organisation with a real entry on a real roster. Pat owns Unknown Ltd and rosters a colleague.",
+      "as": "pending_pat",
+      "request": {
+        "method": "POST",
+        "path": "/orgs/01920000-0000-7000-8000-00000000b003/roster",
+        "body": {
+          "email": "colleague@unknown.example",
+          "username": "colleague",
+          "role": "member"
+        }
+      },
+      "expect": {
+        "status": 201,
+        "body": {
+          "id": "<uuid>",
+          "email": "colleague@unknown.example",
+          "username": "colleague",
+          "role": "member",
+          "added_by": {
+            "id": "01920000-0000-7000-8000-00000000c002",
+            "username": "pat",
+            "display_name": "Pat Ferreira",
+            "active": true
+          },
+          "redeemed_at": null,
+          "redeemed_by": null,
+          "created_at": "<timestamp>"
+        }
+      }
+    },
+    {
+      "as": "anonymous",
+      "request": {
+        "method": "POST",
+        "path": "/auth/hirer/redeem/start",
+        "body": {
+          "org_slug": "unknown-ltd",
+          "email": "colleague@unknown.example"
+        }
+      },
+      "expect": {
+        "status": 202,
+        "_note": "Still 202. Three distinct causes — no entry, no organisation, no verification — and one answer.",
+        "body": null,
+        "db": {
+          "email_verifications": {
+            "where": {
+              "email": "colleague@unknown.example"
+            },
+            "count": 0
+          }
+        }
+      }
+    },
+    {
+      "as": "system",
+      "request": {
+        "method": "READ_EMAIL",
+        "path": "/",
+        "body": {
+          "to": "colleague@unknown.example",
+          "count": 0
+        }
+      },
+      "expect": {
+        "status": 200,
+        "body": null
+      }
+    },
+    {
+      "_step": "Now the hit. Hank rosters Rita as a MEMBER of Acme.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/orgs/01920000-0000-7000-8000-00000000b001/roster",
+        "body": {
+          "email": "rita@acme.com",
+          "username": "rita",
+          "role": "member"
+        }
+      },
+      "capture": {
+        "rita_entry": "$.id"
+      },
+      "expect": {
+        "status": 201,
+        "body": {
+          "id": "<uuid>",
+          "email": "rita@acme.com",
+          "username": "rita",
+          "role": "member",
+          "added_by": {
+            "id": "01920000-0000-7000-8000-00000000c001",
+            "username": "hank",
+            "display_name": "Hank Rivera",
+            "active": true
+          },
+          "redeemed_at": null,
+          "redeemed_by": null,
+          "created_at": "<timestamp>"
+        }
+      }
+    },
+    {
+      "as": "anonymous",
+      "request": {
+        "method": "POST",
+        "path": "/auth/hirer/redeem/start",
+        "body": {
+          "org_slug": "acme",
+          "email": "rita@acme.com"
+        }
+      },
+      "expect": {
+        "status": 202,
+        "_note": "202 and an empty body, indistinguishable from the three misses above. What differs is the row, and the message.",
+        "body": null,
+        "db": {
+          "email_verifications": {
+            "where": {
+              "email": "rita@acme.com",
+              "purpose": "roster_redemption"
+            },
+            "count": 1,
+            "all_match": {
+              "consumed_at": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "_step": "The proof reaches the INBOX and nowhere else. It is minted once, stored as a hash, and returned by no endpoint — so reading the message is the only way anyone, including this suite, can obtain it.",
+      "as": "system",
+      "request": {
+        "method": "READ_EMAIL",
+        "path": "/",
+        "body": {
+          "to": "rita@acme.com",
+          "subject": "Confirm your email address",
+          "count": 1
+        }
+      },
+      "capture": {
+        "rita_proof": "$.token"
+      },
+      "expect": {
+        "status": 200,
+        "_note": "A message carrying no token is a dead end for its recipient: they are told to confirm an address and given nothing to confirm it with. That is what this step fails on.",
+        "body": {
+          "to": "rita@acme.com",
+          "subject": "Confirm your email address",
+          "html": "<string>",
+          "token": "<token>"
+        }
+      }
+    },
+    {
+      "_step": "A redemption that tries to name ITSELF. The body asks for the username 'impostor' and an OWNER seat, and is refused outright.",
+      "as": "anonymous",
+      "request": {
+        "method": "POST",
+        "path": "/auth/hirer/redeem/complete",
+        "body": {
+          "token": "{{rita_proof}}",
+          "display_name": "Rita Sandoval",
+          "password": "correct-horse-battery",
+          "username": "impostor",
+          "role": "owner"
+        }
+      },
+      "expect": {
+        "status": 400,
+        "_note": "400, not a 201 that quietly overrules the extras. Every body in this codebase is decoded with DisallowUnknownFields, and that convention lands exactly right here: a redeemer cannot even ASK for a name or a role, rather than asking and being silently overruled. Refusing is the stronger reading of ADR-0016 §2 — and it also tells an honest client with a stale field that its request did nothing, instead of letting it believe it chose the seat it was given.",
+        "body": {
+          "error": "invalid_registration"
+        },
+        "db": {
+          "email_verifications": {
+            "_note": "THE PROOF IS NOT SPENT. Decoding fails before any service is called, so a malformed request cannot burn a single-use token — which would otherwise let anyone holding a leaked link, or a client with one stale field, lock the rightful holder out of the seat entirely.",
+            "where": {
+              "email": "rita@acme.com"
+            },
+            "count": 1,
+            "all_match": {
+              "consumed_at": null
+            }
+          },
+          "hirer_accounts": {
+            "where": {
+              "email": "rita@acme.com"
+            },
+            "count": 0
+          },
+          "organization_hirer_roster": {
+            "where": {
+              "email": "rita@acme.com"
+            },
+            "count": 1,
+            "all_match": {
+              "redeemed_at": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "_step": "The same proof, well formed. The username and the role are read from the ENTRY and appear nowhere in the request — which is what makes them the organisation's choice rather than the redeemer's (ADR-0016 §2).",
+      "as": "anonymous",
+      "request": {
+        "method": "POST",
+        "path": "/auth/hirer/redeem/complete",
+        "body": {
+          "token": "{{rita_proof}}",
+          "display_name": "Rita Sandoval",
+          "password": "correct-horse-battery"
+        }
+      },
+      "capture": {
+        "rita_token": "$.access_token",
+        "rita_id": "$.hirer.id"
+      },
+      "expect": {
+        "status": 201,
+        "_note": "201 with a token pair, unlike registration, which returns no credential. Registration queues a review; a redeemed entry was already approved by the organisation that wrote it, so there is nothing left to wait for. verified is true because ACME is verified — capability is a property of the organisation (ADR-0002).",
+        "body": {
+          "hirer": {
+            "id": "<uuid>",
+            "display_name": "Rita Sandoval",
+            "email": "rita@acme.com",
+            "principal_type": "hirer",
+            "verified": true,
+            "organization": {
+              "id": "01920000-0000-7000-8000-00000000b001",
+              "name": "Acme Corp",
+              "verified": true,
+              "payment_verified": true
+            }
+          },
+          "access_token": "<token>",
+          "refresh_token": "<token>",
+          "expires_in": 900
+        },
+        "db": {
+          "hirer_accounts": {
+            "_note": "The seat carries the ENTRY's username, never the request body's.",
+            "where": {
+              "email": "rita@acme.com",
+              "username": "rita"
+            },
+            "count": 1,
+            "all_match": {
+              "disabled_at": null,
+              "auth_provider": "email"
+            }
+          },
+          "organization_hirer_roster": {
+            "_note": "Stamped, not deleted. The entry is the record of why the seat exists, and removing it is what revokes access later.",
+            "where": {
+              "email": "rita@acme.com"
+            },
+            "count": 1,
+            "none_match": {
+              "redeemed_at": null
+            }
+          },
+          "email_verifications": {
+            "where": {
+              "email": "rita@acme.com"
+            },
+            "count": 1,
+            "none_match": {
+              "consumed_at": null
+            }
+          },
+          "organization_members": {
+            "where": {
+              "organization_id": "01920000-0000-7000-8000-00000000b001",
+              "role": "member"
+            },
+            "count": 2
+          }
+        }
+      }
+    },
+    {
+      "_step": "'impostor' was never created, and the seat is a member. Any hirer in the organisation may read the seats — every seat already sees every round, so naming their holders exposes no row that was not already visible (§9).",
+      "as": "hank",
+      "request": {
+        "method": "GET",
+        "path": "/orgs/01920000-0000-7000-8000-00000000b001/seats"
+      },
+      "expect": {
+        "status": 200,
+        "_note": "Live seats first, then revoked, each group oldest first. Rita is the newest live seat.",
+        "body": {
+          "seats": [
+            {
+              "id": "01920000-0000-7000-8000-00000000c001",
+              "username": "hank",
+              "display_name": "Hank Rivera",
+              "email": "hank@acme.com",
+              "role": "owner",
+              "active": true,
+              "disabled_at": null
+            },
+            {
+              "id": "01920000-0000-7000-8000-00000000c004",
+              "username": "dave_h",
+              "display_name": "Dave Whitfield",
+              "email": "dave.hiring@example.com",
+              "role": "member",
+              "active": true,
+              "disabled_at": null
+            },
+            {
+              "id": "<uuid>",
+              "username": "rita",
+              "display_name": "Rita Sandoval",
+              "email": "rita@acme.com",
+              "role": "member",
+              "active": true,
+              "disabled_at": null
+            }
+          ]
+        },
+        "db": {
+          "hirer_accounts": {
+            "where": {
+              "username": "impostor"
+            },
+            "count": 0
+          }
+        }
+      }
+    },
+    {
+      "_step": "Rita reads the same list, on her own token.",
+      "as": "anonymous",
+      "request": {
+        "method": "GET",
+        "path": "/orgs/01920000-0000-7000-8000-00000000b001/seats",
+        "headers": {
+          "Authorization": "Bearer {{rita_token}}"
+        }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "seats": [
+            {
+              "id": "01920000-0000-7000-8000-00000000c001",
+              "username": "hank",
+              "display_name": "Hank Rivera",
+              "email": "hank@acme.com",
+              "role": "owner",
+              "active": true,
+              "disabled_at": null
+            },
+            {
+              "id": "01920000-0000-7000-8000-00000000c004",
+              "username": "dave_h",
+              "display_name": "Dave Whitfield",
+              "email": "dave.hiring@example.com",
+              "role": "member",
+              "active": true,
+              "disabled_at": null
+            },
+            {
+              "id": "<uuid>",
+              "username": "rita",
+              "display_name": "Rita Sandoval",
+              "email": "rita@acme.com",
+              "role": "member",
+              "active": true,
+              "disabled_at": null
+            }
+          ]
+        }
+      }
+    },
+    {
+      "_step": "...but the ROSTER is owners only, and the entry gave her a member seat. Asking for 'owner' in the redemption body bought nothing.",
+      "as": "anonymous",
+      "request": {
+        "method": "GET",
+        "path": "/orgs/01920000-0000-7000-8000-00000000b001/roster",
+        "headers": {
+          "Authorization": "Bearer {{rita_token}}"
+        }
+      },
+      "expect": {
+        "status": 403,
+        "body": {
+          "error": "not_an_org_member"
+        }
+      }
+    },
+    {
+      "_step": "The proof is single-use. A mailbox read a second time buys nothing.",
+      "as": "anonymous",
+      "request": {
+        "method": "POST",
+        "path": "/auth/hirer/redeem/complete",
+        "body": {
+          "token": "{{rita_proof}}",
+          "display_name": "Someone Else",
+          "password": "correct-horse-battery"
+        }
+      },
+      "expect": {
+        "status": 410,
+        "_note": "410 Gone rather than 401: the holder of a spent link is entitled to know which happened, because the remedy differs — sign in, rather than ask for another link. A bare 401 would send someone who already has an account round the loop again.",
+        "body": {
+          "error": "verification_already_used"
+        },
+        "db": {
+          "hirer_accounts": {
+            "where": {
+              "display_name": "Someone Else"
+            },
+            "count": 0
+          }
+        }
+      }
+    },
+    {
+      "_step": "A token nobody ever issued is 401 and says no more, so live proofs cannot be probed for.",
+      "as": "anonymous",
+      "request": {
+        "method": "POST",
+        "path": "/auth/hirer/redeem/complete",
+        "body": {
+          "token": "not-a-real-verification-token",
+          "display_name": "Nobody",
+          "password": "correct-horse-battery"
+        }
+      },
+      "expect": {
+        "status": 401,
+        "body": {
+          "error": "email_verification_required"
+        },
+        "db": {
+          "hirer_accounts": {
+            "where": {
+              "display_name": "Nobody"
+            },
+            "count": 0
+          }
+        }
+      }
+    },
+    {
+      "_step": "Resend, on a second address so the rotation can be watched from a clean inbox. This entry pins OWNER.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/orgs/01920000-0000-7000-8000-00000000b001/roster",
+        "body": {
+          "email": "mo@acme.com",
+          "username": "mo",
+          "role": "owner"
+        }
+      },
+      "capture": {
+        "mo_entry": "$.id"
+      },
+      "expect": {
+        "status": 201,
+        "body": {
+          "id": "<uuid>",
+          "email": "mo@acme.com",
+          "username": "mo",
+          "role": "owner",
+          "added_by": {
+            "id": "01920000-0000-7000-8000-00000000c001",
+            "username": "hank",
+            "display_name": "Hank Rivera",
+            "active": true
+          },
+          "redeemed_at": null,
+          "redeemed_by": null,
+          "created_at": "<timestamp>"
+        }
+      }
+    },
+    {
+      "as": "anonymous",
+      "request": {
+        "method": "POST",
+        "path": "/auth/hirer/redeem/start",
+        "body": {
+          "org_slug": "acme",
+          "email": "mo@acme.com"
+        }
+      },
+      "expect": {
+        "status": 202,
+        "body": null
+      }
+    },
+    {
+      "as": "system",
+      "request": {
+        "method": "READ_EMAIL",
+        "path": "/",
+        "body": {
+          "to": "mo@acme.com",
+          "subject": "Confirm your email address",
+          "count": 1
+        }
+      },
+      "capture": {
+        "mo_first_proof": "$.token"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "to": "mo@acme.com",
+          "subject": "Confirm your email address",
+          "html": "<string>",
+          "token": "<token>"
+        }
+      }
+    },
+    {
+      "_step": "202 and silent, exactly like start: an address with no proof outstanding must not be distinguishable from one with a link in flight.",
+      "as": "anonymous",
+      "request": {
+        "method": "POST",
+        "path": "/auth/hirer/verify/resend",
+        "body": {
+          "email": "mo@acme.com"
+        }
+      },
+      "expect": {
+        "status": 202,
+        "body": null,
+        "db": {
+          "email_verifications": {
+            "_note": "Two rows, and exactly one of them live. The stored form is a hash, so the original plaintext is gone and a resend cannot repeat it — it rotates. Two outstanding proofs would be two ways in, with the first still valid after the second was issued.",
+            "where": {
+              "email": "mo@acme.com"
+            },
+            "count": 2
+          }
+        }
+      }
+    },
+    {
+      "as": "system",
+      "request": {
+        "method": "READ_EMAIL",
+        "path": "/",
+        "body": {
+          "to": "mo@acme.com",
+          "subject": "Confirm your email address",
+          "count": 2
+        }
+      },
+      "capture": {
+        "mo_second_proof": "$.token"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "to": "mo@acme.com",
+          "subject": "Confirm your email address",
+          "html": "<string>",
+          "token": "<token>"
+        }
+      }
+    },
+    {
+      "_step": "The superseded link is dead.",
+      "as": "anonymous",
+      "request": {
+        "method": "POST",
+        "path": "/auth/hirer/redeem/complete",
+        "body": {
+          "token": "{{mo_first_proof}}",
+          "display_name": "Mo Adeyemi",
+          "password": "correct-horse-battery"
+        }
+      },
+      "expect": {
+        "status": 410,
+        "body": {
+          "error": "verification_already_used"
+        },
+        "db": {
+          "hirer_accounts": {
+            "where": {
+              "username": "mo"
+            },
+            "count": 0
+          }
+        }
+      }
+    },
+    {
+      "_step": "The newest one works, and carries the OWNER role the entry pinned.",
+      "as": "anonymous",
+      "request": {
+        "method": "POST",
+        "path": "/auth/hirer/redeem/complete",
+        "body": {
+          "token": "{{mo_second_proof}}",
+          "display_name": "Mo Adeyemi",
+          "password": "correct-horse-battery"
+        }
+      },
+      "expect": {
+        "status": 201,
+        "body": {
+          "hirer": {
+            "id": "<uuid>",
+            "display_name": "Mo Adeyemi",
+            "email": "mo@acme.com",
+            "principal_type": "hirer",
+            "verified": true,
+            "organization": {
+              "id": "01920000-0000-7000-8000-00000000b001",
+              "name": "Acme Corp",
+              "verified": true,
+              "payment_verified": true
+            }
+          },
+          "access_token": "<token>",
+          "refresh_token": "<token>",
+          "expires_in": 900
+        },
+        "db": {
+          "organization_members": {
+            "_note": "The role came from the entry, and the entry said owner.",
+            "where": {
+              "organization_id": "01920000-0000-7000-8000-00000000b001",
+              "role": "owner"
+            },
+            "count": 2
+          }
+        }
+      }
+    },
+    {
+      "_step": "The seat signs in like any other, on the password its holder chose and the username its organisation pinned.",
+      "as": "anonymous",
+      "request": {
+        "method": "POST",
+        "path": "/auth/hirer/login",
+        "body": {
+          "username": "rita",
+          "password": "correct-horse-battery"
+        }
+      },
+      "expect": {
+        "status": 200,
+        "_note": "A SECOND session family for Rita. The removal below has to kill both, which is what 'every family, not just one' means.",
+        "body": {
+          "hirer": {
+            "id": "<uuid>",
+            "display_name": "Rita Sandoval",
+            "email": "rita@acme.com",
+            "principal_type": "hirer",
+            "verified": true,
+            "organization": {
+              "id": "01920000-0000-7000-8000-00000000b001",
+              "name": "Acme Corp",
+              "verified": true,
+              "payment_verified": true
+            }
+          },
+          "access_token": "<token>",
+          "refresh_token": "<token>",
+          "expires_in": 900
+        }
+      }
+    },
+    {
+      "_step": "Removal. Rita leaves Acme.",
+      "as": "hank",
+      "request": {
+        "method": "DELETE",
+        "path": "/orgs/01920000-0000-7000-8000-00000000b001/roster/{{rita_entry}}"
+      },
+      "expect": {
+        "status": 204,
+        "body": null,
+        "db": {
+          "organization_hirer_roster": {
+            "_note": "The ENTRY goes, so the address cannot be redeemed again.",
+            "where": {
+              "email": "rita@acme.com"
+            },
+            "count": 0
+          },
+          "hirer_accounts": {
+            "_note": "The SEAT STAYS, stamped. It authored rounds and the permanent record of which candidates were told an organisation was interested; deleting it would orphan the history a contributor relies on to know who approached them (§8).",
+            "where": {
+              "username": "rita"
+            },
+            "count": 1,
+            "none_match": {
+              "disabled_at": null
+            },
+            "all_match": {
+              "disabled_by": "01920000-0000-7000-8000-00000000c001"
+            }
+          },
+          "organization_members": {
+            "_note": "The membership stays too. A revoked seat keeps its place in the organisation it worked for.",
+            "where": {
+              "organization_id": "01920000-0000-7000-8000-00000000b001"
+            },
+            "count": 4
+          },
+          "sessions": {
+            "_note": "Every family, not just the current one: access ends on every device.",
+            "where": {
+              "revoked_at": null
+            },
+            "none_match": {
+              "hirer_account_id": "{{rita_id}}"
+            }
+          }
+        }
+      }
+    },
+    {
+      "_step": "Rita's access token was minted before the removal and is refused now.",
+      "as": "anonymous",
+      "request": {
+        "method": "GET",
+        "path": "/orgs/01920000-0000-7000-8000-00000000b001/seats",
+        "headers": {
+          "Authorization": "Bearer {{rita_token}}"
+        }
+      },
+      "expect": {
+        "status": 401,
+        "_note": "Not in fifteen minutes' time, when the access token would have expired anyway — now, because the session family is checked on every request.",
+        "body": {
+          "error": "unauthenticated"
+        }
+      }
+    },
+    {
+      "_step": "THE REVOKED SEAT IS SILENT. Same username, same password, and now indistinguishable from a name nobody ever held.",
+      "as": "anonymous",
+      "request": {
+        "method": "POST",
+        "path": "/auth/hirer/login",
+        "body": {
+          "username": "rita",
+          "password": "correct-horse-battery"
+        }
+      },
+      "expect": {
+        "status": 401,
+        "_note": "NOT 403 'account_disabled'. ByUsername filters disabled_at out (ADR-0016 §5) precisely so sign-in cannot report that a revoked seat exists — which would tell a departed employee, or anyone holding their password, that the name is real and the account is merely switched off.",
+        "body": {
+          "error": "invalid_credentials"
+        }
+      }
+    },
+    {
+      "as": "anonymous",
+      "request": {
+        "method": "POST",
+        "path": "/auth/hirer/login",
+        "body": {
+          "username": "nobody-ever",
+          "password": "correct-horse-battery"
+        }
+      },
+      "expect": {
+        "status": 401,
+        "_note": "The comparison that makes the previous step mean something: byte-identical.",
+        "body": {
+          "error": "invalid_credentials"
+        }
+      }
+    },
+    {
+      "_step": "The revoked seat is still LISTED, marked active:false. That is the whole point of not deleting it — the author of an old round has to stay resolvable (§9).",
+      "as": "hank",
+      "request": {
+        "method": "GET",
+        "path": "/orgs/01920000-0000-7000-8000-00000000b001/seats"
+      },
+      "expect": {
+        "status": 200,
+        "_note": "Live seats first, then revoked. Mo redeemed after Rita, so the live group ends with Mo.",
+        "body": {
+          "seats": [
+            {
+              "id": "01920000-0000-7000-8000-00000000c001",
+              "username": "hank",
+              "display_name": "Hank Rivera",
+              "email": "hank@acme.com",
+              "role": "owner",
+              "active": true,
+              "disabled_at": null
+            },
+            {
+              "id": "01920000-0000-7000-8000-00000000c004",
+              "username": "dave_h",
+              "display_name": "Dave Whitfield",
+              "email": "dave.hiring@example.com",
+              "role": "member",
+              "active": true,
+              "disabled_at": null
+            },
+            {
+              "id": "<uuid>",
+              "username": "mo",
+              "display_name": "Mo Adeyemi",
+              "email": "mo@acme.com",
+              "role": "owner",
+              "active": true,
+              "disabled_at": null
+            },
+            {
+              "id": "<uuid>",
+              "username": "rita",
+              "display_name": "Rita Sandoval",
+              "email": "rita@acme.com",
+              "role": "member",
+              "active": false,
+              "disabled_at": "<timestamp>"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "_step": "The name is NEVER reissued. A revoked seat keeps it forever, which is what makes an old round's author unambiguous (§Identity).",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/orgs/01920000-0000-7000-8000-00000000b001/roster",
+        "body": {
+          "email": "rita.two@acme.com",
+          "username": "rita",
+          "role": "member"
+        }
+      },
+      "expect": {
+        "status": 409,
+        "body": {
+          "error": "username_taken"
+        },
+        "db": {
+          "organization_hirer_roster": {
+            "where": {
+              "email": "rita.two@acme.com"
+            },
+            "count": 0
+          }
+        }
+      }
+    },
+    {
+      "_step": "An owner may revoke another OWNER. Mo holds an owner seat and Hank removes it.",
+      "as": "hank",
+      "request": {
+        "method": "DELETE",
+        "path": "/orgs/01920000-0000-7000-8000-00000000b001/roster/{{mo_entry}}"
+      },
+      "expect": {
+        "status": 204,
+        "body": null,
+        "db": {
+          "hirer_accounts": {
+            "where": {
+              "username": "mo"
+            },
+            "count": 1,
+            "none_match": {
+              "disabled_at": null
+            },
+            "all_match": {
+              "disabled_by": "01920000-0000-7000-8000-00000000c001"
+            }
+          }
+        }
+      }
+    },
+    {
+      "_step": "Expiry. A third address, a proof, and then more than the 24-hour window (ADR-0016 §7).",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/orgs/01920000-0000-7000-8000-00000000b001/roster",
+        "body": {
+          "email": "slow@acme.com",
+          "username": "slow",
+          "role": "member"
+        }
+      },
+      "expect": {
+        "status": 201,
+        "body": {
+          "id": "<uuid>",
+          "email": "slow@acme.com",
+          "username": "slow",
+          "role": "member",
+          "added_by": {
+            "id": "01920000-0000-7000-8000-00000000c001",
+            "username": "hank",
+            "display_name": "Hank Rivera",
+            "active": true
+          },
+          "redeemed_at": null,
+          "redeemed_by": null,
+          "created_at": "<timestamp>"
+        }
+      }
+    },
+    {
+      "as": "anonymous",
+      "request": {
+        "method": "POST",
+        "path": "/auth/hirer/redeem/start",
+        "body": {
+          "org_slug": "acme",
+          "email": "slow@acme.com"
+        }
+      },
+      "expect": {
+        "status": 202,
+        "body": null
+      }
+    },
+    {
+      "as": "system",
+      "request": {
+        "method": "READ_EMAIL",
+        "path": "/",
+        "body": {
+          "to": "slow@acme.com",
+          "subject": "Confirm your email address",
+          "count": 1
+        }
+      },
+      "capture": {
+        "slow_proof": "$.token"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "to": "slow@acme.com",
+          "subject": "Confirm your email address",
+          "html": "<string>",
+          "token": "<token>"
+        }
+      }
+    },
+    {
+      "as": "system",
+      "request": {
+        "method": "ADVANCE_CLOCK",
+        "path": "/"
+      },
+      "fake": {
+        "clock": {
+          "advance": "25h"
+        }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "now": "<timestamp>"
+        }
+      }
+    },
+    {
+      "_step": "410, and told apart from spent: the remedy is a fresh link, not signing in.",
+      "as": "anonymous",
+      "request": {
+        "method": "POST",
+        "path": "/auth/hirer/redeem/complete",
+        "body": {
+          "token": "{{slow_proof}}",
+          "display_name": "Slow Coach",
+          "password": "correct-horse-battery"
+        }
+      },
+      "expect": {
+        "status": 410,
+        "body": {
+          "error": "verification_expired"
+        },
+        "db": {
+          "hirer_accounts": {
+            "where": {
+              "username": "slow"
+            },
+            "count": 0
+          }
+        }
+      }
+    }
+  ]
+}

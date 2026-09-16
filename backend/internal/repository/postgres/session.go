@@ -112,9 +112,13 @@ func (r *SessionRepository) Create(ctx context.Context, t port.Tx, s *domain.Ses
 func (r *SessionRepository) Rotate(ctx context.Context, t port.Tx, spent domain.SessionID, successor *domain.Session, hash []byte) error {
 	q := r.db.q(t)
 
+	// $2, not SQL now(): sessions are stamped from the controllable clock
+	// (ADR-0012), and a row half-written by the wall clock would compare
+	// against expires_at from a different timeline.
 	tag, err := q.Exec(ctx, `
-		UPDATE sessions SET used_at = now()
-		WHERE id = $1 AND used_at IS NULL AND revoked_at IS NULL`, string(spent))
+		UPDATE sessions SET used_at = $2
+		WHERE id = $1 AND used_at IS NULL AND revoked_at IS NULL`,
+		string(spent), r.db.now())
 	if err != nil {
 		return translate(err, fmt.Sprintf("spending session %s", spent))
 	}
@@ -135,9 +139,23 @@ func (r *SessionRepository) Rotate(ctx context.Context, t port.Tx, spent domain.
 // actually died rather than when someone last asked.
 func (r *SessionRepository) RevokeFamily(ctx context.Context, t port.Tx, familyID string) error {
 	_, err := r.db.q(t).Exec(ctx,
-		`UPDATE sessions SET revoked_at = now() WHERE family_id = $1 AND revoked_at IS NULL`,
-		familyID)
+		`UPDATE sessions SET revoked_at = $2 WHERE family_id = $1 AND revoked_at IS NULL`,
+		familyID, r.db.now())
 	return translate(err, fmt.Sprintf("revoking family %s", familyID))
+}
+
+// RevokeAllForPrincipal kills every family a principal holds.
+//
+// Removing a roster entry ends that person's access everywhere, not only on
+// the device whose token happened to be presented (ADR-0016 §5).
+func (r *SessionRepository) RevokeAllForPrincipal(ctx context.Context, t port.Tx, subject string) error {
+	_, err := r.db.q(t).Exec(ctx,
+		`UPDATE sessions
+		    SET revoked_at = $2
+		  WHERE revoked_at IS NULL
+		    AND (user_id::text = $1 OR hirer_account_id::text = $1 OR admin_account_id::text = $1)`,
+		subject, r.db.now())
+	return translate(err, fmt.Sprintf("revoking every session of %s", subject))
 }
 
 // CloseFamily retires every session in a family the holder signed out of.
@@ -178,8 +196,8 @@ func (r *SessionRepository) ActiveCount(ctx context.Context, principalID string)
 	err := r.db.pool.QueryRow(ctx, `
 		SELECT count(*) FROM sessions
 		WHERE coalesce(user_id, hirer_account_id, admin_account_id) = $1
-		  AND revoked_at IS NULL AND used_at IS NULL AND expires_at > now()`,
-		principalID).Scan(&n)
+		  AND revoked_at IS NULL AND used_at IS NULL AND expires_at > $2`,
+		principalID, r.db.now()).Scan(&n)
 	if err != nil {
 		return 0, translate(err, fmt.Sprintf("counting sessions for %s", principalID))
 	}
@@ -207,12 +225,17 @@ func principalColumns(kind domain.PrincipalKind, id string) (user, hirer, admin 
 // arrived on, which is the newest this query can see without the token.
 func (r *SessionRepository) ActiveFamily(ctx context.Context, principalID string) (string, error) {
 	var familyID string
+	// $2, not SQL now(). expires_at is written from the controllable clock
+	// (ADR-0012), so comparing it against the database's wall clock makes
+	// every session look expired under a pinned time — Logout then finds no
+	// family, revokes nothing, and a refresh token replayed after sign-out
+	// still works. Silently, which is the dangerous part.
 	err := r.db.pool.QueryRow(ctx, `
 		SELECT family_id FROM sessions
 		WHERE coalesce(user_id, hirer_account_id, admin_account_id) = $1
-		  AND revoked_at IS NULL AND expires_at > now()
+		  AND revoked_at IS NULL AND expires_at > $2
 		ORDER BY created_at DESC
-		LIMIT 1`, principalID).Scan(&familyID)
+		LIMIT 1`, principalID, r.db.now()).Scan(&familyID)
 	if err != nil {
 		return "", translate(err, fmt.Sprintf("reading the active family for %s", principalID))
 	}

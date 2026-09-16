@@ -22,7 +22,7 @@ func TestShortlistRepositoryStaging(t *testing.T) {
 			t.Errorf("expected a draft, got %s", s.Status)
 		}
 
-		e := mustAddEntry(ctx, t, db, s.ID, alice.ID, hirer.ID)
+		e := mustAddEntry(ctx, t, db, s.ID, alice.ID, hirer)
 		if e.NotifiedAt != nil {
 			t.Error("staging must not notify")
 		}
@@ -38,7 +38,7 @@ func TestShortlistRepositoryStaging(t *testing.T) {
 		hirer := mustRegister(ctx, t, db, "hank@acme.com", "Hank", "Acme", "acme")
 		alice := mustCreateContributor(ctx, t, db, "Alice Okafor", 100001, "aliceok")
 		s := mustCreateShortlist(ctx, t, db, hirer, "Platform team")
-		mustAddEntry(ctx, t, db, s.ID, alice.ID, hirer.ID)
+		mustAddEntry(ctx, t, db, s.ID, alice.ID, hirer)
 
 		if err := db.Shortlists().RemoveEntry(ctx, s.ID, alice.ID); err != nil {
 			t.Fatalf("removing: %v", err)
@@ -58,7 +58,7 @@ func TestShortlistRepositoryStaging(t *testing.T) {
 			t.Fatalf("closing: %v", err)
 		}
 		_, err := db.Shortlists().AddEntry(ctx, &domain.ShortlistEntry{
-			ShortlistID: s.ID, UserID: alice.ID, AddedBy: hirer.ID})
+			ShortlistID: s.ID, UserID: alice.ID, AddedBy: domain.RefTo(hirer)})
 		if err == nil {
 			t.Error("staging someone for a finished search would only mislead them")
 		}
@@ -69,10 +69,10 @@ func TestShortlistRepositoryStaging(t *testing.T) {
 		hirer := mustRegister(ctx, t, db, "hank@acme.com", "Hank", "Acme", "acme")
 		alice := mustCreateContributor(ctx, t, db, "Alice Okafor", 100001, "aliceok")
 		s := mustCreateShortlist(ctx, t, db, hirer, "Platform team")
-		mustAddEntry(ctx, t, db, s.ID, alice.ID, hirer.ID)
+		mustAddEntry(ctx, t, db, s.ID, alice.ID, hirer)
 
 		_, err := db.Shortlists().AddEntry(ctx, &domain.ShortlistEntry{
-			ShortlistID: s.ID, UserID: alice.ID, AddedBy: hirer.ID})
+			ShortlistID: s.ID, UserID: alice.ID, AddedBy: domain.RefTo(hirer)})
 		if !errors.Is(err, port.ErrConflict) {
 			t.Fatalf("expected port.ErrConflict, got %v", err)
 		}
@@ -87,8 +87,8 @@ func TestShortlistRepositoryConfirm(t *testing.T) {
 		bob := mustCreateContributor(ctx, t, db, "Bob Nakamura", 100002, "bobn")
 
 		s := mustCreateShortlist(ctx, t, db, hirer, "Platform team")
-		mustAddEntry(ctx, t, db, s.ID, alice.ID, hirer.ID)
-		mustAddEntry(ctx, t, db, s.ID, bob.ID, hirer.ID)
+		mustAddEntry(ctx, t, db, s.ID, alice.ID, hirer)
+		mustAddEntry(ctx, t, db, s.ID, bob.ID, hirer)
 
 		requests := mustConfirm(ctx, t, db, s.ID)
 		if len(requests) != 2 {
@@ -119,7 +119,7 @@ func TestShortlistRepositoryConfirm(t *testing.T) {
 		hirer := mustRegister(ctx, t, db, "hank@acme.com", "Hank", "Acme", "acme")
 		alice := mustCreateContributor(ctx, t, db, "Alice Okafor", 100001, "aliceok")
 		s := mustCreateShortlist(ctx, t, db, hirer, "Platform team")
-		mustAddEntry(ctx, t, db, s.ID, alice.ID, hirer.ID)
+		mustAddEntry(ctx, t, db, s.ID, alice.ID, hirer)
 		mustConfirm(ctx, t, db, s.ID)
 
 		err := db.Shortlists().RemoveEntry(ctx, s.ID, alice.ID)
@@ -137,7 +137,7 @@ func TestShortlistRepositoryConfirm(t *testing.T) {
 		hirer := mustRegister(ctx, t, db, "hank@acme.com", "Hank", "Acme", "acme")
 		alice := mustCreateContributor(ctx, t, db, "Alice Okafor", 100001, "aliceok")
 		s := mustCreateShortlist(ctx, t, db, hirer, "Platform team")
-		mustAddEntry(ctx, t, db, s.ID, alice.ID, hirer.ID)
+		mustAddEntry(ctx, t, db, s.ID, alice.ID, hirer)
 
 		mustConfirm(ctx, t, db, s.ID)
 		second := mustConfirm(ctx, t, db, s.ID)
@@ -160,13 +160,13 @@ func TestShortlistRepositoryConfirm(t *testing.T) {
 		carol := mustCreateContributor(ctx, t, db, "Carol Diaz", 100003, "cdiaz")
 
 		s := mustCreateShortlist(ctx, t, db, hirer, "Platform team")
-		mustAddEntry(ctx, t, db, s.ID, alice.ID, hirer.ID)
-		mustAddEntry(ctx, t, db, s.ID, bob.ID, hirer.ID)
+		mustAddEntry(ctx, t, db, s.ID, alice.ID, hirer)
+		mustAddEntry(ctx, t, db, s.ID, bob.ID, hirer)
 		if got := mustConfirm(ctx, t, db, s.ID); len(got) != 2 {
 			t.Fatalf("expected 2 on the first confirm, got %d", len(got))
 		}
 
-		mustAddEntry(ctx, t, db, s.ID, carol.ID, hirer.ID)
+		mustAddEntry(ctx, t, db, s.ID, carol.ID, hirer)
 		second := mustConfirm(ctx, t, db, s.ID)
 
 		if len(second) != 1 {
@@ -189,10 +189,10 @@ func TestShortlistRepositoryConfirm(t *testing.T) {
 		bob := mustCreateContributor(ctx, t, db, "Bob Nakamura", 100002, "bobn")
 
 		s := mustCreateShortlist(ctx, t, db, hirer, "Platform team")
-		mustAddEntry(ctx, t, db, s.ID, alice.ID, hirer.ID)
+		mustAddEntry(ctx, t, db, s.ID, alice.ID, hirer)
 		mustConfirm(ctx, t, db, s.ID)
 
-		mustAddEntry(ctx, t, db, s.ID, bob.ID, hirer.ID)
+		mustAddEntry(ctx, t, db, s.ID, bob.ID, hirer)
 		if err := db.Shortlists().RemoveEntry(ctx, s.ID, bob.ID); err != nil {
 			t.Fatalf("an unnotified entry must still be removable: %v", err)
 		}
@@ -206,7 +206,7 @@ func TestShortlistRepositoryConfirm(t *testing.T) {
 		hirer := mustRegister(ctx, t, db, "hank@acme.com", "Hank", "Acme", "acme")
 		alice := mustCreateContributor(ctx, t, db, "Alice Okafor", 100001, "aliceok")
 		s := mustCreateShortlist(ctx, t, db, hirer, "Platform team")
-		mustAddEntry(ctx, t, db, s.ID, alice.ID, hirer.ID)
+		mustAddEntry(ctx, t, db, s.ID, alice.ID, hirer)
 
 		requests := mustConfirm(ctx, t, db, s.ID)
 		promised := requests[0].TentativeResultDate
@@ -229,7 +229,7 @@ func TestShortlistRepositoryConfirm(t *testing.T) {
 		hirer := mustRegister(ctx, t, db, "hank@acme.com", "Hank", "Acme", "acme")
 		alice := mustCreateContributor(ctx, t, db, "Alice Okafor", 100001, "aliceok")
 		s := mustCreateShortlist(ctx, t, db, hirer, "Platform team")
-		mustAddEntry(ctx, t, db, s.ID, alice.ID, hirer.ID)
+		mustAddEntry(ctx, t, db, s.ID, alice.ID, hirer)
 		if _, err := db.Shortlists().Close(ctx, s.ID); err != nil {
 			t.Fatalf("closing: %v", err)
 		}
@@ -274,7 +274,7 @@ func TestShortlistRepositoryOverdue(t *testing.T) {
 		// on several rounds, so Alice is reused rather than duplicated.
 		for i, name := range []string{"Round A", "Round B"} {
 			s := mustCreateShortlist(ctx, t, db, hirer, name)
-			mustAddEntry(ctx, t, db, s.ID, alice.ID, hirer.ID)
+			mustAddEntry(ctx, t, db, s.ID, alice.ID, hirer)
 			mustConfirm(ctx, t, db, s.ID)
 			past := time.Now().AddDate(0, 0, -10-i)
 			if _, err := db.Shortlists().Update(ctx, s.ID, nil, nil, &past); err != nil {
@@ -303,7 +303,7 @@ func TestShortlistRepositoryOverdue(t *testing.T) {
 		alice := mustCreateContributor(ctx, t, db, "Alice Okafor", 100001, "aliceok")
 
 		s := mustCreateShortlist(ctx, t, db, hirer, "Round A")
-		mustAddEntry(ctx, t, db, s.ID, alice.ID, hirer.ID)
+		mustAddEntry(ctx, t, db, s.ID, alice.ID, hirer)
 		mustConfirm(ctx, t, db, s.ID)
 		past := time.Now().AddDate(0, 0, -10)
 		if _, err := db.Shortlists().Update(ctx, s.ID, nil, nil, &past); err != nil {
@@ -325,13 +325,53 @@ func TestShortlistRepositoryOverdue(t *testing.T) {
 
 // --- helpers -----------------------------------------------------------------
 
+// The contact requests a confirm produces carry the JOB (ADR-0019 §3).
+//
+// Pinned here because it is a SEAM bug and nothing above can see it: the
+// service mocks this repository, so a Confirm that returned requests with a
+// blank role id would pass every unit test and quietly send an invitation
+// saying only that somebody is interested. Which is exactly what it did.
+func TestConfirmCarriesTheRole(t *testing.T) {
+	db, ctx := newDB(t), testContext(t)
+	hirer := mustRegister(ctx, t, db, "hank@acme.com", "Hank", "Acme", "acme")
+	alice := mustCreateContributor(ctx, t, db, "Alice Okafor", 100001, "aliceok")
+
+	round := mustCreateShortlist(ctx, t, db, hirer, "Platform team")
+	mustAddEntry(ctx, t, db, round.ID, alice.ID, hirer)
+
+	var requests []domain.ContactRequest
+	if err := db.InTx(ctx, func(ctx context.Context, tx port.Tx) error {
+		out, err := db.Shortlists().Confirm(ctx, tx, round.ID)
+		requests = out
+		return err
+	}); err != nil {
+		t.Fatalf("confirming: %v", err)
+	}
+
+	if len(requests) != 1 {
+		t.Fatalf("expected one request, got %d", len(requests))
+	}
+	if requests[0].RoleID == "" {
+		t.Error("the request carries no role, so the invitation can only say somebody is interested")
+	}
+	if requests[0].RoleID != round.RoleID {
+		t.Errorf("role = %q, want the round's %q", requests[0].RoleID, round.RoleID)
+	}
+}
+
 func mustCreateShortlist(ctx context.Context, t *testing.T, db *postgres.DB, hirer *domain.Hirer, name string) *domain.Shortlist {
 	t.Helper()
+
+	// A round is FOR a job (ADR-0019 §3), so one has to exist before a round
+	// can name it.
+	role := mustCreateOpenRole(ctx, t, db, hirer)
+
 	s, err := db.Shortlists().Create(ctx, &domain.Shortlist{
 		OrganizationID:      hirer.OrganizationID,
+		RoleID:              role.ID,
 		Name:                name,
 		TentativeResultDate: time.Now().AddDate(0, 1, 0),
-		CreatedBy:           hirer.ID,
+		CreatedBy:           domain.RefTo(hirer),
 	})
 	if err != nil {
 		t.Fatalf("creating shortlist %q: %v", name, err)
@@ -339,10 +379,10 @@ func mustCreateShortlist(ctx context.Context, t *testing.T, db *postgres.DB, hir
 	return s
 }
 
-func mustAddEntry(ctx context.Context, t *testing.T, db *postgres.DB, id domain.ShortlistID, user domain.UserID, by domain.HirerID) *domain.ShortlistEntry {
+func mustAddEntry(ctx context.Context, t *testing.T, db *postgres.DB, id domain.ShortlistID, user domain.UserID, by *domain.Hirer) *domain.ShortlistEntry {
 	t.Helper()
 	e, err := db.Shortlists().AddEntry(ctx, &domain.ShortlistEntry{
-		ShortlistID: id, UserID: user, AddedBy: by})
+		ShortlistID: id, UserID: user, AddedBy: domain.RefTo(by)})
 	if err != nil {
 		t.Fatalf("staging entry: %v", err)
 	}
@@ -360,4 +400,33 @@ func mustConfirm(ctx context.Context, t *testing.T, db *postgres.DB, id domain.S
 		t.Fatalf("confirming: %v", err)
 	}
 	return out
+}
+
+// mustCreateOpenRole makes an opening a round can be raised against.
+//
+// Opened, not drafted: a shortlist may only approach people for a job the
+// organisation has actually committed to, so a draft here would fail the
+// service check these repository tests sit beneath.
+func mustCreateOpenRole(ctx context.Context, t *testing.T, db *postgres.DB, hirer *domain.Hirer) *domain.Role {
+	t.Helper()
+
+	var role *domain.Role
+	err := db.InTx(ctx, func(ctx context.Context, tx port.Tx) error {
+		created, err := db.Roles().Create(ctx, tx, &domain.Role{
+			OrgID:      hirer.OrganizationID,
+			Title:      "Backend engineer",
+			Engagement: domain.EngagementFullTime,
+			Location:   domain.LocationRemote,
+			CreatedBy:  hirer.ID,
+		})
+		if err != nil {
+			return err
+		}
+		role, err = db.Roles().Open(ctx, tx, created.ID, hirer.ID, time.Now())
+		return err
+	})
+	if err != nil {
+		t.Fatalf("creating a role: %v", err)
+	}
+	return role
 }

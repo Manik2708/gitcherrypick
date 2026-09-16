@@ -1,0 +1,741 @@
+{
+  "name": "compensation reaches no hirer, on any surface, before or after acceptance",
+  "description": "ADR-0018 §2, the decision the whole feature turns on: A HIRER NEVER SEES EXPECTED COMPENSATION. Not on a scorecard, not on a contact request, not after an acceptance, not ever.\n\nIt is a NEGATIVE, and a negative is what review is worst at. So this case leans on the runner deliberately rather than incidentally: Compare fails on a key present in the response but absent from the snapshot, which means every recorded body below ASSERTS THE ABSENCE of currency, hourly_rate and yearly_amount by not mentioning them. If an implementation ever adds the figure to any of these shapes, that step fails — no assertion has to be written for a field nobody has thought of yet, which is the only form of this test that survives the API growing.\n\nThe hirer-facing bodies are copied verbatim from the approved discovery fixtures for the same reason: what is under test is that stating a salary expectation changes NOTHING a hirer receives, and a retyped body would quietly be asserting something else.\n\nSeven surfaces, reached by a VERIFIED hirer — the account with the most capability the platform grants: search results, the scorecard, a shortlist entry, the shortlist read, a contact request before acceptance, the same request after acceptance, the leaderboard, and the public scorecard. Plus /me, plus the refusal of /me/compensation to a hirer, which is the statement that no hirer route to the figure exists at all rather than one that returns nothing.\n\nDecision 3 is the reason the after-acceptance step matters most: compensation filters the CONTRIBUTOR's view of roles and never the hirer's view of people, because a hirer who knows what you will accept offers exactly that, and an expectation stops being a floor and becomes a ceiling.",
+  "seed": ["principals", "catalogue", "repositories", "scored_population"],
+  "steps": [
+    {
+      "_step": "Alice states what she expects to be paid. Everything after this step is a check that no hirer can reach it — so this step is the one that makes the rest meaningful, and the db assertion proves the figure really is stored rather than quietly dropped.",
+      "as": "alice",
+      "request": {
+        "method": "PUT",
+        "path": "/me/compensation",
+        "body": {
+          "currency": "GBP",
+          "hourly_rate": 4500,
+          "yearly_amount": 9500000
+        }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "currency": "GBP",
+          "hourly_rate": 4500,
+          "yearly_amount": 9500000
+        },
+        "db": {
+          "user_compensation": {
+            "where": {
+              "user_id": "{{alice.id}}"
+            },
+            "count": 1,
+            "all_match": {
+              "currency": "GBP",
+              "hourly_rate": 4500,
+              "yearly_amount": 9500000
+            }
+          }
+        }
+      }
+    },
+    {
+      "_step": "THE ONLY READ THAT EVER RETURNS THE FIGURE, and it belongs to the person who typed it — ADR-0018 §Compensation.",
+      "as": "alice",
+      "request": {
+        "method": "GET",
+        "path": "/me/compensation"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "currency": "GBP",
+          "hourly_rate": 4500,
+          "yearly_amount": 9500000
+        }
+      }
+    },
+    {
+      "_step": "Work preferences are a SEPARATE pair from compensation (ADR-0018 §11), so the profile a contributor edits most often carries no salary and the profile read below does not incidentally return one.",
+      "as": "alice",
+      "request": {
+        "method": "PUT",
+        "path": "/me/profile",
+        "body": {
+          "open_to_remote": true,
+          "open_to_internships": false,
+          "open_to_onsite": false,
+          "open_to_contract": true,
+          "current_country": "GB",
+          "office_yoe": 6,
+          "first_pr_url": "https://github.com/indie/smalllib/pull/12",
+          "latest_pr_url": "https://github.com/acme/platform/pull/56"
+        }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "preferences": {
+            "open_to_remote": true,
+            "open_to_internships": false,
+            "open_to_onsite": false,
+            "open_to_contract": true,
+            "current_country": "GB",
+            "office_yoe": 6,
+            "first_pr_url": "https://github.com/indie/smalllib/pull/12",
+            "latest_pr_url": "https://github.com/acme/platform/pull/56"
+          },
+          "availability": {
+            "status": "looking_for_job",
+            "expires_at": "<timestamp>"
+          },
+          "needs_attention": false,
+          "matchable": true
+        }
+      }
+    },
+    {
+      "_step": "There is no hirer route to the figure, not even the contributor's own one. A verified hirer asking for it is refused on the type of their account, before any lookup happens.",
+      "as": "hank",
+      "request": {
+        "method": "GET",
+        "path": "/me/compensation"
+      },
+      "expect": {
+        "status": 403,
+        "body": {
+          "error": "contributor_required"
+        }
+      }
+    },
+    {
+      "_step": "The contributor's own /me. Compensation is absent here too: it travels on one endpoint, not on whatever the profile screen happened to already be fetching.",
+      "as": "alice",
+      "request": {
+        "method": "GET",
+        "path": "/me"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "id": "01920000-0000-7000-8000-00000000a001",
+          "display_name": "Alice Okafor",
+          "github_login": "aliceok",
+          "email": "alice@example.com",
+          "principal_type": "contributor",
+          "availability": {
+            "status": "looking_for_job",
+            "expires_at": "<timestamp>"
+          },
+          "overall_score": 64.2,
+          "generalist_score": 64.2
+        }
+      }
+    },
+    {
+      "_step": "AND NO ROUTE TO SOMEBODY ELSE'S. Decision 2 says there is no endpoint that carries it, which is a statement about the ROUTING TABLE and not about a response body — so it is asserted where a route would have to appear. A 404 here is the absence itself; the day somebody adds a hirer-facing read this step answers 200 and fails, which no assertion about a field could do.",
+      "as": "hank",
+      "request": {
+        "method": "GET",
+        "path": "/contributors/{{alice.id}}/compensation"
+      },
+      "expect": {
+        "status": 404
+      }
+    },
+    {
+      "_step": "And nobody at all is refused before the type check, not after it.",
+      "as": "anonymous",
+      "request": {
+        "method": "GET",
+        "path": "/me/compensation"
+      },
+      "expect": {
+        "status": 401,
+        "body": {
+          "error": "unauthenticated"
+        }
+      }
+    },
+    {
+      "_step": "SURFACE 1 — search results. Byte for byte the body the approved search fixture records, with a stated expectation sitting in the database behind it. Decision 3: compensation may never filter, rank or annotate a hirer's view of people, because an upper bound across a few searches IS the number.",
+      "as": "hank",
+      "request": {
+        "method": "GET",
+        "path": "/search?skills=go"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "total": 2,
+          "inactive_hidden": 0,
+          "ranked_by": "skill:go",
+          "page": 1,
+          "per_page": 20,
+          "results": [
+            {
+              "rank": 1,
+              "id": "<uuid>",
+              "display_name": "Alice Okafor",
+              "github_login": "aliceok",
+              "active": true,
+              "availability": {
+                "status": "looking_for_job",
+                "expires_at": "<timestamp>"
+              },
+              "skills": [
+                {
+                  "slug": "go",
+                  "standing": "primary",
+                  "score": 64.2,
+                  "rank": 1
+                }
+              ],
+              "overall_score": 64.2,
+              "generalist_score": 64.2
+            },
+            {
+              "rank": 2,
+              "id": "<uuid>",
+              "display_name": "Bob Nakamura",
+              "github_login": "bobn",
+              "active": true,
+              "availability": {
+                "status": "looking_for_freelance",
+                "expires_at": "<timestamp>"
+              },
+              "skills": [
+                {
+                  "slug": "go",
+                  "standing": "primary",
+                  "score": 55.0,
+                  "rank": 2
+                }
+              ],
+              "overall_score": 60.4,
+              "generalist_score": 122.7
+            }
+          ]
+        }
+      }
+    },
+    {
+      "_step": "SURFACE 2 — the scorecard, the richest join in the product and therefore the likeliest place for a widened query to pick a salary up on the way past.",
+      "as": "hank",
+      "request": {
+        "method": "GET",
+        "path": "/contributors/01920000-0000-7000-8000-00000000a001/scorecard"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "user": {
+            "id": "01920000-0000-7000-8000-00000000a001",
+            "display_name": "Alice Okafor",
+            "github_login": "aliceok",
+            "availability": "looking_for_job"
+          },
+          "overall_score": 64.2,
+          "generalist_score": 64.2,
+          "rubric_version": "v1",
+          "skills": [
+            {
+              "slug": "go",
+              "name": "Go",
+              "standing": "primary",
+              "distinct_pr_count": 5,
+              "score": 64.2,
+              "rank": 1,
+              "evidence": [
+                {
+                  "repo": "acme/bigrepo",
+                  "pr_number": 101,
+                  "merged_at": "<timestamp>",
+                  "score": 79.3,
+                  "url": "https://github.com/acme/bigrepo/pull/101",
+                  "dimensions": {
+                    "substance": {
+                      "score": 83,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "complexity": {
+                      "score": 83,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "conversation_quality": {
+                      "score": 83,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "craft": {
+                      "score": 83,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "skill_specificity": {
+                      "score": 83,
+                      "remark": "Seeded from the recorded weighted score."
+                    }
+                  }
+                },
+                {
+                  "repo": "indie/smalllib",
+                  "pr_number": 12,
+                  "merged_at": "<timestamp>",
+                  "score": 64.4,
+                  "url": "https://github.com/indie/smalllib/pull/12",
+                  "dimensions": {
+                    "substance": {
+                      "score": 66,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "complexity": {
+                      "score": 66,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "conversation_quality": {
+                      "score": 66,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "craft": {
+                      "score": 66,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "skill_specificity": {
+                      "score": 66,
+                      "remark": "Seeded from the recorded weighted score."
+                    }
+                  }
+                },
+                {
+                  "repo": "acme/bigrepo",
+                  "pr_number": 102,
+                  "merged_at": "<timestamp>",
+                  "score": 62.1,
+                  "url": "https://github.com/acme/bigrepo/pull/102",
+                  "dimensions": {
+                    "substance": {
+                      "score": 63,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "complexity": {
+                      "score": 63,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "conversation_quality": {
+                      "score": 63,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "craft": {
+                      "score": 63,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "skill_specificity": {
+                      "score": 63,
+                      "remark": "Seeded from the recorded weighted score."
+                    }
+                  }
+                },
+                {
+                  "repo": "acme/platform",
+                  "pr_number": 55,
+                  "merged_at": "<timestamp>",
+                  "score": 60.4,
+                  "url": "https://github.com/acme/platform/pull/55",
+                  "dimensions": {
+                    "substance": {
+                      "score": 61,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "complexity": {
+                      "score": 61,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "conversation_quality": {
+                      "score": 61,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "craft": {
+                      "score": 61,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "skill_specificity": {
+                      "score": 61,
+                      "remark": "Seeded from the recorded weighted score."
+                    }
+                  }
+                },
+                {
+                  "repo": "acme/platform",
+                  "pr_number": 56,
+                  "merged_at": "<timestamp>",
+                  "score": 54.8,
+                  "url": "https://github.com/acme/platform/pull/56",
+                  "dimensions": {
+                    "substance": {
+                      "score": 56,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "complexity": {
+                      "score": 56,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "conversation_quality": {
+                      "score": 56,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "craft": {
+                      "score": 56,
+                      "remark": "Seeded from the recorded weighted score."
+                    },
+                    "skill_specificity": {
+                      "score": 56,
+                      "remark": "Seeded from the recorded weighted score."
+                    }
+                  }
+                }
+              ]
+            }
+          ],
+          "email": null
+        }
+      }
+    },
+    {
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/shortlists",
+        "body": {
+          "role_id": "{{acme.role}}",
+          "name": "Platform team, Q4",
+          "tentative_result_date": "2026-10-15"
+        }
+      },
+      "expect": {
+        "status": 201,
+        "body": {
+          "id": "<uuid>",
+          "role_id": "<uuid>",
+          "name": "Platform team, Q4",
+          "status": "draft",
+          "tentative_result_date": "2026-10-15",
+          "created_at": "<timestamp>"
+        }
+      }
+    },
+    {
+      "_step": "SURFACE 3 — a shortlist entry. Nothing about the person's expectations reaches the seat that staged them.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/shortlists/{{shortlist_id}}/entries",
+        "body": {
+          "user_id": "{{alice.id}}",
+          "note": "Strongest Go evidence in the pool."
+        }
+      },
+      "expect": {
+        "status": 201,
+        "body": {
+          "shortlist_id": "<uuid>",
+          "user": {
+            "id": "01920000-0000-7000-8000-00000000a001",
+            "display_name": "Alice Okafor",
+            "github_login": "aliceok"
+          },
+          "note": "Strongest Go evidence in the pool.",
+          "added_by": {
+            "id": "01920000-0000-7000-8000-00000000c001",
+            "username": "hank",
+            "display_name": "Hank Rivera",
+            "active": true
+          },
+          "notified_at": null,
+          "added_at": "<timestamp>"
+        }
+      }
+    },
+    {
+      "as": "hank",
+      "request": {
+        "method": "GET",
+        "path": "/shortlists/{{shortlist_id}}"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "id": "<uuid>",
+          "role_id": "<uuid>",
+          "name": "Platform team, Q4",
+          "status": "draft",
+          "tentative_result_date": "2026-10-15",
+          "entries": [
+            {
+              "user_id": "<uuid>",
+              "display_name": "Alice Okafor",
+              "contact_status": null,
+              "email": null
+            }
+          ]
+        }
+      }
+    },
+    {
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/shortlists/{{shortlist_id}}/confirm",
+        "body": {}
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "id": "<uuid>",
+          "status": "open",
+          "notified": 1,
+          "already_notified": 0,
+          "irreversible": true,
+          "first_confirmed_at": "<timestamp>",
+          "entries": [
+            {
+              "user_id": "01920000-0000-7000-8000-00000000a001",
+              "display_name": "Alice Okafor",
+              "contact_request_id": "<uuid>",
+              "notified_at": "<timestamp>"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "_step": "SURFACE 4 — a contact request BEFORE acceptance. The approach discloses nothing, including the figure.",
+      "as": "hank",
+      "request": {
+        "method": "GET",
+        "path": "/shortlists/{{shortlist_id}}/contact-requests"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "total": 1,
+          "requests": [
+            {
+              "id": "<uuid>",
+              "user": {
+                "id": "01920000-0000-7000-8000-00000000a001",
+                "display_name": "Alice Okafor",
+                "github_login": "aliceok"
+              },
+              "requested_by": {
+                "id": "01920000-0000-7000-8000-00000000c001",
+                "username": "hank",
+                "display_name": "Hank Rivera",
+                "active": true
+              },
+              "status": "pending",
+              "email": null,
+              "responded_at": null
+            }
+          ]
+        }
+      }
+    },
+    {
+      "_step": "She says yes. This is the moment the platform discloses the most it will ever disclose about her — her address — and it is the sharpest test of decision 2: consent to be contacted is not consent to have your price known before the conversation starts.",
+      "as": "alice",
+      "request": {
+        "method": "POST",
+        "path": "/me/contact-requests/{{contact_request_id}}/accept",
+        "body": {}
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "id": "<uuid>",
+          "status": "accepted",
+          "responded_at": "<timestamp>",
+          "email_released_at": "<timestamp>",
+          "availability_refreshed": true
+        }
+      }
+    },
+    {
+      "_step": "SURFACE 5 — the same request AFTER acceptance. The email appears and nothing else does. 'Not after an acceptance' is the clause of decision 2 an implementation is most likely to relax, because by here the two parties are talking.",
+      "as": "hank",
+      "request": {
+        "method": "GET",
+        "path": "/shortlists/{{shortlist_id}}/contact-requests"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "total": 1,
+          "requests": [
+            {
+              "id": "<uuid>",
+              "user": {
+                "id": "01920000-0000-7000-8000-00000000a001",
+                "display_name": "Alice Okafor",
+                "github_login": "aliceok"
+              },
+              "requested_by": {
+                "id": "01920000-0000-7000-8000-00000000c001",
+                "username": "hank",
+                "display_name": "Hank Rivera",
+                "active": true
+              },
+              "status": "accepted",
+              "email": "alice@example.com",
+              "responded_at": "<timestamp>"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "as": "hank",
+      "request": {
+        "method": "GET",
+        "path": "/shortlists/{{shortlist_id}}"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "id": "<uuid>",
+          "role_id": "<uuid>",
+          "name": "Platform team, Q4",
+          "status": "open",
+          "tentative_result_date": "2026-10-15",
+          "entries": [
+            {
+              "user_id": "<uuid>",
+              "display_name": "Alice Okafor",
+              "contact_status": "accepted",
+              "email": "alice@example.com"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "_step": "SURFACE 6 — the board. Ranked by score and by nothing else: a board that ordered or annotated by expectation would publish a ranking of who is cheap.",
+      "as": "hank",
+      "request": {
+        "method": "GET",
+        "path": "/leaderboard?kind=overall"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "kind": "overall",
+          "rubric_version": "v1",
+          "entries": [
+            {
+              "rank": 1,
+              "user_id": "<uuid>",
+              "display_name": "Carol Diaz",
+              "github_login": "cdiaz",
+              "score": 71.5,
+              "active": false
+            },
+            {
+              "rank": 2,
+              "user_id": "<uuid>",
+              "display_name": "Alice Okafor",
+              "github_login": "aliceok",
+              "score": 64.2,
+              "active": true
+            },
+            {
+              "rank": 3,
+              "user_id": "<uuid>",
+              "display_name": "Bob Nakamura",
+              "github_login": "bobn",
+              "score": 60.4,
+              "active": true
+            },
+            {
+              "rank": 4,
+              "user_id": "<uuid>",
+              "display_name": "Dave Whitfield",
+              "github_login": "dwhit",
+              "score": 58.0,
+              "active": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "as": "alice",
+      "request": {
+        "method": "POST",
+        "path": "/me/share-link",
+        "body": {}
+      },
+      "capture": {
+        "share_token": "$.token"
+      },
+      "expect": {
+        "status": 201,
+        "body": {
+          "id": "<uuid>",
+          "token": "<token>",
+          "url": "<string>",
+          "created_at": "<timestamp>"
+        }
+      }
+    },
+    {
+      "_step": "SURFACE 7 — the one document a contributor publishes themselves. Not a hirer surface at all, which makes a leak here worse: it would be world-readable.",
+      "as": "anonymous",
+      "request": {
+        "method": "GET",
+        "path": "/public/scorecard/{{share_token}}"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "user": {
+            "display_name": "Alice Okafor",
+            "github_login": "aliceok"
+          },
+          "overall_score": 64.2,
+          "rubric_version": "v1",
+          "skills": [
+            {
+              "slug": "go",
+              "name": "Go",
+              "standing": "primary",
+              "distinct_pr_count": 5,
+              "score": 64.2,
+              "evidence": [
+                {
+                  "repo": "acme/bigrepo",
+                  "pr_number": 101,
+                  "merged_at": "<timestamp>",
+                  "score": 79.3,
+                  "url": "https://github.com/acme/bigrepo/pull/101"
+                }
+              ]
+            }
+          ],
+          "generalist_score": 64.2
+        }
+      }
+    },
+    {
+      "_step": "And it is still there, unchanged, after every one of those reads. The figure was never absent from the database — it is absent from the responses, which is what decision 2 says.",
+      "as": "alice",
+      "request": {
+        "method": "GET",
+        "path": "/me/compensation"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "currency": "GBP",
+          "hourly_rate": 4500,
+          "yearly_amount": 9500000
+        }
+      }
+    }
+  ]
+}

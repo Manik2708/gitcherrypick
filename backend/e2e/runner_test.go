@@ -140,9 +140,21 @@ func runCase(t *testing.T, ctx context.Context, pool *pgxpool.Pool, ddl []string
 		}
 
 		if step.Request.IsPseudo() {
-			if err := runPseudo(ctx, t, control, sessions, client, bindings, step, schema); err != nil {
+			payload, err := runPseudo(ctx, t, control, sessions, client, bindings, step, schema)
+			if err != nil {
 				t.Errorf("%s: %v", label, err)
 				return
+			}
+			// Only a step that PRODUCES something is compared against its
+			// snapshot. READ_EMAIL does; the clock and the job runners do
+			// not, and a fixture asserting against a body the harness
+			// invented would be testing the harness.
+			if len(payload) > 0 {
+				if diff := Compare(step.Expect.Body, payload); diff != "" {
+					t.Errorf("%s: body does not match the snapshot\n%s\n        actual: %s",
+						label, diff, truncateLong(string(payload)))
+				}
+				bind(bindings, step, payload)
 			}
 			continue
 		}

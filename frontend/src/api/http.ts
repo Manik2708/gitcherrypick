@@ -183,6 +183,24 @@ function defaultMessage(code: string): string {
       return "Some of this evidence could not be accepted.";
     case "not_found":
       return "That does not exist, or is not yours to see.";
+    case "invalid_state":
+      return "That sign-in link did not match the one this browser started. Begin again.";
+    case "oauth_exchange_failed":
+      return "GitHub would not exchange that sign-in code. It may already have been used.";
+    case "email_not_verified":
+      return "That GitHub account has no verified email address this platform may use.";
+    case "no_hirer_account":
+      return "That identity has no hiring account. Register one, or sign in as a contributor.";
+    case "email_verification_required":
+      return "That link is not one we issued. Ask your organisation to add you again.";
+    case "verification_already_used":
+      return "That link has already been used. Your seat exists — sign in with the username your organisation gave you.";
+    case "verification_expired":
+      return "That link has expired. Ask for another and it will arrive within the hour.";
+    case "username_taken":
+      return "That username is not available.";
+    case "not_an_org_member":
+      return "Only an owner of this organisation may do that.";
     case "malformed_response":
       return "The server sent something this client could not read.";
     default:

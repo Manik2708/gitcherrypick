@@ -1,0 +1,434 @@
+{
+  "name": "a live window with no shape of work enabled matches nothing, and says so",
+  "description": "ADR-0018 \u00a7The unmatchable state, and decision 4. Availability and the OpenTo* flags COMPOSE: declaring availability marks a contributor available for every flag they have enabled and for nothing else, so a match needs a live window AND the flag for that shape.\n\nThat makes one state reachable by accident and undiagnosable from outside \u2014 a live window with no flag set. Refresh the window, believe you are findable, and be invisible to every role, with no response anywhere that says so. Decision 12 makes it the DEFAULT: flags are false, because a profile nobody filled in should surface nobody, which means every contributor who has never opened the form is in it.\n\nSo `matchable` is a named field on the profile read rather than something a client derives, and this case walks every way of being unmatchable:\n\n  * a live window and no flags (alice) \u2014 the accidental state, and the default one;\n  * a LAPSED window and all four flags (carol) \u2014 the flags do not lapse separately, decision 5: one clock governs both halves, so ticking every box changes nothing while the window is dead;\n  * not_looking and a flag (bob) \u2014 an explicit opt-out is not a live window, ADR-0008 \u00a71a;\n  * no availability row at all (a contributor who signed in a minute ago).\n\nAnd both repairs: ticking one shape, and refreshing the window. Each flips the field on its own and neither is sufficient alone \u2014 which is the whole reason availability travels on the profile read instead of the client joining two calls and getting the rule slightly wrong in each place it asks.\n\nThe flags surviving carol's availability write is decision 11 made visible: two tables with two lifetimes, so writing one cannot clear the other.\n\nEvery body here also carries `needs_attention` (ADR-0018 amendment 2), and the point of it is the gap between the two fields. `needs_attention` is true ONLY for somebody who has never saved the form; `matchable` is false for several people who have. Carol answers every question, ticks all four shapes, and is still unmatchable because her window is dead \u2014 needs_attention false, matchable false. A screen that derived the prompt from `matchable` would nag her about a decision she had already made, and 'I am not open to any of these right now' is a real answer somebody may mean. The two fields agree only for the contributor who has never been asked.",
+  "seed": ["principals", "catalogue", "repositories"],
+  "steps": [
+    {
+      "_step": "THE UNMATCHABLE STATE, arrived at by doing nothing. Alice's window is live and she has never said what work she will take, so no role can reach her.",
+      "as": "alice",
+      "request": {
+        "method": "GET",
+        "path": "/me/profile"
+      },
+      "expect": {
+        "status": 200,
+        "_note": "matchable is false against a live window. Every flag is false because that is the default (decision 12) \u2014 opting somebody into internships by inaction would put them in front of hirers they never agreed to hear from. current_country is empty and office_yoe null: nothing has been stated, and null is not zero. open_source_years is null because this case seeds no claims, and a contributor with no merged evidence has no derived figure rather than a figure of zero. needs_attention is TRUE, and this is the only pairing where both fields say the same thing for the same reason: nobody has asked her, so there is nothing to respect and something to prompt.",
+        "body": {
+          "preferences": {
+            "open_to_remote": false,
+            "open_to_internships": false,
+            "open_to_onsite": false,
+            "open_to_contract": false,
+            "current_country": "",
+            "office_yoe": null,
+            "first_pr_url": "",
+            "latest_pr_url": ""
+          },
+          "availability": {
+            "status": "looking_for_job",
+            "expires_at": "<timestamp>"
+          },
+          "needs_attention": true,
+          "matchable": false
+        }
+      }
+    },
+    {
+      "_step": "ONE shape is enough to become findable. Nothing about her availability changed.",
+      "as": "alice",
+      "request": {
+        "method": "PUT",
+        "path": "/me/profile",
+        "body": {
+          "open_to_remote": true,
+          "open_to_internships": false,
+          "open_to_onsite": false,
+          "open_to_contract": false,
+          "current_country": "NG",
+          "office_yoe": 3
+        }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "preferences": {
+            "open_to_remote": true,
+            "open_to_internships": false,
+            "open_to_onsite": false,
+            "open_to_contract": false,
+            "current_country": "NG",
+            "office_yoe": 3,
+            "first_pr_url": "",
+            "latest_pr_url": ""
+          },
+          "availability": {
+            "status": "looking_for_job",
+            "expires_at": "<timestamp>"
+          },
+          "needs_attention": false,
+          "matchable": true
+        },
+        "db": {
+          "user_work_preferences": {
+            "_note": "One row, inserted rather than updated: this is the first time she has submitted the form.",
+            "where": {
+              "user_id": "{{alice.id}}"
+            },
+            "count": 1,
+            "all_match": {
+              "open_to_remote": true,
+              "open_to_internships": false,
+              "current_country": "NG",
+              "office_yoe": 3
+            }
+          }
+        }
+      }
+    },
+    {
+      "_step": "Carol's window LAPSED yesterday. Same default flags, and the same answer for a different reason.",
+      "as": "carol",
+      "request": {
+        "method": "GET",
+        "path": "/me/profile"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "preferences": {
+            "open_to_remote": false,
+            "open_to_internships": false,
+            "open_to_onsite": false,
+            "open_to_contract": false,
+            "current_country": "",
+            "office_yoe": null,
+            "first_pr_url": "",
+            "latest_pr_url": ""
+          },
+          "availability": {
+            "status": "looking_for_job",
+            "expires_at": "<timestamp>"
+          },
+          "needs_attention": true,
+          "matchable": false
+        }
+      }
+    },
+    {
+      "_step": "ALL FOUR FLAGS, and still unmatchable. Decision 5: the flags do not lapse separately, so a dead window takes every one of them down with it.",
+      "as": "carol",
+      "request": {
+        "method": "PUT",
+        "path": "/me/profile",
+        "body": {
+          "open_to_remote": true,
+          "open_to_internships": true,
+          "open_to_onsite": true,
+          "open_to_contract": true,
+          "current_country": "ES",
+          "office_yoe": 11
+        }
+      },
+      "expect": {
+        "status": 200,
+        "_note": "This is the half of the composition rule an implementation forgets: `Matchable()` on the preferences alone is true here, and the answer is still false because IsActive is not. needs_attention is FALSE here while matchable is false \u2014 she has answered, and answering is what stops the prompt. Nagging somebody who filled the form in is how a prompt gets dismissed for good.",
+        "body": {
+          "preferences": {
+            "open_to_remote": true,
+            "open_to_internships": true,
+            "open_to_onsite": true,
+            "open_to_contract": true,
+            "current_country": "ES",
+            "office_yoe": 11,
+            "first_pr_url": "",
+            "latest_pr_url": ""
+          },
+          "availability": {
+            "status": "looking_for_job",
+            "expires_at": "<timestamp>"
+          },
+          "needs_attention": false,
+          "matchable": false
+        }
+      }
+    },
+    {
+      "as": "carol",
+      "request": {
+        "method": "PUT",
+        "path": "/me/availability",
+        "body": {
+          "status": "looking_for_job"
+        }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "status": "looking_for_job",
+          "expires_at": "<timestamp>"
+        }
+      }
+    },
+    {
+      "_step": "Refreshing the window is the OTHER repair, and her four flags are untouched by it \u2014 decision 11: two tables, two lifetimes, and a write to one cannot clear the other.",
+      "as": "carol",
+      "request": {
+        "method": "GET",
+        "path": "/me/profile"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "preferences": {
+            "open_to_remote": true,
+            "open_to_internships": true,
+            "open_to_onsite": true,
+            "open_to_contract": true,
+            "current_country": "ES",
+            "office_yoe": 11,
+            "first_pr_url": "",
+            "latest_pr_url": ""
+          },
+          "availability": {
+            "status": "looking_for_job",
+            "expires_at": "<timestamp>"
+          },
+          "needs_attention": false,
+          "matchable": true
+        }
+      }
+    },
+    {
+      "_step": "Bob is not_looking, which is an explicit refusal rather than a window that ran out \u2014 ADR-0008 \u00a71a. It has no expiry to report.",
+      "as": "bob",
+      "request": {
+        "method": "GET",
+        "path": "/me/profile"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "preferences": {
+            "open_to_remote": false,
+            "open_to_internships": false,
+            "open_to_onsite": false,
+            "open_to_contract": false,
+            "current_country": "",
+            "office_yoe": null,
+            "first_pr_url": "",
+            "latest_pr_url": ""
+          },
+          "availability": {
+            "status": "not_looking",
+            "expires_at": null
+          },
+          "needs_attention": true,
+          "matchable": false
+        }
+      }
+    },
+    {
+      "_step": "Declaring an onsite preference does NOT re-enter him into the pool. not_looking is the one status no flag can override.",
+      "as": "bob",
+      "request": {
+        "method": "PUT",
+        "path": "/me/profile",
+        "body": {
+          "open_to_remote": false,
+          "open_to_internships": false,
+          "open_to_onsite": true,
+          "open_to_contract": false,
+          "current_country": "JP",
+          "office_yoe": 8
+        }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "preferences": {
+            "open_to_remote": false,
+            "open_to_internships": false,
+            "open_to_onsite": true,
+            "open_to_contract": false,
+            "current_country": "JP",
+            "office_yoe": 8,
+            "first_pr_url": "",
+            "latest_pr_url": ""
+          },
+          "availability": {
+            "status": "not_looking",
+            "expires_at": null
+          },
+          "needs_attention": false,
+          "matchable": false
+        }
+      }
+    },
+    {
+      "as": "bob",
+      "request": {
+        "method": "PUT",
+        "path": "/me/availability",
+        "body": {
+          "status": "looking_for_freelance"
+        }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "status": "looking_for_freelance",
+          "expires_at": "<timestamp>"
+        }
+      }
+    },
+    {
+      "_step": "Now both halves hold. Note there is no open_to_freelance flag to set \u2014 availability_status already carries freelance, and two controls meaning one thing can disagree (decision 6).",
+      "as": "bob",
+      "request": {
+        "method": "GET",
+        "path": "/me/profile"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "preferences": {
+            "open_to_remote": false,
+            "open_to_internships": false,
+            "open_to_onsite": true,
+            "open_to_contract": false,
+            "current_country": "JP",
+            "office_yoe": 8,
+            "first_pr_url": "",
+            "latest_pr_url": ""
+          },
+          "availability": {
+            "status": "looking_for_freelance",
+            "expires_at": "<timestamp>"
+          },
+          "needs_attention": false,
+          "matchable": true
+        }
+      }
+    },
+    {
+      "_step": "A contributor who signed in a minute ago has NO availability row and no preferences row. The profile read must answer for them rather than 404 \u2014 everybody starts here.",
+      "as": "anonymous",
+      "request": {
+        "method": "POST",
+        "path": "/auth/github/start",
+        "body": {}
+      },
+      "capture": {
+        "state": "$.state"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "authorize_url": "<authorize_url>",
+          "state": "<token>"
+        }
+      }
+    },
+    {
+      "as": "anonymous",
+      "request": {
+        "method": "GET",
+        "path": "/auth/github/callback?code=gho_profile_fresh&state={{state}}"
+      },
+      "fake": {
+        "github": {
+          "oauth_exchange": {
+            "gho_profile_fresh": {
+              "github_user_id": 100077,
+              "login": "newjoiner",
+              "name": "New Joiner",
+              "email": "new@example.com"
+            }
+          }
+        }
+      },
+      "capture": {
+        "fresh_token": "$.access_token"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "user": {
+            "id": "<uuid>",
+            "display_name": "New Joiner",
+            "github_login": "newjoiner",
+            "principal_type": "contributor",
+            "created": true
+          },
+          "access_token": "<token>",
+          "refresh_token": "<token>",
+          "expires_in": 900
+        }
+      }
+    },
+    {
+      "_step": "Two absent rows and one nil availability, answered rather than crashed. This is the seam a service test cannot reach: the repository returns a zero-valued row for a user it has never seen, and the composition rule has to survive a nil window.",
+      "as": "anonymous",
+      "request": {
+        "method": "GET",
+        "path": "/me/profile",
+        "headers": {
+          "Authorization": "Bearer {{fresh_token}}"
+        }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "preferences": {
+            "open_to_remote": false,
+            "open_to_internships": false,
+            "open_to_onsite": false,
+            "open_to_contract": false,
+            "current_country": "",
+            "office_yoe": null,
+            "first_pr_url": "",
+            "latest_pr_url": ""
+          },
+          "availability": null,
+          "needs_attention": true,
+          "matchable": false
+        }
+      }
+    },
+    {
+      "_step": "The profile belongs to the contributor surface. A hirer has no work preferences to state.",
+      "as": "hank",
+      "request": {
+        "method": "GET",
+        "path": "/me/profile"
+      },
+      "expect": {
+        "status": 403,
+        "body": {
+          "error": "contributor_required"
+        }
+      }
+    },
+    {
+      "as": "anonymous",
+      "request": {
+        "method": "PUT",
+        "path": "/me/profile",
+        "body": {
+          "open_to_remote": true,
+          "open_to_internships": false,
+          "open_to_onsite": false,
+          "open_to_contract": false,
+          "current_country": "GB",
+          "office_yoe": 2
+        }
+      },
+      "expect": {
+        "status": 401,
+        "body": {
+          "error": "unauthenticated"
+        }
+      }
+    }
+  ]
+}

@@ -72,8 +72,17 @@ func TestMeShapesDifferByAccountType(t *testing.T) {
 }
 
 func TestCapabilityNeedsBothVerifications(t *testing.T) {
-	// ADR-0002 requires the hirer AND their organization. Reporting either
-	// alone would let a seat believe they can search when they cannot.
+	// /me must report exactly what AccessService.RequireHiringCapability
+	// enforces. The gate reads the ORGANIZATION and nothing else for a seat:
+	// verifying an org lifts every seat under it, and a seat's own column is
+	// never consulted, because it is stale for anyone created before the org
+	// was approved (ADR-0002, ADR-0008 §3a).
+	//
+	// "org only" is the case that matters, and it used to be asserted the
+	// wrong way round. A roster-redeemed seat and an onboarded owner both have
+	// verified_at NULL — what was verified is the company — so a rule of AND
+	// told them they could not search while /search answered 200 for the same
+	// bearer token.
 	now := fixedTime()
 	cases := map[string]struct {
 		hirer, org bool
@@ -81,7 +90,7 @@ func TestCapabilityNeedsBothVerifications(t *testing.T) {
 	}{
 		"neither":       {false, false, false},
 		"hirer only":    {true, false, false},
-		"org only":      {false, true, false},
+		"org only":      {false, true, true},
 		"both verified": {true, true, true},
 	}
 
@@ -796,11 +805,13 @@ func TestShortlistCreateAndClose(t *testing.T) {
 	shortlistID := domain.ShortlistID("01920000-0000-7000-8000-0000000c0001")
 	date := fixedTime().Add(30 * 24 * time.Hour)
 
-	h.shortlists.EXPECT().Create(mock.Anything, mock.Anything, "Round 1", "Backend hires", date).
-		Return(&domain.Shortlist{ID: shortlistID, Name: "Round 1", Status: "draft"}, nil)
+	// The round names the job it is for (ADR-0019 §3).
+	roleID := domain.RoleID("01920000-0000-7000-8000-0000000e0001")
+	h.shortlists.EXPECT().Create(mock.Anything, mock.Anything, roleID, "Round 1", "Backend hires", date).
+		Return(&domain.Shortlist{ID: shortlistID, RoleID: roleID, Name: "Round 1", Status: "draft"}, nil)
 	created := h.do(t, http.MethodPost, "/shortlists", "hank-token",
-		`{"name":"Round 1","description":"Backend hires","tentative_result_date":"`+
-			date.Format(time.RFC3339)+`"}`)
+		`{"role_id":"`+string(roleID)+`","name":"Round 1","description":"Backend hires",`+
+			`"tentative_result_date":"`+date.Format(time.RFC3339)+`"}`)
 	require.Equal(t, http.StatusCreated, created.Status)
 
 	h.shortlists.EXPECT().Close(mock.Anything, mock.Anything, shortlistID).
@@ -811,81 +822,226 @@ func TestShortlistCreateAndClose(t *testing.T) {
 
 // --- /orgs -------------------------------------------------------------------
 
-func TestInviteReturnsTheTokenOnce(t *testing.T) {
+func TestRosterEntryCarriesNoToken(t *testing.T) {
+	// A roster entry is an ALLOWLIST fact, not a credential. Returning a token
+	// here would make being listed sufficient, which is exactly what ADR-0016
+	// §3 separates: proving control of the address is the second step.
 	h := newHarness(t)
 	h.signIn("hank-token", hirerPrincipal(true))
 
-	h.orgs.EXPECT().Invite(mock.Anything, mock.Anything, domain.OrganizationID(orgID),
-		"new@acme.com", domain.RoleMember).
-		Return(&port.Invitation{
-			ID:    domain.RequestID("01920000-0000-7000-8000-00000000aa01"),
-			Email: "new@acme.com", Role: domain.RoleMember,
-			ExpiresAt: fixedTime().Add(14 * 24 * time.Hour),
-		}, "invite-token", nil)
+	// The role goes through EMPTY: defaulting it is a business rule, and the
+	// service owns it. A controller that filled it in would be the second
+	// place the default lived.
+	h.orgs.EXPECT().AddToRoster(mock.Anything, mock.Anything, domain.OrganizationID(orgID),
+		"new@acme.com", "newseat", domain.OrgRole("")).
+		Return(&port.RosterEntry{
+			ID:    domain.RosterEntryID("01920000-0000-7000-8000-00000000aa01"),
+			Email: "new@acme.com", Username: "newseat", Role: domain.RoleMember,
+			AddedBy: domain.HirerRef{
+				ID: hankID, Username: "hank", DisplayName: "Hank Rivera", Active: true,
+			},
+			CreatedAt: fixedTime(),
+		}, nil)
 
-	got := h.do(t, http.MethodPost, "/orgs/"+orgID+"/invitations", "hank-token",
-		`{"email":"new@acme.com"}`)
+	got := h.do(t, http.MethodPost, "/orgs/"+orgID+"/roster", "hank-token",
+		`{"email":"new@acme.com","username":"newseat"}`)
 	require.Equal(t, http.StatusCreated, got.Status)
+	require.NotContains(t, string(got.Body), "token")
 
 	var body struct {
-		Token string `json:"token"`
-		Role  string `json:"role"`
+		Username   string     `json:"username"`
+		Role       string     `json:"role"`
+		RedeemedAt *time.Time `json:"redeemed_at"`
+		AddedBy    struct {
+			Username string `json:"username"`
+			Active   bool   `json:"active"`
+		} `json:"added_by"`
 	}
 	got.decode(t, &body)
-	require.Equal(t, "invite-token", body.Token)
+	require.Equal(t, "newseat", body.Username)
 	require.Equal(t, "member", body.Role, "member is the default role")
+	require.Nil(t, body.RedeemedAt, "a fresh entry has not been redeemed")
+
+	// ADR-0016 §9 is unconditional: an author is named wherever one appears,
+	// and the roster is no exception.
+	require.Equal(t, "hank", body.AddedBy.Username)
+	require.True(t, body.AddedBy.Active)
 }
 
-func TestInvitingIntoAnotherOrganizationIsRefused(t *testing.T) {
+func TestRosteringIntoAnotherOrganizationIsRefused(t *testing.T) {
 	h := newHarness(t)
 	h.signIn("hank-token", hirerPrincipal(true))
-	h.orgs.EXPECT().Invite(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return(nil, "", service.ErrForbidden)
+	h.orgs.EXPECT().AddToRoster(mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything).Return(nil, service.ErrForbidden)
 
 	got := h.do(t, http.MethodPost,
-		"/orgs/01920000-0000-7000-8000-00000000b009/invitations", "hank-token",
-		`{"email":"x@y.com"}`)
+		"/orgs/01920000-0000-7000-8000-00000000b009/roster", "hank-token",
+		`{"email":"x@y.com","username":"xy"}`)
 	require.Equal(t, http.StatusForbidden, got.Status)
 	require.Equal(t, service.CodeNotAnOrgMember, got.errorCode(t))
 }
 
-func TestAcceptInvitationIsUnauthenticated(t *testing.T) {
-	// The invitee has no account yet; the token in the path is their only
-	// credential.
+func TestATakenUsernameNamesNobody(t *testing.T) {
+	// 409 and nothing else. A message saying where the name is held would turn
+	// the roster endpoint into an oracle over other organizations' hiring
+	// (ADR-0016 §0).
 	h := newHarness(t)
-	h.orgs.EXPECT().AcceptInvitation(mock.Anything, "invite-token", "New Seat", "pw").
+	h.signIn("hank-token", hirerPrincipal(true))
+	h.orgs.EXPECT().AddToRoster(mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything).
+		Return(nil, service.Coded(service.ErrConflict, service.CodeUsernameTaken, "taken"))
+
+	got := h.do(t, http.MethodPost, "/orgs/"+orgID+"/roster", "hank-token",
+		`{"email":"x@y.com","username":"hank"}`)
+	require.Equal(t, http.StatusConflict, got.Status)
+	require.Equal(t, service.CodeUsernameTaken, got.errorCode(t))
+
+	var body errorResponse
+	got.decode(t, &body)
+	require.NotContains(t, body.Message, "Acme")
+}
+
+func TestRemovingAnEntryIsNoContent(t *testing.T) {
+	// 204 with no body: the seat row SURVIVES removal — it authored shortlists
+	// and the record of who was told — so a body saying "deleted" would lie
+	// (ADR-0016 §5).
+	h := newHarness(t)
+	h.signIn("hank-token", hirerPrincipal(true))
+	entryID := domain.RosterEntryID("01920000-0000-7000-8000-00000000aa01")
+	h.orgs.EXPECT().RemoveFromRoster(mock.Anything, mock.Anything,
+		domain.OrganizationID(orgID), entryID).Return(nil)
+
+	got := h.do(t, http.MethodDelete,
+		"/orgs/"+orgID+"/roster/"+string(entryID), "hank-token", "")
+	require.Equal(t, http.StatusNoContent, got.Status)
+	require.Empty(t, got.Body)
+}
+
+func TestSeatsListTheRevokedToo(t *testing.T) {
+	// A departed hirer stays listed so the author of an old round can still be
+	// resolved by name rather than by a bare id (ADR-0016 §5a).
+	h := newHarness(t)
+	h.signIn("hank-token", hirerPrincipal(true))
+
+	gone := fixedTime()
+	h.orgs.EXPECT().ListSeats(mock.Anything, mock.Anything, domain.OrganizationID(orgID)).
+		Return([]domain.Hirer{
+			{ID: hankID, Username: "hank", DisplayName: "Hank Rivera", OrgRole: domain.RoleOwner},
+			{ID: domain.HirerID("01920000-0000-7000-8000-00000000aa02"),
+				Username: "maya", DisplayName: "Maya Okafor", DisabledAt: &gone},
+		}, nil)
+
+	got := h.do(t, http.MethodGet, "/orgs/"+orgID+"/seats", "hank-token", "")
+	require.Equal(t, http.StatusOK, got.Status)
+
+	var body struct {
+		Seats []struct {
+			Username string `json:"username"`
+			Active   bool   `json:"active"`
+		} `json:"seats"`
+	}
+	got.decode(t, &body)
+	require.Len(t, body.Seats, 2)
+	require.True(t, body.Seats[0].Active)
+	require.False(t, body.Seats[1].Active, "a revoked seat is listed, marked inactive")
+}
+
+// --- redemption --------------------------------------------------------------
+
+func TestRedemptionIsUnauthenticated(t *testing.T) {
+	// The redeemer has no account yet; the token in the body is their only
+	// credential, and the seat is created by spending it.
+	h := newHarness(t)
+	h.redemption.EXPECT().CompleteRedemption(mock.Anything, "proof-token", "New Seat", "pw").
 		Return(&domain.Hirer{
-			ID: hankID, DisplayName: "New Seat",
+			ID: hankID, DisplayName: "New Seat", Username: "newseat",
 			Organization: &domain.Organization{ID: orgID, Name: "Acme"},
 		}, tokenPair(), nil)
 
-	got := h.do(t, http.MethodPost, "/orgs/invitations/invite-token/accept", "",
-		`{"display_name":"New Seat","password":"pw"}`)
+	got := h.do(t, http.MethodPost, "/auth/hirer/redeem/complete", "",
+		`{"token":"proof-token","display_name":"New Seat","password":"pw"}`)
 	require.Equal(t, http.StatusCreated, got.Status)
 }
 
-func TestSpentInvitationIsGone(t *testing.T) {
-	// An unknown token is 404 and indistinguishable from a revoked one; a
-	// token that WAS valid and has been consumed is 410.
+func TestStartingRedemptionIsSilent(t *testing.T) {
+	// 202 whether or not an address is rostered. A miss that answered
+	// differently from a hit would be an oracle for who an organization is
+	// hiring (ADR-0016 §3) — so the service returns nil either way and the
+	// status cannot depend on which it was.
 	h := newHarness(t)
-	h.orgs.EXPECT().AcceptInvitation(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return(nil, nil, service.ErrConflict)
+	h.redemption.EXPECT().StartRedemption(mock.Anything, "acme", "stranger@nowhere.example").
+		Return(nil)
 
-	got := h.do(t, http.MethodPost, "/orgs/invitations/spent/accept", "",
-		`{"display_name":"x","password":"pw"}`)
-	require.Equal(t, http.StatusGone, got.Status)
-	require.Equal(t, service.CodeInvitationAccepted, got.errorCode(t))
+	got := h.do(t, http.MethodPost, "/auth/hirer/redeem/start", "",
+		`{"org_slug":"acme","email":"stranger@nowhere.example"}`)
+	require.Equal(t, http.StatusAccepted, got.Status)
+	require.Empty(t, got.Body)
 }
 
-func TestUnknownInvitationIsNotFound(t *testing.T) {
+func TestResendIsSilentToo(t *testing.T) {
 	h := newHarness(t)
-	h.orgs.EXPECT().AcceptInvitation(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return(nil, nil, service.ErrNotFound)
+	h.redemption.EXPECT().ResendVerification(mock.Anything, "nobody@nowhere.example").
+		Return(nil)
 
-	got := h.do(t, http.MethodPost, "/orgs/invitations/nope/accept", "",
-		`{"display_name":"x","password":"pw"}`)
-	require.Equal(t, http.StatusNotFound, got.Status)
-	require.Equal(t, service.CodeInvitationNotFound, got.errorCode(t))
+	got := h.do(t, http.MethodPost, "/auth/hirer/verify/resend", "",
+		`{"email":"nobody@nowhere.example"}`)
+	require.Equal(t, http.StatusAccepted, got.Status)
+}
+
+func TestSpentProofIsGone(t *testing.T) {
+	// A token that never existed is 401 and says no more. A token that WAS
+	// valid and has been consumed is 410, because its holder is entitled to
+	// know which happened: the remedy is to sign in, not to ask again.
+	h := newHarness(t)
+	h.redemption.EXPECT().CompleteRedemption(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(nil, nil, service.Coded(service.ErrInvalidCredentials,
+			service.CodeVerificationSpent, "used"))
+
+	got := h.do(t, http.MethodPost, "/auth/hirer/redeem/complete", "",
+		`{"token":"spent","display_name":"x","password":"pw"}`)
+	require.Equal(t, http.StatusGone, got.Status)
+	require.Equal(t, service.CodeVerificationSpent, got.errorCode(t))
+}
+
+func TestUnknownProofIsUnauthorized(t *testing.T) {
+	// NOT 404. A distinguishable absence would let anyone enumerate live
+	// verification tokens by asking.
+	h := newHarness(t)
+	h.redemption.EXPECT().CompleteRedemption(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(nil, nil, service.Coded(service.ErrInvalidCredentials,
+			service.CodeVerificationRequired, "no such link"))
+
+	got := h.do(t, http.MethodPost, "/auth/hirer/redeem/complete", "",
+		`{"token":"nope","display_name":"x","password":"pw"}`)
+	require.Equal(t, http.StatusUnauthorized, got.Status)
+	require.Equal(t, service.CodeVerificationRequired, got.errorCode(t))
+}
+
+// --- /organizations ----------------------------------------------------------
+
+func TestPublicOrganizationsAreNameAndSlugOnly(t *testing.T) {
+	// The picker discloses who is approved to hire here, which ADR-0016 §3a
+	// accepts. It must go no further: nothing about roster size, seat count or
+	// payment status, which would say how much a company is hiring.
+	h := newHarness(t)
+	verifiedAt := fixedTime()
+	h.redemption.EXPECT().ListOrganizations(mock.Anything).
+		Return([]domain.Organization{{
+			ID: orgID, Name: "Acme", Slug: "acme",
+			VerifiedAt: &verifiedAt,
+		}}, nil)
+
+	got := h.do(t, http.MethodGet, "/organizations", "", "")
+	require.Equal(t, http.StatusOK, got.Status)
+
+	var body struct {
+		Organizations []map[string]any `json:"organizations"`
+	}
+	got.decode(t, &body)
+	require.Len(t, body.Organizations, 1)
+	require.Equal(t, "Acme", body.Organizations[0]["name"])
+	require.Equal(t, "acme", body.Organizations[0]["slug"])
+	require.Len(t, body.Organizations[0], 2, "name and slug and nothing else")
 }
 
 // --- /admin ------------------------------------------------------------------
@@ -1137,4 +1293,101 @@ type claimSummaryResponse struct {
 	PRCount          int    `json:"pr_count"`
 	SkillCount       int    `json:"skill_count"`
 	NominatedPrimary string `json:"nominated_primary"`
+}
+
+// An INDEPENDENT hirer has no organisation (ADR-0017 §1), so there is none to
+// read capability through — their own approval is all there is.
+func TestIndependentHirerCapability(t *testing.T) {
+	now := fixedTime()
+	for name, verified := range map[string]bool{"approved": true, "awaiting review": false} {
+		t.Run(name, func(t *testing.T) {
+			h := newHarness(t)
+			p := hirerPrincipal(false)
+			p.Hirer.Organization = nil
+			p.Hirer.OrganizationID = ""
+			if verified {
+				p.Hirer.VerifiedAt = &now
+			}
+			h.signIn("hank-token", p)
+			h.auth.EXPECT().Me(mock.Anything, mock.Anything).Return(&p, nil)
+
+			got := h.do(t, http.MethodGet, "/me", "hank-token", "")
+			require.Equal(t, http.StatusOK, got.Status)
+
+			var body struct {
+				Verified     bool `json:"verified"`
+				Capabilities struct {
+					CanSearch bool `json:"can_search"`
+				} `json:"capabilities"`
+			}
+			got.decode(t, &body)
+			require.Equal(t, verified, body.Capabilities.CanSearch)
+			require.Equal(t, verified, body.Verified)
+		})
+	}
+}
+
+// A hirer must not reach compensation, at all (ADR-0018 §2).
+//
+// Decision 2 is a NEGATIVE — "no hirer-facing response carries this" — and a
+// negative is easy to believe and hard to be sure of. The e2e suite asserts the
+// absence from every hirer-facing body; this asserts the other half, that the
+// one endpoint which does return it refuses anybody but the person who typed it.
+//
+// Both halves are needed. A shape that omits the field today can gain it in a
+// refactor; a gate that refuses the wrong principal cannot be widened by
+// accident.
+func TestCompensationIsContributorOnly(t *testing.T) {
+	for name, p := range map[string]domain.Principal{
+		"a hirer":  hirerPrincipal(true),
+		"an admin": adminPrincipal(),
+	} {
+		t.Run(name, func(t *testing.T) {
+			h := newHarness(t)
+			h.signIn("token", p)
+
+			// mockery fails the test if the service is called at all, which is
+			// the assertion: the refusal happens before anything reads a row.
+			read := h.do(t, http.MethodGet, "/me/compensation", "token", "")
+			require.Equal(t, http.StatusForbidden, read.Status)
+
+			write := h.do(t, http.MethodPut, "/me/compensation", "token",
+				`{"currency":"GBP","hourly_rate":4500,"yearly_amount":null}`)
+			require.Equal(t, http.StatusForbidden, write.Status)
+		})
+	}
+}
+
+// The same gate on the profile, which carries the country and the self-reported
+// years. Less sensitive than pay, and still nobody else's to read or write.
+func TestProfileIsContributorOnly(t *testing.T) {
+	h := newHarness(t)
+	h.signIn("hank-token", hirerPrincipal(true))
+
+	require.Equal(t, http.StatusForbidden,
+		h.do(t, http.MethodGet, "/me/profile", "hank-token", "").Status)
+	require.Equal(t, http.StatusForbidden,
+		h.do(t, http.MethodPut, "/me/profile", "hank-token", `{"open_to_remote":true}`).Status)
+}
+
+// A field this endpoint does not have is refused, not ignored.
+//
+// Ignoring is worse than it sounds: a client that sent something and got a 200
+// would believe it had saved, and discover otherwise only by reading back
+// carefully. DisallowUnknownFields turns that into an answer.
+func TestUnknownProfileFieldIsRefused(t *testing.T) {
+	h := newHarness(t)
+	h.signIn("alice-token", contributorPrincipal())
+
+	got := h.do(t, http.MethodPut, "/me/profile", "alice-token",
+		`{"open_to_remote":true,"open_to_internships":false,"open_to_onsite":false,
+		  "open_to_contract":false,"current_country":"GB","office_yoe":6,
+		  "first_pr_url":"","latest_pr_url":"","invented_field":40}`)
+	// 400: the body could not be read. 422 is for one that parsed and then
+	// failed a rule — the rest of the codebase draws the line there, and two
+	// approved fixtures pin it.
+	require.Equal(t, http.StatusBadRequest, got.Status,
+		"a body naming a field nothing here has must be refused, not quietly ignored")
+	require.Equal(t, service.CodeInvalidProfile, got.errorCode(t),
+		"invalid_claim would tell a client its EVIDENCE was rejected")
 }

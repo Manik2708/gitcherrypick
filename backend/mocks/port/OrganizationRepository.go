@@ -40,51 +40,48 @@ func (_m *OrganizationRepository) EXPECT() *OrganizationRepository_Expecter {
 	return &OrganizationRepository_Expecter{mock: &_m.Mock}
 }
 
-// AcceptInvitation provides a mock function for the type OrganizationRepository
-func (_mock *OrganizationRepository) AcceptInvitation(ctx context.Context, tx port.Tx, id domain.RequestID, h *domain.Hirer, passwordHash []byte, now time.Time) (*domain.Hirer, error) {
-	ret := _mock.Called(ctx, tx, id, h, passwordHash, now)
+// AddRosterEntry provides a mock function for the type OrganizationRepository
+func (_mock *OrganizationRepository) AddRosterEntry(ctx context.Context, tx port.Tx, e *port.RosterEntry) (*port.RosterEntry, error) {
+	ret := _mock.Called(ctx, tx, e)
 
 	if len(ret) == 0 {
-		panic("no return value specified for AcceptInvitation")
+		panic("no return value specified for AddRosterEntry")
 	}
 
-	var r0 *domain.Hirer
+	var r0 *port.RosterEntry
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, port.Tx, domain.RequestID, *domain.Hirer, []byte, time.Time) (*domain.Hirer, error)); ok {
-		return returnFunc(ctx, tx, id, h, passwordHash, now)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, port.Tx, *port.RosterEntry) (*port.RosterEntry, error)); ok {
+		return returnFunc(ctx, tx, e)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, port.Tx, domain.RequestID, *domain.Hirer, []byte, time.Time) *domain.Hirer); ok {
-		r0 = returnFunc(ctx, tx, id, h, passwordHash, now)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, port.Tx, *port.RosterEntry) *port.RosterEntry); ok {
+		r0 = returnFunc(ctx, tx, e)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*domain.Hirer)
+			r0 = ret.Get(0).(*port.RosterEntry)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, port.Tx, domain.RequestID, *domain.Hirer, []byte, time.Time) error); ok {
-		r1 = returnFunc(ctx, tx, id, h, passwordHash, now)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, port.Tx, *port.RosterEntry) error); ok {
+		r1 = returnFunc(ctx, tx, e)
 	} else {
 		r1 = ret.Error(1)
 	}
 	return r0, r1
 }
 
-// OrganizationRepository_AcceptInvitation_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'AcceptInvitation'
-type OrganizationRepository_AcceptInvitation_Call struct {
+// OrganizationRepository_AddRosterEntry_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'AddRosterEntry'
+type OrganizationRepository_AddRosterEntry_Call struct {
 	*mock.Call
 }
 
-// AcceptInvitation is a helper method to define mock.On call
+// AddRosterEntry is a helper method to define mock.On call
 //   - ctx context.Context
 //   - tx port.Tx
-//   - id domain.RequestID
-//   - h *domain.Hirer
-//   - passwordHash []byte
-//   - now time.Time
-func (_e *OrganizationRepository_Expecter) AcceptInvitation(ctx interface{}, tx interface{}, id interface{}, h interface{}, passwordHash interface{}, now interface{}) *OrganizationRepository_AcceptInvitation_Call {
-	return &OrganizationRepository_AcceptInvitation_Call{Call: _e.mock.On("AcceptInvitation", ctx, tx, id, h, passwordHash, now)}
+//   - e *port.RosterEntry
+func (_e *OrganizationRepository_Expecter) AddRosterEntry(ctx interface{}, tx interface{}, e interface{}) *OrganizationRepository_AddRosterEntry_Call {
+	return &OrganizationRepository_AddRosterEntry_Call{Call: _e.mock.On("AddRosterEntry", ctx, tx, e)}
 }
 
-func (_c *OrganizationRepository_AcceptInvitation_Call) Run(run func(ctx context.Context, tx port.Tx, id domain.RequestID, h *domain.Hirer, passwordHash []byte, now time.Time)) *OrganizationRepository_AcceptInvitation_Call {
+func (_c *OrganizationRepository_AddRosterEntry_Call) Run(run func(ctx context.Context, tx port.Tx, e *port.RosterEntry)) *OrganizationRepository_AddRosterEntry_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -94,9 +91,285 @@ func (_c *OrganizationRepository_AcceptInvitation_Call) Run(run func(ctx context
 		if args[1] != nil {
 			arg1 = args[1].(port.Tx)
 		}
-		var arg2 domain.RequestID
+		var arg2 *port.RosterEntry
 		if args[2] != nil {
-			arg2 = args[2].(domain.RequestID)
+			arg2 = args[2].(*port.RosterEntry)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *OrganizationRepository_AddRosterEntry_Call) Return(rosterEntry *port.RosterEntry, err error) *OrganizationRepository_AddRosterEntry_Call {
+	_c.Call.Return(rosterEntry, err)
+	return _c
+}
+
+func (_c *OrganizationRepository_AddRosterEntry_Call) RunAndReturn(run func(ctx context.Context, tx port.Tx, e *port.RosterEntry) (*port.RosterEntry, error)) *OrganizationRepository_AddRosterEntry_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// Addresses provides a mock function for the type OrganizationRepository
+func (_mock *OrganizationRepository) Addresses(ctx context.Context, id domain.OrganizationID) ([]domain.Address, error) {
+	ret := _mock.Called(ctx, id)
+
+	if len(ret) == 0 {
+		panic("no return value specified for Addresses")
+	}
+
+	var r0 []domain.Address
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.OrganizationID) ([]domain.Address, error)); ok {
+		return returnFunc(ctx, id)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.OrganizationID) []domain.Address); ok {
+		r0 = returnFunc(ctx, id)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]domain.Address)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, domain.OrganizationID) error); ok {
+		r1 = returnFunc(ctx, id)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// OrganizationRepository_Addresses_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Addresses'
+type OrganizationRepository_Addresses_Call struct {
+	*mock.Call
+}
+
+// Addresses is a helper method to define mock.On call
+//   - ctx context.Context
+//   - id domain.OrganizationID
+func (_e *OrganizationRepository_Expecter) Addresses(ctx interface{}, id interface{}) *OrganizationRepository_Addresses_Call {
+	return &OrganizationRepository_Addresses_Call{Call: _e.mock.On("Addresses", ctx, id)}
+}
+
+func (_c *OrganizationRepository_Addresses_Call) Run(run func(ctx context.Context, id domain.OrganizationID)) *OrganizationRepository_Addresses_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 domain.OrganizationID
+		if args[1] != nil {
+			arg1 = args[1].(domain.OrganizationID)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *OrganizationRepository_Addresses_Call) Return(addresss []domain.Address, err error) *OrganizationRepository_Addresses_Call {
+	_c.Call.Return(addresss, err)
+	return _c
+}
+
+func (_c *OrganizationRepository_Addresses_Call) RunAndReturn(run func(ctx context.Context, id domain.OrganizationID) ([]domain.Address, error)) *OrganizationRepository_Addresses_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ClaimUsername provides a mock function for the type OrganizationRepository
+func (_mock *OrganizationRepository) ClaimUsername(ctx context.Context, tx port.Tx, username string) error {
+	ret := _mock.Called(ctx, tx, username)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ClaimUsername")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, port.Tx, string) error); ok {
+		r0 = returnFunc(ctx, tx, username)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// OrganizationRepository_ClaimUsername_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ClaimUsername'
+type OrganizationRepository_ClaimUsername_Call struct {
+	*mock.Call
+}
+
+// ClaimUsername is a helper method to define mock.On call
+//   - ctx context.Context
+//   - tx port.Tx
+//   - username string
+func (_e *OrganizationRepository_Expecter) ClaimUsername(ctx interface{}, tx interface{}, username interface{}) *OrganizationRepository_ClaimUsername_Call {
+	return &OrganizationRepository_ClaimUsername_Call{Call: _e.mock.On("ClaimUsername", ctx, tx, username)}
+}
+
+func (_c *OrganizationRepository_ClaimUsername_Call) Run(run func(ctx context.Context, tx port.Tx, username string)) *OrganizationRepository_ClaimUsername_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 port.Tx
+		if args[1] != nil {
+			arg1 = args[1].(port.Tx)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *OrganizationRepository_ClaimUsername_Call) Return(err error) *OrganizationRepository_ClaimUsername_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *OrganizationRepository_ClaimUsername_Call) RunAndReturn(run func(ctx context.Context, tx port.Tx, username string) error) *OrganizationRepository_ClaimUsername_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ListRoster provides a mock function for the type OrganizationRepository
+func (_mock *OrganizationRepository) ListRoster(ctx context.Context, orgID domain.OrganizationID) ([]port.RosterEntry, error) {
+	ret := _mock.Called(ctx, orgID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListRoster")
+	}
+
+	var r0 []port.RosterEntry
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.OrganizationID) ([]port.RosterEntry, error)); ok {
+		return returnFunc(ctx, orgID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.OrganizationID) []port.RosterEntry); ok {
+		r0 = returnFunc(ctx, orgID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]port.RosterEntry)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, domain.OrganizationID) error); ok {
+		r1 = returnFunc(ctx, orgID)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// OrganizationRepository_ListRoster_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ListRoster'
+type OrganizationRepository_ListRoster_Call struct {
+	*mock.Call
+}
+
+// ListRoster is a helper method to define mock.On call
+//   - ctx context.Context
+//   - orgID domain.OrganizationID
+func (_e *OrganizationRepository_Expecter) ListRoster(ctx interface{}, orgID interface{}) *OrganizationRepository_ListRoster_Call {
+	return &OrganizationRepository_ListRoster_Call{Call: _e.mock.On("ListRoster", ctx, orgID)}
+}
+
+func (_c *OrganizationRepository_ListRoster_Call) Run(run func(ctx context.Context, orgID domain.OrganizationID)) *OrganizationRepository_ListRoster_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 domain.OrganizationID
+		if args[1] != nil {
+			arg1 = args[1].(domain.OrganizationID)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *OrganizationRepository_ListRoster_Call) Return(rosterEntrys []port.RosterEntry, err error) *OrganizationRepository_ListRoster_Call {
+	_c.Call.Return(rosterEntrys, err)
+	return _c
+}
+
+func (_c *OrganizationRepository_ListRoster_Call) RunAndReturn(run func(ctx context.Context, orgID domain.OrganizationID) ([]port.RosterEntry, error)) *OrganizationRepository_ListRoster_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// RedeemRosterEntry provides a mock function for the type OrganizationRepository
+func (_mock *OrganizationRepository) RedeemRosterEntry(ctx context.Context, tx port.Tx, id domain.RosterEntryID, h *domain.Hirer, passwordHash []byte, now time.Time) (*domain.Hirer, error) {
+	ret := _mock.Called(ctx, tx, id, h, passwordHash, now)
+
+	if len(ret) == 0 {
+		panic("no return value specified for RedeemRosterEntry")
+	}
+
+	var r0 *domain.Hirer
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, port.Tx, domain.RosterEntryID, *domain.Hirer, []byte, time.Time) (*domain.Hirer, error)); ok {
+		return returnFunc(ctx, tx, id, h, passwordHash, now)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, port.Tx, domain.RosterEntryID, *domain.Hirer, []byte, time.Time) *domain.Hirer); ok {
+		r0 = returnFunc(ctx, tx, id, h, passwordHash, now)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*domain.Hirer)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, port.Tx, domain.RosterEntryID, *domain.Hirer, []byte, time.Time) error); ok {
+		r1 = returnFunc(ctx, tx, id, h, passwordHash, now)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// OrganizationRepository_RedeemRosterEntry_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RedeemRosterEntry'
+type OrganizationRepository_RedeemRosterEntry_Call struct {
+	*mock.Call
+}
+
+// RedeemRosterEntry is a helper method to define mock.On call
+//   - ctx context.Context
+//   - tx port.Tx
+//   - id domain.RosterEntryID
+//   - h *domain.Hirer
+//   - passwordHash []byte
+//   - now time.Time
+func (_e *OrganizationRepository_Expecter) RedeemRosterEntry(ctx interface{}, tx interface{}, id interface{}, h interface{}, passwordHash interface{}, now interface{}) *OrganizationRepository_RedeemRosterEntry_Call {
+	return &OrganizationRepository_RedeemRosterEntry_Call{Call: _e.mock.On("RedeemRosterEntry", ctx, tx, id, h, passwordHash, now)}
+}
+
+func (_c *OrganizationRepository_RedeemRosterEntry_Call) Run(run func(ctx context.Context, tx port.Tx, id domain.RosterEntryID, h *domain.Hirer, passwordHash []byte, now time.Time)) *OrganizationRepository_RedeemRosterEntry_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 port.Tx
+		if args[1] != nil {
+			arg1 = args[1].(port.Tx)
+		}
+		var arg2 domain.RosterEntryID
+		if args[2] != nil {
+			arg2 = args[2].(domain.RosterEntryID)
 		}
 		var arg3 *domain.Hirer
 		if args[3] != nil {
@@ -122,63 +395,185 @@ func (_c *OrganizationRepository_AcceptInvitation_Call) Run(run func(ctx context
 	return _c
 }
 
-func (_c *OrganizationRepository_AcceptInvitation_Call) Return(hirer *domain.Hirer, err error) *OrganizationRepository_AcceptInvitation_Call {
+func (_c *OrganizationRepository_RedeemRosterEntry_Call) Return(hirer *domain.Hirer, err error) *OrganizationRepository_RedeemRosterEntry_Call {
 	_c.Call.Return(hirer, err)
 	return _c
 }
 
-func (_c *OrganizationRepository_AcceptInvitation_Call) RunAndReturn(run func(ctx context.Context, tx port.Tx, id domain.RequestID, h *domain.Hirer, passwordHash []byte, now time.Time) (*domain.Hirer, error)) *OrganizationRepository_AcceptInvitation_Call {
+func (_c *OrganizationRepository_RedeemRosterEntry_Call) RunAndReturn(run func(ctx context.Context, tx port.Tx, id domain.RosterEntryID, h *domain.Hirer, passwordHash []byte, now time.Time) (*domain.Hirer, error)) *OrganizationRepository_RedeemRosterEntry_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
-// CreateInvitation provides a mock function for the type OrganizationRepository
-func (_mock *OrganizationRepository) CreateInvitation(ctx context.Context, tx port.Tx, orgID domain.OrganizationID, email string, role domain.OrgRole, invitedBy domain.HirerID, tokenHash []byte, expiresAt time.Time) (*port.Invitation, error) {
-	ret := _mock.Called(ctx, tx, orgID, email, role, invitedBy, tokenHash, expiresAt)
+// ReleaseUsername provides a mock function for the type OrganizationRepository
+func (_mock *OrganizationRepository) ReleaseUsername(ctx context.Context, tx port.Tx, username string) error {
+	ret := _mock.Called(ctx, tx, username)
 
 	if len(ret) == 0 {
-		panic("no return value specified for CreateInvitation")
+		panic("no return value specified for ReleaseUsername")
 	}
 
-	var r0 *port.Invitation
-	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, port.Tx, domain.OrganizationID, string, domain.OrgRole, domain.HirerID, []byte, time.Time) (*port.Invitation, error)); ok {
-		return returnFunc(ctx, tx, orgID, email, role, invitedBy, tokenHash, expiresAt)
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, port.Tx, string) error); ok {
+		r0 = returnFunc(ctx, tx, username)
+	} else {
+		r0 = ret.Error(0)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, port.Tx, domain.OrganizationID, string, domain.OrgRole, domain.HirerID, []byte, time.Time) *port.Invitation); ok {
-		r0 = returnFunc(ctx, tx, orgID, email, role, invitedBy, tokenHash, expiresAt)
+	return r0
+}
+
+// OrganizationRepository_ReleaseUsername_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ReleaseUsername'
+type OrganizationRepository_ReleaseUsername_Call struct {
+	*mock.Call
+}
+
+// ReleaseUsername is a helper method to define mock.On call
+//   - ctx context.Context
+//   - tx port.Tx
+//   - username string
+func (_e *OrganizationRepository_Expecter) ReleaseUsername(ctx interface{}, tx interface{}, username interface{}) *OrganizationRepository_ReleaseUsername_Call {
+	return &OrganizationRepository_ReleaseUsername_Call{Call: _e.mock.On("ReleaseUsername", ctx, tx, username)}
+}
+
+func (_c *OrganizationRepository_ReleaseUsername_Call) Run(run func(ctx context.Context, tx port.Tx, username string)) *OrganizationRepository_ReleaseUsername_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 port.Tx
+		if args[1] != nil {
+			arg1 = args[1].(port.Tx)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *OrganizationRepository_ReleaseUsername_Call) Return(err error) *OrganizationRepository_ReleaseUsername_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *OrganizationRepository_ReleaseUsername_Call) RunAndReturn(run func(ctx context.Context, tx port.Tx, username string) error) *OrganizationRepository_ReleaseUsername_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// RemoveRosterEntry provides a mock function for the type OrganizationRepository
+func (_mock *OrganizationRepository) RemoveRosterEntry(ctx context.Context, tx port.Tx, id domain.RosterEntryID) error {
+	ret := _mock.Called(ctx, tx, id)
+
+	if len(ret) == 0 {
+		panic("no return value specified for RemoveRosterEntry")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, port.Tx, domain.RosterEntryID) error); ok {
+		r0 = returnFunc(ctx, tx, id)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// OrganizationRepository_RemoveRosterEntry_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RemoveRosterEntry'
+type OrganizationRepository_RemoveRosterEntry_Call struct {
+	*mock.Call
+}
+
+// RemoveRosterEntry is a helper method to define mock.On call
+//   - ctx context.Context
+//   - tx port.Tx
+//   - id domain.RosterEntryID
+func (_e *OrganizationRepository_Expecter) RemoveRosterEntry(ctx interface{}, tx interface{}, id interface{}) *OrganizationRepository_RemoveRosterEntry_Call {
+	return &OrganizationRepository_RemoveRosterEntry_Call{Call: _e.mock.On("RemoveRosterEntry", ctx, tx, id)}
+}
+
+func (_c *OrganizationRepository_RemoveRosterEntry_Call) Run(run func(ctx context.Context, tx port.Tx, id domain.RosterEntryID)) *OrganizationRepository_RemoveRosterEntry_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 port.Tx
+		if args[1] != nil {
+			arg1 = args[1].(port.Tx)
+		}
+		var arg2 domain.RosterEntryID
+		if args[2] != nil {
+			arg2 = args[2].(domain.RosterEntryID)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *OrganizationRepository_RemoveRosterEntry_Call) Return(err error) *OrganizationRepository_RemoveRosterEntry_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *OrganizationRepository_RemoveRosterEntry_Call) RunAndReturn(run func(ctx context.Context, tx port.Tx, id domain.RosterEntryID) error) *OrganizationRepository_RemoveRosterEntry_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// RosterEntryByEmail provides a mock function for the type OrganizationRepository
+func (_mock *OrganizationRepository) RosterEntryByEmail(ctx context.Context, tx port.Tx, orgID domain.OrganizationID, email string) (*port.RosterEntry, error) {
+	ret := _mock.Called(ctx, tx, orgID, email)
+
+	if len(ret) == 0 {
+		panic("no return value specified for RosterEntryByEmail")
+	}
+
+	var r0 *port.RosterEntry
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, port.Tx, domain.OrganizationID, string) (*port.RosterEntry, error)); ok {
+		return returnFunc(ctx, tx, orgID, email)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, port.Tx, domain.OrganizationID, string) *port.RosterEntry); ok {
+		r0 = returnFunc(ctx, tx, orgID, email)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*port.Invitation)
+			r0 = ret.Get(0).(*port.RosterEntry)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, port.Tx, domain.OrganizationID, string, domain.OrgRole, domain.HirerID, []byte, time.Time) error); ok {
-		r1 = returnFunc(ctx, tx, orgID, email, role, invitedBy, tokenHash, expiresAt)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, port.Tx, domain.OrganizationID, string) error); ok {
+		r1 = returnFunc(ctx, tx, orgID, email)
 	} else {
 		r1 = ret.Error(1)
 	}
 	return r0, r1
 }
 
-// OrganizationRepository_CreateInvitation_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CreateInvitation'
-type OrganizationRepository_CreateInvitation_Call struct {
+// OrganizationRepository_RosterEntryByEmail_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RosterEntryByEmail'
+type OrganizationRepository_RosterEntryByEmail_Call struct {
 	*mock.Call
 }
 
-// CreateInvitation is a helper method to define mock.On call
+// RosterEntryByEmail is a helper method to define mock.On call
 //   - ctx context.Context
 //   - tx port.Tx
 //   - orgID domain.OrganizationID
 //   - email string
-//   - role domain.OrgRole
-//   - invitedBy domain.HirerID
-//   - tokenHash []byte
-//   - expiresAt time.Time
-func (_e *OrganizationRepository_Expecter) CreateInvitation(ctx interface{}, tx interface{}, orgID interface{}, email interface{}, role interface{}, invitedBy interface{}, tokenHash interface{}, expiresAt interface{}) *OrganizationRepository_CreateInvitation_Call {
-	return &OrganizationRepository_CreateInvitation_Call{Call: _e.mock.On("CreateInvitation", ctx, tx, orgID, email, role, invitedBy, tokenHash, expiresAt)}
+func (_e *OrganizationRepository_Expecter) RosterEntryByEmail(ctx interface{}, tx interface{}, orgID interface{}, email interface{}) *OrganizationRepository_RosterEntryByEmail_Call {
+	return &OrganizationRepository_RosterEntryByEmail_Call{Call: _e.mock.On("RosterEntryByEmail", ctx, tx, orgID, email)}
 }
 
-func (_c *OrganizationRepository_CreateInvitation_Call) Run(run func(ctx context.Context, tx port.Tx, orgID domain.OrganizationID, email string, role domain.OrgRole, invitedBy domain.HirerID, tokenHash []byte, expiresAt time.Time)) *OrganizationRepository_CreateInvitation_Call {
+func (_c *OrganizationRepository_RosterEntryByEmail_Call) Run(run func(ctx context.Context, tx port.Tx, orgID domain.OrganizationID, email string)) *OrganizationRepository_RosterEntryByEmail_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -196,88 +591,68 @@ func (_c *OrganizationRepository_CreateInvitation_Call) Run(run func(ctx context
 		if args[3] != nil {
 			arg3 = args[3].(string)
 		}
-		var arg4 domain.OrgRole
-		if args[4] != nil {
-			arg4 = args[4].(domain.OrgRole)
-		}
-		var arg5 domain.HirerID
-		if args[5] != nil {
-			arg5 = args[5].(domain.HirerID)
-		}
-		var arg6 []byte
-		if args[6] != nil {
-			arg6 = args[6].([]byte)
-		}
-		var arg7 time.Time
-		if args[7] != nil {
-			arg7 = args[7].(time.Time)
-		}
 		run(
 			arg0,
 			arg1,
 			arg2,
 			arg3,
-			arg4,
-			arg5,
-			arg6,
-			arg7,
 		)
 	})
 	return _c
 }
 
-func (_c *OrganizationRepository_CreateInvitation_Call) Return(invitation *port.Invitation, err error) *OrganizationRepository_CreateInvitation_Call {
-	_c.Call.Return(invitation, err)
+func (_c *OrganizationRepository_RosterEntryByEmail_Call) Return(rosterEntry *port.RosterEntry, err error) *OrganizationRepository_RosterEntryByEmail_Call {
+	_c.Call.Return(rosterEntry, err)
 	return _c
 }
 
-func (_c *OrganizationRepository_CreateInvitation_Call) RunAndReturn(run func(ctx context.Context, tx port.Tx, orgID domain.OrganizationID, email string, role domain.OrgRole, invitedBy domain.HirerID, tokenHash []byte, expiresAt time.Time) (*port.Invitation, error)) *OrganizationRepository_CreateInvitation_Call {
+func (_c *OrganizationRepository_RosterEntryByEmail_Call) RunAndReturn(run func(ctx context.Context, tx port.Tx, orgID domain.OrganizationID, email string) (*port.RosterEntry, error)) *OrganizationRepository_RosterEntryByEmail_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
-// InvitationByTokenHash provides a mock function for the type OrganizationRepository
-func (_mock *OrganizationRepository) InvitationByTokenHash(ctx context.Context, tx port.Tx, hash []byte) (*port.Invitation, error) {
-	ret := _mock.Called(ctx, tx, hash)
+// RosterEntryByID provides a mock function for the type OrganizationRepository
+func (_mock *OrganizationRepository) RosterEntryByID(ctx context.Context, tx port.Tx, id domain.RosterEntryID) (*port.RosterEntry, error) {
+	ret := _mock.Called(ctx, tx, id)
 
 	if len(ret) == 0 {
-		panic("no return value specified for InvitationByTokenHash")
+		panic("no return value specified for RosterEntryByID")
 	}
 
-	var r0 *port.Invitation
+	var r0 *port.RosterEntry
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, port.Tx, []byte) (*port.Invitation, error)); ok {
-		return returnFunc(ctx, tx, hash)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, port.Tx, domain.RosterEntryID) (*port.RosterEntry, error)); ok {
+		return returnFunc(ctx, tx, id)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, port.Tx, []byte) *port.Invitation); ok {
-		r0 = returnFunc(ctx, tx, hash)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, port.Tx, domain.RosterEntryID) *port.RosterEntry); ok {
+		r0 = returnFunc(ctx, tx, id)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*port.Invitation)
+			r0 = ret.Get(0).(*port.RosterEntry)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, port.Tx, []byte) error); ok {
-		r1 = returnFunc(ctx, tx, hash)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, port.Tx, domain.RosterEntryID) error); ok {
+		r1 = returnFunc(ctx, tx, id)
 	} else {
 		r1 = ret.Error(1)
 	}
 	return r0, r1
 }
 
-// OrganizationRepository_InvitationByTokenHash_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'InvitationByTokenHash'
-type OrganizationRepository_InvitationByTokenHash_Call struct {
+// OrganizationRepository_RosterEntryByID_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RosterEntryByID'
+type OrganizationRepository_RosterEntryByID_Call struct {
 	*mock.Call
 }
 
-// InvitationByTokenHash is a helper method to define mock.On call
+// RosterEntryByID is a helper method to define mock.On call
 //   - ctx context.Context
 //   - tx port.Tx
-//   - hash []byte
-func (_e *OrganizationRepository_Expecter) InvitationByTokenHash(ctx interface{}, tx interface{}, hash interface{}) *OrganizationRepository_InvitationByTokenHash_Call {
-	return &OrganizationRepository_InvitationByTokenHash_Call{Call: _e.mock.On("InvitationByTokenHash", ctx, tx, hash)}
+//   - id domain.RosterEntryID
+func (_e *OrganizationRepository_Expecter) RosterEntryByID(ctx interface{}, tx interface{}, id interface{}) *OrganizationRepository_RosterEntryByID_Call {
+	return &OrganizationRepository_RosterEntryByID_Call{Call: _e.mock.On("RosterEntryByID", ctx, tx, id)}
 }
 
-func (_c *OrganizationRepository_InvitationByTokenHash_Call) Run(run func(ctx context.Context, tx port.Tx, hash []byte)) *OrganizationRepository_InvitationByTokenHash_Call {
+func (_c *OrganizationRepository_RosterEntryByID_Call) Run(run func(ctx context.Context, tx port.Tx, id domain.RosterEntryID)) *OrganizationRepository_RosterEntryByID_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -287,9 +662,9 @@ func (_c *OrganizationRepository_InvitationByTokenHash_Call) Run(run func(ctx co
 		if args[1] != nil {
 			arg1 = args[1].(port.Tx)
 		}
-		var arg2 []byte
+		var arg2 domain.RosterEntryID
 		if args[2] != nil {
-			arg2 = args[2].([]byte)
+			arg2 = args[2].(domain.RosterEntryID)
 		}
 		run(
 			arg0,
@@ -300,12 +675,12 @@ func (_c *OrganizationRepository_InvitationByTokenHash_Call) Run(run func(ctx co
 	return _c
 }
 
-func (_c *OrganizationRepository_InvitationByTokenHash_Call) Return(invitation *port.Invitation, err error) *OrganizationRepository_InvitationByTokenHash_Call {
-	_c.Call.Return(invitation, err)
+func (_c *OrganizationRepository_RosterEntryByID_Call) Return(rosterEntry *port.RosterEntry, err error) *OrganizationRepository_RosterEntryByID_Call {
+	_c.Call.Return(rosterEntry, err)
 	return _c
 }
 
-func (_c *OrganizationRepository_InvitationByTokenHash_Call) RunAndReturn(run func(ctx context.Context, tx port.Tx, hash []byte) (*port.Invitation, error)) *OrganizationRepository_InvitationByTokenHash_Call {
+func (_c *OrganizationRepository_RosterEntryByID_Call) RunAndReturn(run func(ctx context.Context, tx port.Tx, id domain.RosterEntryID) (*port.RosterEntry, error)) *OrganizationRepository_RosterEntryByID_Call {
 	_c.Call.Return(run)
 	return _c
 }

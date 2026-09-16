@@ -6,15 +6,20 @@
 
 import { endpoints } from "../api/endpoints";
 import type {
+  CloseReason,
   ConfirmResult,
   LeaderboardResponse,
+  OrgSettings,
+  Role,
+  RoleDraft,
   SavedSearch,
   Scorecard,
   SearchResponse,
   Shortlist,
   ShortlistSummary,
+  VerificationStatus,
 } from "../contract";
-import { useClient } from "./session";
+import { useClient, useSession } from "./session";
 import { useAction, useAsync } from "./useAsync";
 
 export interface SearchFilters {
@@ -93,8 +98,7 @@ export function useLeaderboard(kind: string, skill?: string) {
 export function useShortlists() {
   const client = useClient();
   return useAsync<{ shortlists: ShortlistSummary[] }>(
-    (signal) =>
-      client.get<{ shortlists: ShortlistSummary[] }>(endpoints.shortlists.list(), signal),
+    (signal) => client.get<{ shortlists: ShortlistSummary[] }>(endpoints.shortlists.list(), signal),
     [client],
   );
 }
@@ -110,12 +114,14 @@ export function useShortlist(id: string | undefined) {
 
 export function useCreateShortlist() {
   const client = useClient();
-  return useAction((name: string, tentativeResultDate: string, description: string) =>
-    client.post<Shortlist>(endpoints.shortlists.create(), {
-      name,
-      description,
-      tentative_result_date: tentativeResultDate,
-    }),
+  return useAction(
+    (roleId: string, name: string, tentativeResultDate: string, description: string) =>
+      client.post<Shortlist>(endpoints.shortlists.create(), {
+        role_id: roleId,
+        name,
+        description,
+        tentative_result_date: tentativeResultDate,
+      }),
   );
 }
 
@@ -136,9 +142,7 @@ export function useRemoveEntry(shortlistId: string) {
 /** Irreversible. Nothing the platform offers takes a confirmation back. */
 export function useConfirmShortlist(shortlistId: string) {
   const client = useClient();
-  return useAction(() =>
-    client.post<ConfirmResult>(endpoints.shortlists.confirm(shortlistId)),
-  );
+  return useAction(() => client.post<ConfirmResult>(endpoints.shortlists.confirm(shortlistId)));
 }
 
 export function useCloseShortlist(shortlistId: string) {
@@ -228,4 +232,126 @@ export function describe(f: SearchFilters): string {
   if (f.availability?.length) bits.push(f.availability.join(" / "));
   if (f.includeInactive) bits.push("including quiet");
   return bits.length ? bits.join(" · ") : "everyone";
+}
+
+/* --- roles (ADR-0019) ------------------------------------------------------ */
+
+/**
+ * The organisation id, recovered the same way Team.tsx recovers it.
+ *
+ * `/me` does not carry one — that shape is pinned by the approved fixtures — so
+ * a session rehydrated from storage written by an older build has a name and no
+ * id. /me/verification does carry it, which makes the fallback one request
+ * rather than a sign-out.
+ */
+export function useOrgID(): { id: string | undefined; loading: boolean } {
+  const { client, principal } = useSession();
+  const stored = principal?.organization?.id;
+  const recovered = useAsync<VerificationStatus>(
+    (signal) => client.get<VerificationStatus>(endpoints.me.verification(), signal),
+    [client],
+    !stored,
+  );
+  return {
+    id: stored ?? recovered.data?.organization?.id,
+    loading: !stored && recovered.loading,
+  };
+}
+
+export function useRoles(orgId: string | undefined, status?: string) {
+  const client = useClient();
+  return useAsync<{ roles: Role[] }>(
+    (signal) => client.get<{ roles: Role[] }>(endpoints.roles.list(orgId ?? "", status), signal),
+    [client, orgId, status],
+    Boolean(orgId),
+  );
+}
+
+export function useRole(orgId: string | undefined, id: string | undefined) {
+  const client = useClient();
+  return useAsync<Role>(
+    (signal) => client.get<Role>(endpoints.roles.one(orgId ?? "", id ?? ""), signal),
+    [client, orgId, id],
+    Boolean(orgId && id),
+  );
+}
+
+/** Creates a DRAFT. Opening it is a separate act, and may need an owner. */
+export function useCreateRole(orgId: string) {
+  const client = useClient();
+  return useAction((draft: RoleDraft) =>
+    client.post<Role>(endpoints.roles.create(orgId), draft as unknown as Record<string, unknown>),
+  );
+}
+
+/** Drafts only. An open role is immutable — use useReviseRole. */
+export function useUpdateRole(orgId: string, id: string) {
+  const client = useClient();
+  return useAction((draft: RoleDraft) =>
+    client.patch<Role>(
+      endpoints.roles.update(orgId, id),
+      draft as unknown as Record<string, unknown>,
+    ),
+  );
+}
+
+/**
+ * Publishes a SUCCESSOR to an open role and closes the original.
+ *
+ * What comes back is a new role with a new id, and the caller has to follow it:
+ * the role they were editing is now closed, and continuing to show it would be
+ * showing a withdrawn opening.
+ */
+export function useReviseRole(orgId: string, id: string) {
+  const client = useClient();
+  return useAction((draft: RoleDraft) =>
+    client.post<Role>(
+      endpoints.roles.revise(orgId, id),
+      draft as unknown as Record<string, unknown>,
+    ),
+  );
+}
+
+export function useOpenRole(orgId: string) {
+  const client = useClient();
+  return useAction((id: string) => client.post<Role>(endpoints.roles.open(orgId, id)));
+}
+
+/**
+ * Closes a role, or records that somebody asked to.
+ *
+ * Both answer 200 with the role. Under draft_and_approve the caller staged a
+ * request and the role is still open, which the body says through `status` and
+ * `close_requested_at` — a client must read those rather than assume.
+ */
+export function useCloseRole(orgId: string) {
+  const client = useClient();
+  return useAction((id: string, reason: CloseReason, note: string, hiredEmails: string[]) =>
+    client.post<Role>(endpoints.roles.close(orgId, id), {
+      reason,
+      note,
+      hired_emails: hiredEmails,
+    }),
+  );
+}
+
+export function useOrgSettings(orgId: string | undefined) {
+  const client = useClient();
+  return useAsync<OrgSettings>(
+    (signal) => client.get<OrgSettings>(endpoints.roles.settings(orgId ?? ""), signal),
+    [client, orgId],
+    Boolean(orgId),
+  );
+}
+
+/** Owners only, under every combination — otherwise a member could grant
+ *  themselves the authority the setting exists to withhold. */
+export function useSaveOrgSettings(orgId: string) {
+  const client = useClient();
+  return useAction((settings: OrgSettings) =>
+    client.put<OrgSettings>(
+      endpoints.roles.settings(orgId),
+      settings as unknown as Record<string, unknown>,
+    ),
+  );
 }

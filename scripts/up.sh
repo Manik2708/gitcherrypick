@@ -100,9 +100,15 @@ cat <<'EOF'
                   alice has five scored pull requests and a judgement to read.
                   bob, carol (lapsed) and dave are also there.
 
-    Hirer         sam@tinystudio.example      verified — can search
-                  pat@unknown.example         UNVERIFIED — search is refused,
-                                              which is the behaviour to look at
+    Hirer         A USERNAME, not an email (ADR-0016). Two seats may share a
+                  contact address, so an address identifies nobody.
+
+                  sam    verified — can search
+                  pat    UNVERIFIED — search is refused, which is the
+                         behaviour to look at
+
+                  "Your team" lists the roster and the seats. Add a colleague
+                  there and /redeem is where they claim the seat.
 
     Admin         admin@gitcherrypick.test    the four review queues
 

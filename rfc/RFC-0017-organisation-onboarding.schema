@@ -1,0 +1,206 @@
+-- ---------------------------------------------------------------------------
+-- RFC-0017 — Organisation onboarding
+--
+-- Delta only. Everything not mentioned here stays as earlier RFCs defined it.
+--
+-- Part of this RFC's change is NOT here, because it belongs where the table is
+-- declared and nothing is deployed yet:
+--
+--   organizations.description / email / phone / headcount, and the three
+--   hiring-process columns — edited into RFC-0002
+--
+-- Applying rfc/*.schema in order IS the schema (e2e/schema.go). With no
+-- production database to migrate, editing the origin is honest; carrying ALTER
+-- statements for a history that never existed is not. Same precedent as
+-- ADR-0016 step 1.
+-- ---------------------------------------------------------------------------
+
+
+-- ---------------------------------------------------------------------------
+-- 1. Addresses.
+--
+-- A table rather than five columns on `organizations`, because an address is
+-- already a repeated thing in the flow this RFC comes from: an organisation has
+-- a main office, and a role posted later is either remote or AT an address —
+-- the diagram's `AddressExist?` branch reuses one rather than retyping it.
+--
+-- Scoped to an organisation. An address is not a shared global entity: two
+-- companies at the same building are two rows, and deduplicating them would
+-- mean one organisation's edit silently rewriting another's.
+--
+-- The main office is a FLAG here rather than a column on `organizations`,
+-- which would need a foreign key in the opposite direction and make the two
+-- tables mutually dependent. A partial unique index says the same thing —
+-- at most one main office — without the cycle.
+-- ---------------------------------------------------------------------------
+CREATE TABLE organization_addresses (
+    id               uuid PRIMARY KEY,
+    organization_id  uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+
+    -- ISO 3166-1 alpha-2, stored as two characters rather than a country name.
+    -- A name has spellings and translations; a role that filters on eligible
+    -- countries later needs one value per country, not "UK"/"U.K."/"Britain".
+    country          char(2) NOT NULL,
+
+    city             text    NOT NULL,
+
+    -- "Pincode" in the source diagram. Optional, deliberately: Ireland had no
+    -- postcodes until 2015 and several countries still have none, so a NOT NULL
+    -- here would lock those organisations out of onboarding entirely.
+    postal_code      text,
+
+    street1          text    NOT NULL,
+    street2          text,
+
+    -- At most one main office per organisation, enforced rather than trusted.
+    is_main_office   boolean NOT NULL DEFAULT false,
+
+    created_at       timestamptz NOT NULL DEFAULT now(),
+    updated_at       timestamptz NOT NULL DEFAULT now(),
+
+    -- A two-letter code and nothing else. Checked here because the column is
+    -- the last place a typo can be caught before it becomes a filter nobody
+    -- matches.
+    CONSTRAINT ck_org_address_country CHECK (country ~ '^[A-Z]{2}$')
+);
+
+CREATE INDEX idx_org_addresses_org ON organization_addresses (organization_id);
+
+-- One main office, not several. Partial, because every other address is
+-- unconstrained and there is no reason to carry those rows in the index.
+CREATE UNIQUE INDEX uq_org_main_office ON organization_addresses (organization_id)
+    WHERE is_main_office;
+
+CREATE TRIGGER trg_organization_addresses_updated_at
+    BEFORE UPDATE ON organization_addresses
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+
+-- ---------------------------------------------------------------------------
+-- 2. Onboarding submissions.
+--
+-- A submitted form, before it is anything. NO `organizations` row exists yet
+-- and no seat does either: the company appears when an administrator approves
+-- it, and not one moment earlier (RFC-0017 §2).
+--
+-- That ordering is the whole point. The form is PUBLIC, so if it wrote an
+-- organisation directly, anyone could take `acme` — or a hundred names in a
+-- minute — by typing them in and walking away. uq_organizations_slug would
+-- then refuse the real company when it arrived. Nothing here reserves a slug,
+-- so nothing can be squatted.
+--
+-- One table with a stamp rather than two tables and a row copy. "Unverified"
+-- and "awaiting review" are two states of one submission, and splitting them
+-- would duplicate every column below and need the row moved between them —
+-- a second place for the same fifteen fields to drift apart.
+-- ---------------------------------------------------------------------------
+CREATE TABLE organization_onboarding (
+    id                   uuid PRIMARY KEY,
+
+    -- --- the company, as submitted -------------------------------------
+    name                 text    NOT NULL,
+    description          text,
+
+    -- Where the code is sent, and the address the owner seat will carry.
+    email                citext  NOT NULL,
+    phone                text,
+    headcount            organization_headcount_band,
+
+    -- --- the main office, as submitted ---------------------------------
+    --
+    -- Flat here and a row in organization_addresses on approval. A pending
+    -- submission has nothing to point a foreign key at.
+    country              char(2),
+    city                 text,
+    postal_code          text,
+    street1              text,
+    street2              text,
+
+    -- --- the person who will own it ------------------------------------
+    --
+    -- All three NULL until the code is used. Proving the address and choosing
+    -- how to sign in are the same step, so that approval has everything it
+    -- needs to create the seat without a second email.
+    --
+    -- The username is claimed out of hirer_usernames at that moment, which is
+    -- what stops two pending submissions racing for one name and only finding
+    -- out when the second is approved (ADR-0016 §Identity).
+    owner_username       citext  REFERENCES hirer_usernames(username),
+    owner_display_name   text,
+    owner_password_hash  bytea,
+
+    -- Set when the emailed code is used. NULL means "unverified" — the state
+    -- an administrator must never see. Setting it is what moves the submission
+    -- into the review queue.
+    email_verified_at    timestamptz,
+
+    -- Set when an administrator decides. A row is kept after either decision:
+    -- it is the record of what was submitted and what was concluded, and a
+    -- rejected company appealing needs it (ADR-0002).
+    decided_at           timestamptz,
+    decided_by           uuid    REFERENCES admin_accounts(id) ON DELETE SET NULL,
+    decision_reason      text,
+
+    -- The organisation this became, once approved. NULL for everything else,
+    -- which is what makes "approved" a fact about a row rather than a status
+    -- anyone has to keep in step.
+    organization_id      uuid    REFERENCES organizations(id) ON DELETE SET NULL,
+
+    -- The rejected submission this one corrects (RFC-0017 §6).
+    --
+    -- A company "edits" a rejected submission, and what that writes is a NEW
+    -- row pointing back at the old one. The table is append-only, so an
+    -- administrator reading the second attempt can see what changed — a
+    -- corrected postcode looks nothing like a company rewriting the facts that
+    -- got it refused, and only the original tells them which this is.
+    supersedes_id        uuid    REFERENCES organization_onboarding(id) ON DELETE SET NULL,
+
+    created_at           timestamptz NOT NULL DEFAULT now(),
+    updated_at           timestamptz NOT NULL DEFAULT now(),
+
+    -- The three columns arrive together or not at all. A submission with a
+    -- username and no password is a half-claimed seat nothing can complete.
+    CONSTRAINT ck_onboarding_owner_complete CHECK (
+        (owner_username IS NULL AND owner_display_name IS NULL AND owner_password_hash IS NULL) OR
+        (owner_username IS NOT NULL AND owner_display_name IS NOT NULL AND owner_password_hash IS NOT NULL)
+    ),
+
+    -- An address is all of it or none of it. A city with no country is not a
+    -- place anybody can post to.
+    CONSTRAINT ck_onboarding_address CHECK (
+        (country IS NULL AND city IS NULL AND street1 IS NULL) OR
+        (country IS NOT NULL AND city IS NOT NULL AND street1 IS NOT NULL)
+    ),
+    CONSTRAINT ck_onboarding_country CHECK (country IS NULL OR country ~ '^[A-Z]{2}$'),
+
+    -- Nothing reaches an administrator unproven, and nothing is approved
+    -- without a person to own it.
+    CONSTRAINT ck_onboarding_decided_after_verified CHECK (
+        decided_at IS NULL OR email_verified_at IS NOT NULL)
+);
+
+-- The admin queue: proven, undecided, oldest first. Partial, because a decided
+-- submission can never satisfy it again.
+CREATE INDEX idx_onboarding_queue ON organization_onboarding (created_at)
+    WHERE email_verified_at IS NOT NULL AND decided_at IS NULL;
+
+-- The resend path, and the "have you already submitted this?" read.
+CREATE INDEX idx_onboarding_email ON organization_onboarding (email)
+    WHERE decided_at IS NULL;
+
+CREATE TRIGGER trg_organization_onboarding_updated_at
+    BEFORE UPDATE ON organization_onboarding
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+
+-- The reference email_verifications declares but cannot resolve: RFC-0016 runs
+-- first, so the table it points at does not exist yet. Added here, where it
+-- does. Not an ALTER carrying migration history — RFC-0016 has no table to
+-- reference at the moment it is applied, and this is the earliest honest place.
+ALTER TABLE email_verifications
+    ADD CONSTRAINT fk_verification_onboarding
+    FOREIGN KEY (onboarding_id) REFERENCES organization_onboarding(id) ON DELETE CASCADE;
+
+-- One live revision chain per superseded row.
+CREATE UNIQUE INDEX uq_onboarding_supersedes ON organization_onboarding (supersedes_id)
+    WHERE supersedes_id IS NOT NULL;

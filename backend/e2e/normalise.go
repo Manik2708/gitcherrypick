@@ -37,7 +37,7 @@ const (
 	// third party by base URL and runs the same code production does
 	// (ADR-0010). Pinning github.com here would assert which environment the
 	// test ran in. What the case is actually about — the authorize path, the
-	// configured client id, the read:user scope, and the state just issued —
+	// configured client id, the requested scopes, and the state just issued —
 	// is checked instead.
 	PlaceholderAuthorizeURL = "<authorize_url>"
 )
@@ -174,8 +174,20 @@ func isAuthorizeURL(raw string) bool {
 		return false
 	}
 	query := u.Query()
+
+	// The scope is pinned EXACTLY, and it must include user:email.
+	//
+	// read:user alone cannot reach /user/emails, so a contributor whose GitHub
+	// profile hides their address signs in and the platform has no way to
+	// notify them. That failed against github.com and passed here, because the
+	// stand-in serves whatever it is asked for — which is exactly why this
+	// assertion is worth having.
+	//
+	// Exact rather than "contains": a scope quietly growing is a widening of
+	// what the platform may read from someone's account, and that should
+	// require editing this line.
 	return query.Get("client_id") != "" &&
-		query.Get("scope") == "read:user" &&
+		query.Get("scope") == "read:user user:email" &&
 		len(query.Get("state")) >= 16
 }
 
@@ -269,8 +281,40 @@ func normalise(field string, node any) any {
 
 func isOpaqueToken(field, value string) bool {
 	switch field {
-	case "token", "refresh_token", "access_token", "share_token", "url":
+	case "token", "refresh_token", "access_token", "share_token":
 		return len(value) >= 16
+	case "url":
+		// `url` is NOT opaque by itself, and treating it as such was a trap.
+		//
+		// It meant one thing when this rule was written — a share link,
+		// "/public/scorecard/<43 random characters>", minted fresh every run.
+		// It now also means a pull request, ".../acme/platform/pull/55", which
+		// is stable and is the entire point of the field: a verdict you cannot
+		// click through to is hard to check and harder to argue with.
+		//
+		// Normalising both wrote `"url": "<token>"` into 24 snapshots — a
+		// placeholder matching any string over 16 characters. The link a
+		// contributor is shown would have been asserted to be *something*, and
+		// nothing more, while every fixture stayed green.
+		//
+		// The opacity lives in the LAST SEGMENT, which is exactly what differs
+		// between the two: a minted token, or a small integer.
+		return isOpaqueSegment(lastSegment(value))
 	}
 	return false
 }
+
+// lastSegment returns the part after the final "/".
+func lastSegment(value string) string {
+	if i := strings.LastIndexByte(value, '/'); i >= 0 {
+		return value[i+1:]
+	}
+	return value
+}
+
+// isOpaqueSegment reports whether a path segment is a secret rather than a name.
+//
+// Length is the test, as it is for every other token here: a minted token is 43
+// base64url characters, and no stable segment this suite records comes close —
+// a PR number, a repo and an owner are all far shorter.
+func isOpaqueSegment(segment string) bool { return len(segment) >= 16 }

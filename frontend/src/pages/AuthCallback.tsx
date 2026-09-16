@@ -14,6 +14,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { endpoints } from "../api/endpoints";
 import { principalOf, tokensOf } from "../api/session";
 import type { SessionResponse } from "../contract";
+import { ApiError } from "../api/http";
 import { useSession } from "../hooks/session";
 import { Empty, Loading } from "../ui/primitives";
 
@@ -23,6 +24,10 @@ export function AuthCallbackPage({ as = "contributor" }: { as?: "contributor" | 
   const navigate = useNavigate();
   const spent = useRef(false);
   const [error, setError] = useState<string | null>(null);
+  // Shown alongside the prose: a reader who reports "that did not work" gives
+  // nobody anything to go on, and these codes are the difference between a
+  // spent code, a scope problem and a state mismatch.
+  const [failCode, setFailCode] = useState<string | null>(null);
 
   const code = params.get("code");
   const state = params.get("state");
@@ -50,13 +55,22 @@ export function AuthCallbackPage({ as = "contributor" }: { as?: "contributor" | 
       .catch((cause: unknown) => {
         const message = cause instanceof Error ? cause.message : "That sign-in did not complete.";
         setError(message);
+        if (cause instanceof ApiError) setFailCode(cause.code);
       });
   }, [client, adopt, navigate, code, state, as]);
 
   if (error) {
     return (
       <div className="page page--narrow">
-        <Empty title="That sign-in did not complete">{error}</Empty>
+        <Empty title="That sign-in did not complete">
+          {error}
+          {failCode ? (
+            <>
+              {" "}
+              <span className="mono">({failCode})</span>
+            </>
+          ) : null}
+        </Empty>
       </div>
     );
   }

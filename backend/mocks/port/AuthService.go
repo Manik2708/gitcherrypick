@@ -524,8 +524,8 @@ func (_c *AuthService_LoginAdmin_Call) RunAndReturn(run func(ctx context.Context
 }
 
 // LoginHirer provides a mock function for the type AuthService
-func (_mock *AuthService) LoginHirer(ctx context.Context, email string, password string) (*domain.Hirer, *domain.TokenPair, error) {
-	ret := _mock.Called(ctx, email, password)
+func (_mock *AuthService) LoginHirer(ctx context.Context, username string, password string) (*domain.Hirer, *domain.TokenPair, error) {
+	ret := _mock.Called(ctx, username, password)
 
 	if len(ret) == 0 {
 		panic("no return value specified for LoginHirer")
@@ -535,24 +535,24 @@ func (_mock *AuthService) LoginHirer(ctx context.Context, email string, password
 	var r1 *domain.TokenPair
 	var r2 error
 	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) (*domain.Hirer, *domain.TokenPair, error)); ok {
-		return returnFunc(ctx, email, password)
+		return returnFunc(ctx, username, password)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) *domain.Hirer); ok {
-		r0 = returnFunc(ctx, email, password)
+		r0 = returnFunc(ctx, username, password)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*domain.Hirer)
 		}
 	}
 	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string) *domain.TokenPair); ok {
-		r1 = returnFunc(ctx, email, password)
+		r1 = returnFunc(ctx, username, password)
 	} else {
 		if ret.Get(1) != nil {
 			r1 = ret.Get(1).(*domain.TokenPair)
 		}
 	}
 	if returnFunc, ok := ret.Get(2).(func(context.Context, string, string) error); ok {
-		r2 = returnFunc(ctx, email, password)
+		r2 = returnFunc(ctx, username, password)
 	} else {
 		r2 = ret.Error(2)
 	}
@@ -566,13 +566,13 @@ type AuthService_LoginHirer_Call struct {
 
 // LoginHirer is a helper method to define mock.On call
 //   - ctx context.Context
-//   - email string
+//   - username string
 //   - password string
-func (_e *AuthService_Expecter) LoginHirer(ctx interface{}, email interface{}, password interface{}) *AuthService_LoginHirer_Call {
-	return &AuthService_LoginHirer_Call{Call: _e.mock.On("LoginHirer", ctx, email, password)}
+func (_e *AuthService_Expecter) LoginHirer(ctx interface{}, username interface{}, password interface{}) *AuthService_LoginHirer_Call {
+	return &AuthService_LoginHirer_Call{Call: _e.mock.On("LoginHirer", ctx, username, password)}
 }
 
-func (_c *AuthService_LoginHirer_Call) Run(run func(ctx context.Context, email string, password string)) *AuthService_LoginHirer_Call {
+func (_c *AuthService_LoginHirer_Call) Run(run func(ctx context.Context, username string, password string)) *AuthService_LoginHirer_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -600,7 +600,7 @@ func (_c *AuthService_LoginHirer_Call) Return(hirer *domain.Hirer, tokenPair *do
 	return _c
 }
 
-func (_c *AuthService_LoginHirer_Call) RunAndReturn(run func(ctx context.Context, email string, password string) (*domain.Hirer, *domain.TokenPair, error)) *AuthService_LoginHirer_Call {
+func (_c *AuthService_LoginHirer_Call) RunAndReturn(run func(ctx context.Context, username string, password string) (*domain.Hirer, *domain.TokenPair, error)) *AuthService_LoginHirer_Call {
 	_c.Call.Return(run)
 	return _c
 }

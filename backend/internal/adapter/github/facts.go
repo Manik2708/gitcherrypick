@@ -26,6 +26,7 @@ type prPayload struct {
 	Title          string     `json:"title"`
 	Merged         bool       `json:"merged"`
 	MergedAt       *time.Time `json:"merged_at"`
+	CreatedAt      time.Time  `json:"created_at"`
 	Additions      int        `json:"additions"`
 	Deletions      int        `json:"deletions"`
 	ChangedFiles   int        `json:"changed_files"`
@@ -101,6 +102,7 @@ func (c *Client) PullRequest(ctx context.Context, owner, repo string, number int
 		Title:          pr.Title,
 		Merged:         pr.Merged,
 		MergedAt:       pr.MergedAt,
+		CreatedAt:      pr.CreatedAt,
 		AuthorUserID:   pr.User.ID,
 		Additions:      pr.Additions,
 		Deletions:      pr.Deletions,

@@ -1,0 +1,271 @@
+{
+  "name": "the country picker answers without an account and is not degraded",
+  "description": "ADR-0018 \u00a79 and \u00a710, and the reason the endpoint is public at all.\n\nA country code is a CLOSED VOCABULARY two systems must agree on \u2014 a contributor's current_country is matched against a role's eligible countries, so 'UK' and 'GB' being two strings for one country is a bug rather than a cosmetic difference. The list therefore comes from port.PlaceService rather than from a constant in a form. Postcodes do not: a postcode is matched against nothing, read by a person and posted to by a courier (ADR-0017 keeps its postal_code unchanged).\n\nNO BEARER TOKEN. The organisation onboarding form needs the picker and has no account behind it either (ADR-0017 \u00a72) \u2014 a stranger filling in an address cannot be asked to sign in first, and a list of countries is not information about a person. The unverified hirer asks too, because that is the account the platform refuses almost everywhere, and the picker is one of the few things it must not refuse.\n\n`degraded` is the fail-open contract made explicit. The controller answers 200 with an empty list when the provider is down, so an empty list is not 'there are no countries' \u2014 it is 'the picker could not be filled', and a client should let the person type a code rather than presenting an empty select as though it were the answer. This case pins degraded:false against a provider that IS up, which is what makes the empty-list case distinguishable at all. It is also the only assertion in the suite that the harness passes --places-api-url: without it the adapter has no base URL, every lookup fails, and this endpoint would answer the degraded empty list forever while looking like a design decision.\n\nThe 18 entries are the stand-in's world (decision 10: no live vendor is chosen, and choosing one later is an adapter and a flag). Their ORDER is part of the snapshot, because a picker whose options shuffle between page loads is a defect in the endpoint rather than something a client should sort.",
+  "seed": ["principals"],
+  "steps": [
+    {
+      "_step": "NOBODY AT ALL. No Authorization header, and 200 \u2014 this is the assertion the onboarding form depends on.",
+      "as": "anonymous",
+      "request": {
+        "method": "GET",
+        "path": "/places/countries"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "countries": [
+            {
+              "code": "AE",
+              "name": "United Arab Emirates"
+            },
+            {
+              "code": "AU",
+              "name": "Australia"
+            },
+            {
+              "code": "BR",
+              "name": "Brazil"
+            },
+            {
+              "code": "CA",
+              "name": "Canada"
+            },
+            {
+              "code": "DE",
+              "name": "Germany"
+            },
+            {
+              "code": "ES",
+              "name": "Spain"
+            },
+            {
+              "code": "FR",
+              "name": "France"
+            },
+            {
+              "code": "GB",
+              "name": "United Kingdom"
+            },
+            {
+              "code": "IE",
+              "name": "Ireland"
+            },
+            {
+              "code": "IN",
+              "name": "India"
+            },
+            {
+              "code": "JP",
+              "name": "Japan"
+            },
+            {
+              "code": "KE",
+              "name": "Kenya"
+            },
+            {
+              "code": "NG",
+              "name": "Nigeria"
+            },
+            {
+              "code": "NL",
+              "name": "Netherlands"
+            },
+            {
+              "code": "PL",
+              "name": "Poland"
+            },
+            {
+              "code": "SG",
+              "name": "Singapore"
+            },
+            {
+              "code": "US",
+              "name": "United States"
+            },
+            {
+              "code": "ZA",
+              "name": "South Africa"
+            }
+          ],
+          "degraded": false
+        }
+      }
+    },
+    {
+      "_step": "An unverified hirer, the account that is refused a scorecard, a search and a shortlist. Not refused this.",
+      "as": "pending_pat",
+      "request": {
+        "method": "GET",
+        "path": "/places/countries"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "countries": [
+            {
+              "code": "AE",
+              "name": "United Arab Emirates"
+            },
+            {
+              "code": "AU",
+              "name": "Australia"
+            },
+            {
+              "code": "BR",
+              "name": "Brazil"
+            },
+            {
+              "code": "CA",
+              "name": "Canada"
+            },
+            {
+              "code": "DE",
+              "name": "Germany"
+            },
+            {
+              "code": "ES",
+              "name": "Spain"
+            },
+            {
+              "code": "FR",
+              "name": "France"
+            },
+            {
+              "code": "GB",
+              "name": "United Kingdom"
+            },
+            {
+              "code": "IE",
+              "name": "Ireland"
+            },
+            {
+              "code": "IN",
+              "name": "India"
+            },
+            {
+              "code": "JP",
+              "name": "Japan"
+            },
+            {
+              "code": "KE",
+              "name": "Kenya"
+            },
+            {
+              "code": "NG",
+              "name": "Nigeria"
+            },
+            {
+              "code": "NL",
+              "name": "Netherlands"
+            },
+            {
+              "code": "PL",
+              "name": "Poland"
+            },
+            {
+              "code": "SG",
+              "name": "Singapore"
+            },
+            {
+              "code": "US",
+              "name": "United States"
+            },
+            {
+              "code": "ZA",
+              "name": "South Africa"
+            }
+          ],
+          "degraded": false
+        }
+      }
+    },
+    {
+      "_step": "And a contributor, filling in their own profile. The same list, cached in memory for the process lifetime: the list changes a few times a decade and a picker should not cost a round trip.",
+      "as": "alice",
+      "request": {
+        "method": "GET",
+        "path": "/places/countries"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "countries": [
+            {
+              "code": "AE",
+              "name": "United Arab Emirates"
+            },
+            {
+              "code": "AU",
+              "name": "Australia"
+            },
+            {
+              "code": "BR",
+              "name": "Brazil"
+            },
+            {
+              "code": "CA",
+              "name": "Canada"
+            },
+            {
+              "code": "DE",
+              "name": "Germany"
+            },
+            {
+              "code": "ES",
+              "name": "Spain"
+            },
+            {
+              "code": "FR",
+              "name": "France"
+            },
+            {
+              "code": "GB",
+              "name": "United Kingdom"
+            },
+            {
+              "code": "IE",
+              "name": "Ireland"
+            },
+            {
+              "code": "IN",
+              "name": "India"
+            },
+            {
+              "code": "JP",
+              "name": "Japan"
+            },
+            {
+              "code": "KE",
+              "name": "Kenya"
+            },
+            {
+              "code": "NG",
+              "name": "Nigeria"
+            },
+            {
+              "code": "NL",
+              "name": "Netherlands"
+            },
+            {
+              "code": "PL",
+              "name": "Poland"
+            },
+            {
+              "code": "SG",
+              "name": "Singapore"
+            },
+            {
+              "code": "US",
+              "name": "United States"
+            },
+            {
+              "code": "ZA",
+              "name": "South Africa"
+            }
+          ],
+          "degraded": false
+        }
+      }
+    }
+  ]
+}

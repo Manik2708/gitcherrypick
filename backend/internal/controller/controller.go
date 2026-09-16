@@ -62,11 +62,13 @@ var messages = map[string]string{
 // sentinel.
 //
 // Most do: a conflict is 409, an absence is 404. These are the exceptions the
-// fixtures pin — an invitation that was consumed is Gone rather than merely in
-// conflict, and a cooldown is a rate limit rather than an invalid request.
+// fixtures pin — a verification link that was consumed is Gone rather than
+// merely in conflict, and a cooldown is a rate limit rather than an invalid
+// request.
 var statusOverrides = map[string]int{
-	service.CodeInvitationExpired:    http.StatusGone,
-	service.CodeInvitationAccepted:   http.StatusGone,
+	service.CodeVerificationSpent:    http.StatusGone,
+	service.CodeVerificationExpired:  http.StatusGone,
+	service.CodeUsernameTaken:        http.StatusConflict,
 	service.CodeRateLimited:          http.StatusTooManyRequests,
 	service.CodeReevaluationCooldown: http.StatusTooManyRequests,
 	service.CodeInvalidID:            http.StatusBadRequest,

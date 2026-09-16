@@ -67,6 +67,13 @@ const (
 	MethodAdvanceClock     = "ADVANCE_CLOCK"
 	MethodRedeliverLastJob = "REDELIVER_LAST_JOB"
 	MethodRejectNReevals   = "REJECT_N_REEVALUATIONS"
+
+	// MethodReadEmail reads the inbox the API delivered to.
+	//
+	// Not a shortcut: since ADR-0016 an emailed proof is the only way to
+	// redeem a roster entry, the token is stored as a hash, and no response
+	// ever returns it. Reading the message is what its recipient does.
+	MethodReadEmail = "READ_EMAIL"
 )
 
 // IsPseudo reports whether the step is driven by the harness rather than sent
@@ -74,7 +81,7 @@ const (
 func (r Request) IsPseudo() bool {
 	switch r.Method {
 	case MethodRunEvaluator, MethodRunOverdueSweep, MethodAdvanceClock,
-		MethodRedeliverLastJob, MethodRejectNReevals:
+		MethodRedeliverLastJob, MethodRejectNReevals, MethodReadEmail:
 		return true
 	}
 	return false

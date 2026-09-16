@@ -54,9 +54,14 @@ type Availability struct {
 // Hirer is a seeded recruiter. AuthProvider decides which sign-in path the
 // runner uses, because a Google account has no password to present.
 type Hirer struct {
-	Key          string `json:"key"`
-	ID           string `json:"id"`
-	DisplayName  string `json:"display_name"`
+	Key         string `json:"key"`
+	ID          string `json:"id"`
+	DisplayName string `json:"display_name"`
+
+	// Username is what a hirer signs in with since ADR-0016. Email became a
+	// contact field: two seats may share one, so it identifies nobody.
+	Username string `json:"username"`
+
 	Email        string `json:"email"`
 	AuthProvider string `json:"auth_provider"`
 	GitHubUserID *int64 `json:"github_user_id"`

@@ -448,7 +448,9 @@ func mustCreateAdmin(ctx context.Context, t *testing.T, db *postgres.DB) domain.
 	var id string
 	if err := db.Pool().QueryRow(ctx,
 		`INSERT INTO admin_accounts (id, email, password_hash, display_name)
-		 VALUES (gen_random_uuid(), 'admin@example.test', 'x', 'Root') RETURNING id`).Scan(&id); err != nil {
+		 VALUES (gen_random_uuid(), 'admin@example.test', 'x', 'Root')
+		 ON CONFLICT (email) DO UPDATE SET display_name = excluded.display_name
+		 RETURNING id`).Scan(&id); err != nil {
 		t.Fatalf("creating an admin: %v", err)
 	}
 	return domain.AdminID(id)

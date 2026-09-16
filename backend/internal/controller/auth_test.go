@@ -174,17 +174,20 @@ func TestGoogleCallbackDistinguishesItsThreeFailures(t *testing.T) {
 func TestHirerLoginReturnsTheOrganizationInline(t *testing.T) {
 	h := newHarness(t)
 	now := fixedTime()
-	h.auth.EXPECT().LoginHirer(mock.Anything, "sam@tiny.example", "correct-horse").
+	h.auth.EXPECT().LoginHirer(mock.Anything, "sam", "correct-horse").
 		Return(&domain.Hirer{
 			ID: hankID, DisplayName: "Sam Ortega", Email: "sam@tiny.example",
+			Username:   "sam",
 			VerifiedAt: &now,
 			Organization: &domain.Organization{
 				ID: orgID, Name: "Tiny Studio", VerifiedAt: &now,
 			},
 		}, tokenPair(), nil)
 
+	// The credential is the USERNAME. The address is carried back in the
+	// response as contact detail, not as the thing that was matched.
 	got := h.do(t, http.MethodPost, "/auth/hirer/login", "",
-		`{"email":"sam@tiny.example","password":"correct-horse"}`)
+		`{"username":"sam","password":"correct-horse"}`)
 	require.Equal(t, http.StatusOK, got.Status)
 
 	var body struct {
@@ -325,15 +328,17 @@ func TestLogoutWithoutCredentialsIsStillLoggedOut(t *testing.T) {
 	require.Empty(t, got.Body)
 }
 
+// Registration signs up an INDEPENDENT hirer — no organisation (ADR-0017 §1).
+// Someone starting a company uses POST /organizations instead.
 func TestRegisterHirerIsCreated(t *testing.T) {
 	h := newHarness(t)
 	h.auth.EXPECT().RegisterHirer(mock.Anything, mock.MatchedBy(func(req port.RegisterHirerRequest) bool {
-		return req.Email == "new@corp.example" && req.OrganizationName == "New Corp" &&
+		return req.Email == "new@corp.example" && req.Username == "newhirer" &&
 			len(req.Proofs) == 1 && req.Proofs[0].Kind == domain.ProofWorkEmailDomain
 	})).Return(&port.HirerRegistration{
 		Hirer: &domain.Hirer{
 			ID: hankID, DisplayName: "New Hirer", Email: "new@corp.example",
-			Organization: &domain.Organization{ID: orgID, Name: "New Corp"},
+			Username: "newhirer",
 		},
 		VerificationRequest: &port.VerificationRequest{
 			ID: domain.RequestID("01920000-0000-7000-8000-00000000ae01"), Status: "pending",
@@ -341,8 +346,8 @@ func TestRegisterHirerIsCreated(t *testing.T) {
 	}, nil)
 
 	got := h.do(t, http.MethodPost, "/auth/hirer/register", "",
-		`{"email":"new@corp.example","password":"pw","display_name":"New Hirer",
-		  "organization":{"name":"New Corp"},
+		`{"email":"new@corp.example","username":"newhirer","password":"pw",
+		  "display_name":"New Hirer",
 		  "proofs":[{"kind":"work_email_domain","value":"corp.example"}]}`)
 	require.Equal(t, http.StatusCreated, got.Status)
 
@@ -374,8 +379,8 @@ func TestRegisterHirerRejectsAnUnknownProofKind(t *testing.T) {
 	h := newHarness(t)
 
 	got := h.do(t, http.MethodPost, "/auth/hirer/register", "",
-		`{"email":"new@corp.example","password":"pw","display_name":"New Hirer",
-		  "organization":{"name":"New Corp"},
+		`{"email":"new@corp.example","username":"newhirer","password":"pw",
+		  "display_name":"New Hirer",
 		  "proofs":[{"kind":"vibes","notes":"trust me"}]}`)
 	require.Equal(t, http.StatusUnprocessableEntity, got.Status)
 	require.Equal(t, service.CodeInvalidRegistration, got.errorCode(t))

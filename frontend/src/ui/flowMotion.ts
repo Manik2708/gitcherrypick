@@ -78,10 +78,9 @@ export function useFlowTimeline(
       setLive(true);
       return;
     }
-    const io = new IntersectionObserver(
-      (entries) => setLive(entries[0]?.isIntersecting ?? false),
-      { threshold: 0.3 },
-    );
+    const io = new IntersectionObserver((entries) => setLive(entries[0]?.isIntersecting ?? false), {
+      threshold: 0.3,
+    });
     io.observe(el);
     return () => io.disconnect();
   }, [reduced]);

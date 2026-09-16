@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -24,8 +25,8 @@ func (db *DB) Hirers() *HirerRepository { return &HirerRepository{db: db} }
 var _ port.HirerRepository = (*HirerRepository)(nil)
 
 const hirerColumns = `
-	h.id, h.organization_id, h.display_name, h.email, h.auth_provider,
-	h.verified_at, coalesce(m.role, 'member'), i.github_user_id,
+	h.id, h.organization_id, h.display_name, h.username, h.email, h.auth_provider,
+	h.verified_at, h.disabled_at, coalesce(m.role, 'member'), i.github_user_id,
 	o.id, o.name, o.slug, o.website, o.linkedin_url, o.verified_at, o.payment_verified_at`
 
 const hirerFrom = `
@@ -36,6 +37,11 @@ const hirerFrom = `
 	LEFT JOIN organizations o ON o.id = h.organization_id`
 
 // ByID reads one seat.
+//
+// disabled_at is SELECTED rather than filtered on, unlike ByUsername: sign-in
+// must not reveal that a revoked seat exists, but a caller already holding a
+// valid token for one is entitled to be told their access was withdrawn. The
+// service decides; this returns the fact. Same rule as admin_accounts.
 func (r *HirerRepository) ByID(ctx context.Context, id domain.HirerID) (*domain.Hirer, error) {
 	h, err := scanHirer(r.db.pool.QueryRow(ctx,
 		`SELECT`+hirerColumns+hirerFrom+` WHERE h.id = $1`, string(id)))
@@ -45,18 +51,76 @@ func (r *HirerRepository) ByID(ctx context.Context, id domain.HirerID) (*domain.
 	return h, nil
 }
 
-// ByEmail resolves the sign-in identifier.
+// ByUsername resolves the sign-in identifier (ADR-0016).
 //
-// email is citext, so the comparison is case-insensitive in the database
+// A disabled seat is NOT FOUND here. Sign-in must not distinguish a revoked
+// account from one that never existed, or the endpoint becomes an oracle over
+// who used to work somewhere.
+//
+// username is citext, so the comparison is case-insensitive in the database
 // rather than by lowering here — which would be a second rule to keep in sync
 // with the unique constraint.
+func (r *HirerRepository) ByUsername(ctx context.Context, username string) (*domain.Hirer, error) {
+	h, err := scanHirer(r.db.pool.QueryRow(ctx,
+		`SELECT`+hirerColumns+hirerFrom+` WHERE h.username = $1 AND h.disabled_at IS NULL`, username))
+	if err != nil {
+		return nil, translate(err, fmt.Sprintf("hirer %q", username))
+	}
+	return h, nil
+}
+
+// ByEmail finds a seat by its contact address.
+//
+// Not an authentication path: email is a contact field since ADR-0016, and two
+// seats may share one. Callers scope it themselves.
 func (r *HirerRepository) ByEmail(ctx context.Context, email string) (*domain.Hirer, error) {
 	h, err := scanHirer(r.db.pool.QueryRow(ctx,
-		`SELECT`+hirerColumns+hirerFrom+` WHERE h.email = $1`, email))
+		`SELECT`+hirerColumns+hirerFrom+` WHERE h.email = $1 AND h.disabled_at IS NULL`, email))
 	if err != nil {
 		return nil, translate(err, fmt.Sprintf("hirer %q", email))
 	}
 	return h, nil
+}
+
+// ListSeats returns an organization's seats, live and revoked.
+//
+// Revoked ones are included deliberately: they are precisely the seats an owner
+// needs in order to resolve the author of an old round (ADR-0016 §5a). Hiding
+// them would make the history it protects unreadable.
+func (r *HirerRepository) ListSeats(ctx context.Context, orgID domain.OrganizationID) ([]domain.Hirer, error) {
+	rows, err := r.db.pool.Query(ctx,
+		`SELECT`+hirerColumns+hirerFrom+`
+		 WHERE h.organization_id = $1
+		 ORDER BY h.disabled_at NULLS FIRST, h.created_at`, string(orgID))
+	if err != nil {
+		return nil, translate(err, fmt.Sprintf("seats of org %s", orgID))
+	}
+	defer rows.Close()
+
+	// Never nil: an empty list must serialize as [] rather than null.
+	out := make([]domain.Hirer, 0)
+	for rows.Next() {
+		h, err := scanHirer(rows)
+		if err != nil {
+			return nil, translate(err, "scanning a seat")
+		}
+		out = append(out, *h)
+	}
+	return out, translate(rows.Err(), "reading seats")
+}
+
+// Disable revokes a seat without deleting it.
+//
+// Idempotent by design: disabling an already-disabled seat leaves the original
+// timestamp, so the record says when access actually ended rather than when
+// somebody last pressed the button.
+func (r *HirerRepository) Disable(ctx context.Context, tx port.Tx, id domain.HirerID, by domain.HirerID, now time.Time) error {
+	_, err := r.db.q(tx).Exec(ctx,
+		`UPDATE hirer_accounts
+		    SET disabled_at = $2, disabled_by = $3, updated_at = $2
+		  WHERE id = $1 AND disabled_at IS NULL`,
+		string(id), now, string(by))
+	return translate(err, fmt.Sprintf("disabling hirer %s", id))
 }
 
 // ByGitHubUserID resolves a seat that signed up through GitHub.
@@ -103,22 +167,23 @@ func (r *HirerRepository) PasswordHash(ctx context.Context, id domain.HirerID) (
 // at once.
 func (r *HirerRepository) Register(ctx context.Context, t port.Tx, in port.NewHirerAccount) (*port.HirerRegistration, error) {
 	q := r.db.q(t)
-	h, org, passwordHash := in.Hirer, in.Organization, in.PasswordHash
+	h, passwordHash := in.Hirer, in.PasswordHash
 
-	orgID := org.ID
-	if orgID == "" {
-		generated, err := uuid.NewV7()
-		if err != nil {
-			return nil, fmt.Errorf("generating organization id: %w", err)
-		}
-		orgID = domain.OrganizationID(generated.String())
+	// The name is claimed out of the global namespace first, the same table a
+	// roster entry draws from. Registration and rostering are the only two
+	// ways a name enters the system, and they must not be able to pick the
+	// same one (ADR-0016 §Identity).
+	if _, err := q.Exec(ctx,
+		`INSERT INTO hirer_usernames (username) VALUES ($1)`, h.Username); err != nil {
+		return nil, translate(err, fmt.Sprintf("claiming the username %q", h.Username))
 	}
-	if _, err := q.Exec(ctx, `
-		INSERT INTO organizations (id, name, slug, website, linkedin_url)
-		VALUES ($1, $2, $3, NULLIF($4, ''), NULLIF($5, ''))`,
-		string(orgID), org.Name, org.Slug, org.Website, org.LinkedInURL); err != nil {
-		return nil, translate(err, fmt.Sprintf("creating organization %q", org.Slug))
-	}
+
+	// No organisation. Registration creates an INDEPENDENT hirer — someone
+	// hiring on their own account rather than a company's — and onboarding is
+	// the only thing that creates an organisation (ADR-0017 §1).
+	//
+	// hirer_accounts.organization_id is nullable, so this is a seat that
+	// belongs to nobody but itself.
 
 	hirerID := h.ID
 	if hirerID == "" {
@@ -136,29 +201,27 @@ func (r *HirerRepository) Register(ctx context.Context, t port.Tx, in port.NewHi
 	if h.AuthProvider == domain.ProviderEmail {
 		hash = &passwordHash
 	}
+	// username is NOT NULL and unconditionally unique (ADR-0016). A collision
+	// surfaces as port.ErrConflict through translate, never as a prior check:
+	// checking first is both a race and an enumeration oracle.
 	if _, err := q.Exec(ctx, `
 		INSERT INTO hirer_accounts
-		    (id, organization_id, email, auth_provider, display_name, password_hash)
+		    (id, email, username, auth_provider, display_name, password_hash)
 		VALUES ($1, $2, $3, $4, $5, $6)`,
-		string(hirerID), string(orgID), h.Email, string(h.AuthProvider), h.DisplayName, hash); err != nil {
-		return nil, translate(err, fmt.Sprintf("creating hirer %q", h.Email))
+		string(hirerID), h.Email, h.Username,
+		string(h.AuthProvider), h.DisplayName, hash); err != nil {
+		return nil, translate(err, fmt.Sprintf("creating hirer %q", h.Username))
 	}
 
-	// The registrant owns the org they just created.
-	if _, err := q.Exec(ctx, `
-		INSERT INTO organization_members (organization_id, hirer_account_id, role)
-		VALUES ($1, $2, 'owner')`, string(orgID), string(hirerID)); err != nil {
-		return nil, translate(err, "creating the owner membership")
-	}
-
-	// The request and its proofs go in with the account. An admin draining
-	// the queue decides on the evidence, so a request that arrived without it
-	// is one they can only reject.
+	// The request names the HIRER, not an organisation. There is no
+	// organisation to name, and ck_verification_single_subject wants exactly
+	// one of the two — which is why an independent hirer is reviewed
+	// individually rather than through a company (ADR-0017 §1).
 	var request port.VerificationRequest
 	if err := q.QueryRow(ctx, `
-		INSERT INTO verification_requests (id, organization_id, status)
+		INSERT INTO verification_requests (id, hirer_account_id, status)
 		VALUES (gen_random_uuid(), $1, 'pending')
-		RETURNING id, status, created_at`, string(orgID),
+		RETURNING id, status, created_at`, string(hirerID),
 	).Scan(&request.ID, &request.Status, &request.CreatedAt); err != nil {
 		return nil, translate(err, "creating the verification request")
 	}
@@ -173,11 +236,11 @@ func (r *HirerRepository) Register(ctx context.Context, t port.Tx, in port.NewHi
 		}
 	}
 
+	// No organisation, and therefore no org role: an independent hirer is not
+	// an owner of anything, and reporting them as one would put a member-only
+	// refusal in front of an account with nobody to be a member of.
 	created := *h
 	created.ID = hirerID
-	created.OrganizationID = orgID
-	created.OrgRole = domain.RoleOwner
-	request.Organization = &port.VerificationOrganization{ID: orgID, Name: org.Name}
 	return &port.HirerRegistration{Hirer: &created, VerificationRequest: &request}, nil
 }
 
@@ -193,6 +256,54 @@ func (r *HirerRepository) Organization(ctx context.Context, id domain.Organizati
 		return nil, translate(err, fmt.Sprintf("organization %s", id))
 	}
 	return &o, nil
+}
+
+// OrganizationBySlug resolves the organization a redeemer named.
+//
+// Verified only. An unverified organization may build a roster, but nobody may
+// redeem one — that is the moment an unknown person becomes a hirer inside it
+// (ADR-0016 §2). Returning the row for an unverified org would let the
+// redemption path answer differently for "not verified" than for "no such
+// org", which is a distinction the caller has no business learning.
+func (r *HirerRepository) OrganizationBySlug(ctx context.Context, slug string) (*domain.Organization, error) {
+	var o domain.Organization
+	err := r.db.pool.QueryRow(ctx, `
+		SELECT id, name, slug, coalesce(website, ''), coalesce(linkedin_url, ''),
+		       verified_at, payment_verified_at
+		FROM organizations WHERE slug = $1 AND verified_at IS NOT NULL`, slug,
+	).Scan(&o.ID, &o.Name, &o.Slug, &o.Website, &o.LinkedInURL, &o.VerifiedAt, &o.PaymentVerifiedAt)
+	if err != nil {
+		return nil, translate(err, fmt.Sprintf("organization %q", slug))
+	}
+	return &o, nil
+}
+
+// ListVerifiedOrganizations backs the public picker.
+//
+// Name and slug only at the service boundary; this returns the row and the
+// controller narrows it. Nothing about roster size, seat count or payment
+// status may leave — the list already discloses who is approved to hire, and
+// that is as far as ADR-0016 §3a goes.
+func (r *HirerRepository) ListVerifiedOrganizations(ctx context.Context) ([]domain.Organization, error) {
+	rows, err := r.db.pool.Query(ctx, `
+		SELECT id, name, slug, coalesce(website, ''), coalesce(linkedin_url, ''),
+		       verified_at, payment_verified_at
+		FROM organizations WHERE verified_at IS NOT NULL ORDER BY name`)
+	if err != nil {
+		return nil, translate(err, "listing verified organizations")
+	}
+	defer rows.Close()
+
+	out := make([]domain.Organization, 0)
+	for rows.Next() {
+		var o domain.Organization
+		if err := rows.Scan(&o.ID, &o.Name, &o.Slug, &o.Website, &o.LinkedInURL,
+			&o.VerifiedAt, &o.PaymentVerifiedAt); err != nil {
+			return nil, translate(err, "scanning an organization")
+		}
+		out = append(out, o)
+	}
+	return out, translate(rows.Err(), "reading organizations")
 }
 
 // Members lists an organization's seats, owners first.
@@ -258,8 +369,8 @@ func scanHirer(row rowScanner) (*domain.Hirer, error) {
 		orgWebsite  *string
 		orgLinkedIn *string
 	)
-	if err := row.Scan(&h.ID, &orgID, &h.DisplayName, &h.Email, &h.AuthProvider,
-		&h.VerifiedAt, &h.OrgRole, &h.GitHubUserID,
+	if err := row.Scan(&h.ID, &orgID, &h.DisplayName, &h.Username, &h.Email, &h.AuthProvider,
+		&h.VerifiedAt, &h.DisabledAt, &h.OrgRole, &h.GitHubUserID,
 		&orgRowID, &orgName, &orgSlug, &orgWebsite, &orgLinkedIn,
 		&org.VerifiedAt, &org.PaymentVerifiedAt); err != nil {
 		return nil, err

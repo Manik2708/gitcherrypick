@@ -15,6 +15,7 @@ import (
 type AdminController struct {
 	admin      port.AdminService
 	evaluation port.EvaluationService
+	onboarding port.OnboardingService
 
 	// clock, because how long a request has waited is measured against the
 	// platform's clock rather than the host's (ADR-0012).
@@ -22,8 +23,9 @@ type AdminController struct {
 }
 
 // NewAdminController wires the review queues.
-func NewAdminController(admin port.AdminService, evaluation port.EvaluationService, clock port.Clock) *AdminController {
-	return &AdminController{admin: admin, evaluation: evaluation, clock: clock}
+func NewAdminController(admin port.AdminService, evaluation port.EvaluationService, onboarding port.OnboardingService, clock port.Clock) *AdminController {
+	return &AdminController{admin: admin, evaluation: evaluation,
+		onboarding: onboarding, clock: clock}
 }
 
 var _ port.Controller = (*AdminController)(nil)
@@ -37,6 +39,14 @@ func (c *AdminController) Routes() (string, http.Handler) {
 
 	r.Get("/verifications", c.verifications)
 	r.Post("/verifications/{requestID}/decide", c.decideVerification)
+
+	// Onboarding is its own pair rather than a third subject on the routes
+	// above (ADR-0017, Amendment 1). A submission has a different id, a
+	// different shape, and an approval that CREATES a company and can fail on
+	// a taken name — folding it into a decision that stamps a column would
+	// make one endpoint mean two things.
+	r.Get("/onboarding", c.onboardingQueue)
+	r.Post("/onboarding/{submissionID}/decide", c.decideOnboarding)
 
 	r.Get("/skill-requests", c.skillRequests)
 	r.Post("/skill-requests/{requestID}/decide", c.decideSkillRequest)
@@ -557,4 +567,146 @@ func disputeStatus(accepted bool) string {
 		return "accepted"
 	}
 	return "rejected"
+}
+
+// --- onboarding (ADR-0017) ----------------------------------------------------
+
+// onboardingOwnerBody is who will own the company if this is approved.
+//
+// No password, obviously, and no id: the seat does not exist yet, so there is
+// nothing to identify. The username is here because it is what an approval
+// makes real and permanent — never reused, even after revocation (ADR-0016 §1).
+type onboardingOwnerBody struct {
+	Username    string `json:"username"`
+	DisplayName string `json:"display_name"`
+}
+
+// onboardingAddressBody is the main office, as claimed.
+type onboardingAddressBody struct {
+	Country    string `json:"country"`
+	City       string `json:"city"`
+	PostalCode string `json:"postal_code"`
+	Street1    string `json:"street1"`
+	Street2    string `json:"street2"`
+}
+
+// onboardingSubmissionBody is a company awaiting a decision.
+//
+// Everything the company asserted, in one object, because that IS the decision:
+// an administrator is judging whether this describes a real business. The
+// address and the headcount are here for the same reason the proof kinds are on
+// a verification request — they are the evidence.
+type onboardingSubmissionBody struct {
+	ID          domain.OnboardingID `json:"id"`
+	Name        string              `json:"name"`
+	Description string              `json:"description"`
+	Email       string              `json:"email"`
+	Phone       string              `json:"phone"`
+	Headcount   string              `json:"headcount"`
+
+	Address *onboardingAddressBody `json:"address"`
+	Owner   onboardingOwnerBody    `json:"owner"`
+
+	// Supersedes names the rejected submission this one corrects, so an
+	// administrator reading a second attempt can fetch the first and see what
+	// changed — a corrected postcode looks nothing like a rewritten claim
+	// (ADR-0017 §8).
+	Supersedes *domain.OnboardingID `json:"supersedes,omitempty"`
+
+	CreatedAt time.Time `json:"created_at"`
+	AgeHours  float64   `json:"age_hours"`
+}
+
+func (c *AdminController) onboardingBody(s port.OnboardingSubmission) onboardingSubmissionBody {
+	out := onboardingSubmissionBody{
+		ID: s.ID, Name: s.Name, Description: s.Description, Email: s.Email,
+		Phone: s.Phone, Headcount: string(s.Headcount),
+		Owner: onboardingOwnerBody{
+			Username: s.OwnerUsername, DisplayName: s.OwnerDisplayName,
+		},
+		Supersedes: s.SupersedesID,
+		CreatedAt:  s.CreatedAt,
+		AgeHours:   c.clock.Now().Sub(s.CreatedAt).Hours(),
+	}
+	// Null rather than an object of empty strings. "No address given" is a fact
+	// an administrator should read directly — a remote company has none to
+	// give, and it is one of the things they are weighing.
+	if s.Country != "" {
+		out.Address = &onboardingAddressBody{
+			Country: s.Country, City: s.City, PostalCode: s.PostalCode,
+			Street1: s.Street1, Street2: s.Street2,
+		}
+	}
+	return out
+}
+
+// onboardingQueue lists companies awaiting a decision.
+//
+// Proven submissions only — the service and the schema both see to that. An
+// administrator must never spend attention on a company nobody can reach
+// (ADR-0017 §4).
+func (c *AdminController) onboardingQueue(w http.ResponseWriter, r *http.Request) {
+	p, ok := require(w, r, domain.KindAdmin)
+	if !ok {
+		return
+	}
+
+	submissions, err := c.onboarding.Queue(r.Context(), p)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+
+	out := make([]onboardingSubmissionBody, 0, len(submissions))
+	for _, s := range submissions {
+		out = append(out, c.onboardingBody(s))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"total": len(out), "submissions": out})
+}
+
+// decideOnboarding approves or refuses a company.
+//
+// Approving CREATES the organisation, its address, the owner seat and the
+// membership. It is therefore the one administrative decision that the data can
+// refuse: two submissions may name one company, nothing reserves a name, and
+// only the first approved can have it. That comes back as 409 rather than as a
+// silent failure, because the administrator needs to know their decision did
+// not land.
+func (c *AdminController) decideOnboarding(w http.ResponseWriter, r *http.Request) {
+	p, ok := require(w, r, domain.KindAdmin)
+	if !ok {
+		return
+	}
+
+	raw := chi.URLParam(r, "submissionID")
+	if !isUUID(raw) {
+		writeCode(w, http.StatusBadRequest, service.CodeInvalidID)
+		return
+	}
+
+	var body decisionRequest
+	if err := decode(w, r, &body); err != nil {
+		writeCode(w, http.StatusUnprocessableEntity, service.CodeInvalidRegistration)
+		return
+	}
+	approve, known := body.approved()
+	if !known {
+		// Defaulting to "rejected" would let a client typo refuse a real
+		// company, which is the same rule every other decision follows.
+		writeCode(w, http.StatusUnprocessableEntity, service.CodeInvalidRegistration)
+		return
+	}
+
+	if err := c.onboarding.Decide(r.Context(), p,
+		domain.OnboardingID(raw), approve, body.justification()); err != nil {
+		writeError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, verificationDecisionBody{
+		ID:         domain.RequestID(raw),
+		Status:     decisionStatus(approve),
+		ReviewedAt: c.clock.Now(),
+		ReviewedBy: p.Subject(),
+	})
 }

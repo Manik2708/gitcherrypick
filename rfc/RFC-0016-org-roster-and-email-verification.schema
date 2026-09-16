@@ -1,0 +1,154 @@
+-- ---------------------------------------------------------------------------
+-- RFC-0016 — Organisation rosters and email verification
+--
+-- Delta only. Everything not mentioned here stays as earlier RFCs defined it.
+--
+-- Two of this RFC's changes are NOT here, because they belong where the table
+-- is declared and nothing is deployed yet:
+--
+--   hirer_accounts.username / disabled_at / disabled_by — RFC-0002
+--   organization_invitations, removed outright           — RFC-0002
+--
+-- Applying rfc/*.schema in order IS the schema (e2e/schema.go). With no
+-- production database to migrate, editing the origin is honest; carrying ALTER
+-- and DROP statements for a history that never existed is not.
+-- ---------------------------------------------------------------------------
+
+
+-- ---------------------------------------------------------------------------
+-- 1. The roster.
+--
+-- One row per address an organisation is willing to seat. It is an intent, not
+-- a credential: an entry says "this person may hold a seat here", and proving
+-- you hold the address is a separate step (ADR-0016 §3).
+--
+-- Keyed by email rather than by github_user_id because the organisation names
+-- who it wants before that person has any identity here at all.
+-- ---------------------------------------------------------------------------
+CREATE TABLE organization_hirer_roster (
+    id               uuid PRIMARY KEY,
+    organization_id  uuid   NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+
+    -- citext, like every other address in the schema: a roster that
+    -- distinguished Sam@ from sam@ would answer 401 to the right person.
+    email            citext NOT NULL,
+
+    -- The sign-in name the seat will carry, reserved from the moment the
+    -- organisation decides it — so two orgs cannot both stage "maya" and
+    -- discover the clash only at redemption.
+    --
+    -- Pinned by the organisation, not chosen by the redeemer: nobody squats a
+    -- name their colleagues expected, and nobody names themselves into someone
+    -- else's history (ADR-0016 §0).
+    --
+    -- Claimed out of hirer_usernames, the same table hirer_accounts draws
+    -- from. That is what stops an organisation staging a name a live seat
+    -- already holds — a clash discovered at redemption is discovered by the
+    -- wrong person, after the offer has already been made.
+    username         citext NOT NULL REFERENCES hirer_usernames(username),
+
+    -- The seat the redeemer gets. The organisation holds the opinion about
+    -- seniority, so the entry pins it (ADR-0016 §8). Reuses the enum RFC-0002
+    -- already declares rather than a parallel CHECK.
+    role             org_member_role NOT NULL DEFAULT 'member',
+
+    -- Owners only (ADR-0016 §7). An owner entry grants the power to grant
+    -- further seats, so a member who could roster could promote themselves.
+    added_by         uuid   NOT NULL REFERENCES hirer_accounts(id) ON DELETE CASCADE,
+
+    -- Set when a seat is created from this entry. The entry is NOT deleted on
+    -- redemption: it is the record of why the seat exists, and removing it is
+    -- what revokes access (ADR-0016 §5).
+    redeemed_at      timestamptz,
+    redeemed_by      uuid   REFERENCES hirer_accounts(id),
+
+    created_at       timestamptz NOT NULL DEFAULT now(),
+
+    -- One entry per address per organisation. Adding the same address twice is
+    -- the organisation repeating itself, not two distinct intents.
+    CONSTRAINT uq_roster_org_email UNIQUE (organization_id, email),
+
+    -- One entry per name. The platform-wide claim is the hirer_usernames row
+    -- this references; this constraint stops two entries in one organisation
+    -- pointing at the same one.
+    CONSTRAINT uq_roster_username UNIQUE (username)
+);
+
+-- The redemption lookup: "is this address on this organisation's roster, and is
+-- it still unredeemed?" Partial, because a redeemed entry can never satisfy it
+-- and there is no reason to carry those rows in the index.
+CREATE INDEX idx_roster_open ON organization_hirer_roster (organization_id, email)
+    WHERE redeemed_at IS NULL;
+
+
+-- ---------------------------------------------------------------------------
+-- 2. Email verification.
+--
+-- Same shape as sessions.refresh_token_hash, and for the same reason: the
+-- plaintext goes to the recipient's inbox, the hash goes here. A database read
+-- — or a backup — yields nothing that can be redeemed.
+--
+-- Deliberately NOT a column on hirer_accounts. The row must exist before the
+-- account does, because ADR-0016 §3 proves the address before creating the seat.
+-- ---------------------------------------------------------------------------
+CREATE TYPE email_verification_purpose AS ENUM (
+    'roster_redemption',       -- creates a seat on success
+    'hirer_registration',      -- marks an address proven before the review queue
+    'organization_onboarding'  -- proves a company address (RFC-0017)
+);
+
+CREATE TABLE email_verifications (
+    id            uuid   PRIMARY KEY,
+    email         citext NOT NULL,
+    purpose       email_verification_purpose NOT NULL,
+
+    -- Set for roster_redemption so a successful proof knows which entry it
+    -- satisfies. NULL for a self-serve registration, which belongs to no
+    -- organisation yet.
+    roster_id     uuid   REFERENCES organization_hirer_roster(id) ON DELETE CASCADE,
+
+    -- Set for organization_onboarding, naming the submission this proves
+    -- (RFC-0017 §2). A separate column rather than a shared polymorphic id:
+    -- two foreign keys that each point at a real table are checked by the
+    -- database, and one that points at "whichever table the purpose implies"
+    -- is checked by nobody.
+    --
+    -- Declared here rather than in RFC-0017 because the table is declared
+    -- here, and nothing is deployed — the same reason ADR-0016 step 1 gives.
+    -- The reference is added in RFC-0017, which is where the table it points
+    -- at comes into existence.
+    onboarding_id uuid,
+
+    token_hash    bytea  NOT NULL,
+
+    -- Single-use, like a refresh token. A proof that could be replayed would
+    -- let anyone who read the mailbox once return to it later.
+    consumed_at   timestamptz,
+
+    expires_at    timestamptz NOT NULL,
+    created_at    timestamptz NOT NULL DEFAULT now(),
+
+    CONSTRAINT uq_email_verification_token UNIQUE (token_hash),
+
+    -- Each purpose points at exactly the thing it is about, and at nothing
+    -- else. A redemption proof without an entry to satisfy is meaningless; a
+    -- registration proof has no entry to point at; an onboarding proof names
+    -- the submission it unlocks.
+    CONSTRAINT ck_verification_subject CHECK (
+        (purpose = 'roster_redemption'
+            AND roster_id IS NOT NULL AND onboarding_id IS NULL) OR
+        (purpose = 'hirer_registration'
+            AND roster_id IS NULL AND onboarding_id IS NULL) OR
+        (purpose = 'organization_onboarding'
+            AND roster_id IS NULL AND onboarding_id IS NOT NULL)
+    )
+);
+
+-- The resend path, which must find an outstanding proof rather than minting a
+-- second live one for the same address.
+CREATE INDEX idx_email_verifications_open ON email_verifications (email, purpose)
+    WHERE consumed_at IS NULL;
+
+-- Expiry sweeps.
+CREATE INDEX idx_email_verifications_expiry ON email_verifications (expires_at)
+    WHERE consumed_at IS NULL;

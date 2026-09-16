@@ -1,0 +1,665 @@
+{
+  "name": "onboarding an organisation creates nothing until an administrator approves",
+  "description": "ADR-0017 §2 and §3, stated as a sequence of absences. POST /organizations is PUBLIC, so anything it could create directly, anyone could create — a hundred company names in a minute, each one blocking the real company from ever claiming it. It therefore answers 202 with an EMPTY BODY and writes one row to organization_onboarding: no organisation, no seat, no membership, no address, and above all no slug reserved. Two submissions here carry the SAME company name to prove that nothing is reserved; only the first one approved can have it.\n\n§4: nothing unproven reaches an administrator. Four submissions exist before anyone verifies anything and the review queue is empty, which is the mechanism ADR-0016 §6 was waiting for. Ghost Industries is never verified and is never visible.\n\n§6: POST /organizations/verify returns 204 and NO TOKEN PAIR — there is no account to sign in as, so a session here would be a credential for a seat that does not exist. This is where onboarding diverges from roster redemption, which does return one. The username is nevertheless claimed out of hirer_usernames at this moment rather than at approval, so two pending submissions cannot race for one name and discover it only when the second is approved (§Identity). The fixture proves both halves: the name is taken, and signing in with it is refused.\n\nThe code is read from the delivered message, exactly as its recipient would. It is minted once, stored as a hash and returned by no endpoint, so reading the inbox is the only honest way to hold it — the same reason the roster-redemption case does it.\n\n§3 and §Approval can fail: approval creates the organisation, its main-office address, the owner seat and the owner membership together, AND verifies the organisation — the administrator's decision IS the verification, there is no second review, and an organisation created unverified would be a company that exists and cannot hire while waiting for an approval that already happened. So the owner signs in and searches immediately. The second submission for the same name is then refused 409 with nothing of it written, which makes this the first admin decision the DATA can refuse rather than the reviewer. A rejection keeps its row, creates nothing, and carries the reason.\n\nONE DISCREPANCY, recorded rather than resolved. ADR-0017's endpoint table and its Consequences both put this queue on GET /admin/verifications and this decision on POST /admin/verifications/{id}/decide — 'the queue reads a second table and the decide endpoint learns to promote one'. The implementation instead mounts a separate GET /admin/onboarding pair, citing 'ADR-0017, Amendment 1', which the ADR does not contain (its Amendments section reads 'None yet'). The behaviour below is pinned at the routes that exist, because inventing the shape an onboarding submission would take inside the verifications queue would be designing the API rather than testing it. Which pair of routes is correct is the Planner's to settle.",
+  "seed": ["principals", "catalogue"],
+  "steps": [
+    {
+      "_step": "The form. Public, unauthenticated, and it creates nothing — the four absences in expect.db are the decision.",
+      "as": "anonymous",
+      "request": {
+        "method": "POST",
+        "path": "/organizations",
+        "body": {
+          "name": "Northwind Traders",
+          "description": "Freight and logistics software for small carriers.",
+          "email": "founder@northwind.example",
+          "phone": "+44 20 7946 0102",
+          "headcount": "11-50",
+          "address": {
+            "country": "GB",
+            "city": "Bristol",
+            "postal_code": "BS1 4DJ",
+            "street1": "14 Queen Square",
+            "street2": "Second floor"
+          }
+        }
+      },
+      "expect": {
+        "status": 202,
+        "_note": "202 and EMPTY. Not 201, because nothing was created; not an id, because a caller holding one could poll for a decision about a company they may have nothing to do with; and no error for a name already submitted, because that would report who is mid-onboarding before the public picker would ever list them (ADR-0017 §Endpoints).",
+        "body": null,
+        "db": {
+          "organization_onboarding": {
+            "_note": "One row, and everything that would make it real is still null: unproven, undecided, and pointing at no organisation.",
+            "where": { "email": "founder@northwind.example" },
+            "count": 1,
+            "all_match": {
+              "name": "Northwind Traders",
+              "headcount": "11-50",
+              "country": "GB",
+              "city": "Bristol",
+              "email_verified_at": null,
+              "decided_at": null,
+              "decided_by": null,
+              "organization_id": null,
+              "supersedes_id": null,
+              "owner_username": null,
+              "owner_password_hash": null
+            }
+          },
+          "organizations": {
+            "_note": "NO SLUG IS RESERVED. This is the property the whole design turns on: if the public form wrote an organisation, uq_organizations_slug would refuse the real company when it arrived.",
+            "where": { "slug": "northwind-traders" },
+            "count": 0
+          },
+          "hirer_accounts": {
+            "_note": "No seat. The person who will own this has not been named yet, let alone created.",
+            "where": { "email": "founder@northwind.example" },
+            "count": 0
+          },
+          "organization_addresses": {
+            "_note": "No address row either — a pending submission has nothing to point a foreign key at, which is why the office is flat on the submission and a row only on approval.",
+            "count": 0
+          },
+          "email_verifications": {
+            "_note": "The code, stored as a hash against the third purpose the table gained (RFC-0016 delta), pointing at the submission through onboarding_id.",
+            "where": {
+              "email": "founder@northwind.example",
+              "purpose": "organization_onboarding"
+            },
+            "count": 1,
+            "all_match": { "consumed_at": null },
+            "none_match": { "onboarding_id": null }
+          }
+        }
+      }
+    },
+    {
+      "_step": "Read the code out of the inbox. No endpoint returns it and the stored form is a hash, so this is what its recipient does.",
+      "as": "system",
+      "request": {
+        "method": "READ_EMAIL",
+        "path": "/",
+        "body": {
+          "to": "founder@northwind.example",
+          "subject": "Confirm your company's email address",
+          "count": 1
+        }
+      },
+      "capture": { "northwind_code": "$.token" },
+      "expect": {
+        "status": 200,
+        "body": {
+          "to": "founder@northwind.example",
+          "subject": "Confirm your company's email address",
+          "html": "<string>",
+          "token": "<token>"
+        }
+      }
+    },
+    {
+      "_step": "THE SAME COMPANY NAME, from a different address. Accepted with the same 202, because nothing reserves a name — and the submitter is told nothing about the other attempt.",
+      "as": "anonymous",
+      "request": {
+        "method": "POST",
+        "path": "/organizations",
+        "body": {
+          "name": "Northwind Traders",
+          "description": "We are the real Northwind Traders.",
+          "email": "rival@northwind-traders.example",
+          "headcount": "1-10"
+        }
+      },
+      "expect": {
+        "status": 202,
+        "body": null,
+        "db": {
+          "organization_onboarding": {
+            "_note": "Two rows, one name. Whichever an administrator approves first gets it, and the other is refused by the data (ADR-0017 §Approval can fail).",
+            "where": { "name": "Northwind Traders" },
+            "count": 2
+          },
+          "organizations": {
+            "where": { "slug": "northwind-traders" },
+            "count": 0
+          }
+        }
+      }
+    },
+    {
+      "as": "system",
+      "request": {
+        "method": "READ_EMAIL",
+        "path": "/",
+        "body": {
+          "to": "rival@northwind-traders.example",
+          "subject": "Confirm your company's email address",
+          "count": 1
+        }
+      },
+      "capture": { "rival_code": "$.token" },
+      "expect": {
+        "status": 200,
+        "body": {
+          "to": "rival@northwind-traders.example",
+          "subject": "Confirm your company's email address",
+          "html": "<string>",
+          "token": "<token>"
+        }
+      }
+    },
+    {
+      "_step": "A third company, with no office at all. An address is optional on purpose: a freelancer has none and several countries have no postcode, so requiring one would decide who is allowed to hire (ADR-0017 §5).",
+      "as": "anonymous",
+      "request": {
+        "method": "POST",
+        "path": "/organizations",
+        "body": {
+          "name": "Fly By Night Ltd",
+          "email": "chancer@flybynight.example"
+        }
+      },
+      "expect": {
+        "status": 202,
+        "body": null,
+        "db": {
+          "organization_onboarding": {
+            "where": { "email": "chancer@flybynight.example" },
+            "count": 1,
+            "all_match": {
+              "country": null,
+              "city": null,
+              "street1": null,
+              "headcount": null,
+              "description": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "as": "system",
+      "request": {
+        "method": "READ_EMAIL",
+        "path": "/",
+        "body": {
+          "to": "chancer@flybynight.example",
+          "subject": "Confirm your company's email address",
+          "count": 1
+        }
+      },
+      "capture": { "flybynight_code": "$.token" },
+      "expect": {
+        "status": 200,
+        "body": {
+          "to": "chancer@flybynight.example",
+          "subject": "Confirm your company's email address",
+          "html": "<string>",
+          "token": "<token>"
+        }
+      }
+    },
+    {
+      "_step": "A fourth submission whose code is never used. It exists in the table and must never be seen by anybody.",
+      "as": "anonymous",
+      "request": {
+        "method": "POST",
+        "path": "/organizations",
+        "body": {
+          "name": "Ghost Industries",
+          "email": "nobody@ghost.example"
+        }
+      },
+      "expect": {
+        "status": 202,
+        "body": null,
+        "db": {
+          "organization_onboarding": { "count": 4 }
+        }
+      }
+    },
+    {
+      "_step": "NOTHING UNPROVEN REACHES AN ADMINISTRATOR (ADR-0017 §4). Four submissions exist and the queue is empty — an admin must never spend attention on a company nobody can reach, and the schema says the same thing through ck_onboarding_decided_after_verified.",
+      "as": "root",
+      "request": {
+        "method": "GET",
+        "path": "/admin/onboarding"
+      },
+      "expect": {
+        "status": 200,
+        "body": { "total": 0, "submissions": [] }
+      }
+    },
+    {
+      "_step": "Proving the address and choosing how to sign in are ONE step, so approval needs no second email (ADR-0017 §5).",
+      "as": "anonymous",
+      "request": {
+        "method": "POST",
+        "path": "/organizations/verify",
+        "body": {
+          "token": "{{northwind_code}}",
+          "username": "wren",
+          "display_name": "Wren Halloran",
+          "password": "correct-horse-battery-staple"
+        }
+      },
+      "expect": {
+        "status": 204,
+        "_note": "204, and NO TOKEN PAIR. There is no account to sign in as until approval, so a session here would be a credential for a seat that does not exist — the one place this diverges from roster redemption (ADR-0017 §6).",
+        "body": null,
+        "db": {
+          "organization_onboarding": {
+            "_note": "Proven, and holding the owner's details. The three owner columns arrive together: a username with no password would be a half-claimed seat nothing can complete (ck_onboarding_owner_complete).",
+            "where": { "email": "founder@northwind.example" },
+            "count": 1,
+            "all_match": {
+              "owner_username": "wren",
+              "owner_display_name": "Wren Halloran",
+              "decided_at": null,
+              "organization_id": null
+            },
+            "none_match": { "email_verified_at": null, "owner_password_hash": null }
+          },
+          "hirer_usernames": {
+            "_note": "CLAIMED NOW, not at approval. Two pending submissions must not be able to race for one name and discover it only when the second is approved (ADR-0017 §Identity).",
+            "where": { "username": "wren" },
+            "count": 1
+          },
+          "hirer_accounts": {
+            "_note": "And still no seat. The name is reserved for a person who does not exist yet.",
+            "where": { "username": "wren" },
+            "count": 0
+          },
+          "organizations": {
+            "where": { "slug": "northwind-traders" },
+            "count": 0
+          },
+          "email_verifications": {
+            "_note": "Single-use: the code is spent, so a forwarded message cannot claim the company a second time.",
+            "where": { "email": "founder@northwind.example" },
+            "count": 1,
+            "none_match": { "consumed_at": null }
+          }
+        }
+      }
+    },
+    {
+      "_step": "THE NAME IS TAKEN AND THE ACCOUNT IS NOT. Wren chose a username and a password a moment ago and neither signs anything in, because the seat those credentials describe does not exist until an administrator says so.",
+      "as": "anonymous",
+      "request": {
+        "method": "POST",
+        "path": "/auth/hirer/login",
+        "body": {
+          "username": "wren",
+          "password": "correct-horse-battery-staple"
+        }
+      },
+      "expect": {
+        "status": 401,
+        "_note": "401 invalid_credentials — indistinguishable from a name nobody ever held. Answering 'that account is awaiting approval' would confirm which companies are mid-onboarding, which is precisely what the 202 on the submit route refuses to disclose.",
+        "body": { "error": "invalid_credentials" }
+      }
+    },
+    {
+      "as": "anonymous",
+      "request": {
+        "method": "POST",
+        "path": "/organizations/verify",
+        "body": {
+          "token": "{{rival_code}}",
+          "username": "kestrel",
+          "display_name": "Kestrel Ibarra",
+          "password": "correct-horse-battery-staple"
+        }
+      },
+      "expect": {
+        "status": 204,
+        "body": null,
+        "db": {
+          "hirer_usernames": {
+            "_note": "Two names claimed for one company name. The names never collide; the SLUG is what only one of them can have.",
+            "where": { "username": "kestrel" },
+            "count": 1
+          }
+        }
+      }
+    },
+    {
+      "as": "anonymous",
+      "request": {
+        "method": "POST",
+        "path": "/organizations/verify",
+        "body": {
+          "token": "{{flybynight_code}}",
+          "username": "tern",
+          "display_name": "Tern Ashby",
+          "password": "correct-horse-battery-staple"
+        }
+      },
+      "expect": { "status": 204, "body": null }
+    },
+    {
+      "_step": "The queue: proven, undecided, oldest first. Three of the four — Ghost Industries never used its code and is invisible.",
+      "as": "root",
+      "request": {
+        "method": "GET",
+        "path": "/admin/onboarding"
+      },
+      "capture": {
+        "northwind": "$.submissions[0].id",
+        "rival": "$.submissions[1].id",
+        "flybynight": "$.submissions[2].id"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "total": 3,
+          "submissions": [
+            {
+              "id": "<uuid>",
+              "name": "Northwind Traders",
+              "description": "Freight and logistics software for small carriers.",
+              "email": "founder@northwind.example",
+              "phone": "+44 20 7946 0102",
+              "headcount": "11-50",
+              "address": {
+                "country": "GB",
+                "city": "Bristol",
+                "postal_code": "BS1 4DJ",
+                "street1": "14 Queen Square",
+                "street2": "Second floor"
+              },
+              "owner": { "username": "wren", "display_name": "Wren Halloran" },
+              "created_at": "<timestamp>",
+              "age_hours": "<number>"
+            },
+            {
+              "id": "<uuid>",
+              "name": "Northwind Traders",
+              "description": "We are the real Northwind Traders.",
+              "email": "rival@northwind-traders.example",
+              "phone": "",
+              "headcount": "1-10",
+              "_note": "address is NULL rather than an object of empty strings: 'no office given' is a fact an administrator should read directly, not infer from five blanks.",
+              "address": null,
+              "owner": { "username": "kestrel", "display_name": "Kestrel Ibarra" },
+              "created_at": "<timestamp>",
+              "age_hours": "<number>"
+            },
+            {
+              "id": "<uuid>",
+              "name": "Fly By Night Ltd",
+              "description": "",
+              "email": "chancer@flybynight.example",
+              "phone": "",
+              "headcount": "",
+              "address": null,
+              "owner": { "username": "tern", "display_name": "Tern Ashby" },
+              "created_at": "<timestamp>",
+              "age_hours": "<number>"
+            }
+          ]
+        },
+        "_note": "No `supersedes` key on any of the three: none of them corrects an earlier refusal, and reporting a null there would invite an administrator to go looking for a first attempt that does not exist."
+      }
+    },
+    {
+      "_step": "APPROVAL IS THE MOMENT THE COMPANY BEGINS. Organisation, main-office address, owner seat and owner membership in one transaction — and the organisation is verified by the same decision, because there is no second review.",
+      "as": "root",
+      "request": {
+        "method": "POST",
+        "path": "/admin/onboarding/{{northwind}}/decide",
+        "body": {
+          "decision": "approved",
+          "reason": "Companies House registration and the Bristol office both check out."
+        }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "id": "<uuid>",
+          "status": "approved",
+          "reviewed_at": "<timestamp>",
+          "reviewed_by": "<uuid>"
+        },
+        "db": {
+          "organizations": {
+            "_note": "The slug is derived from the name HERE, by the approval — and it is verified_at the same instant. An organisation created unverified would be a company that exists and cannot hire, waiting on an approval that already happened.",
+            "where": { "slug": "northwind-traders" },
+            "count": 1,
+            "all_match": {
+              "name": "Northwind Traders",
+              "email": "founder@northwind.example",
+              "headcount": "11-50",
+              "payment_verified_at": null
+            },
+            "none_match": { "verified_at": null, "verified_by": null }
+          },
+          "organization_addresses": {
+            "_note": "The flat office fields become a row, flagged as the main office — uq_org_main_office allows exactly one.",
+            "count": 1,
+            "all_match": {
+              "country": "GB",
+              "city": "Bristol",
+              "postal_code": "BS1 4DJ",
+              "street1": "14 Queen Square",
+              "street2": "Second floor",
+              "is_main_office": true
+            }
+          },
+          "hirer_accounts": {
+            "_note": "The seat, on the address the company gave: one value, on the organisation and on the owner's seat. ADR-0016 made the USERNAME the identity precisely so an address could be shared.",
+            "where": { "username": "wren" },
+            "count": 1,
+            "all_match": {
+              "email": "founder@northwind.example",
+              "display_name": "Wren Halloran",
+              "auth_provider": "email",
+              "disabled_at": null
+            },
+            "none_match": { "organization_id": null, "password_hash": null }
+          },
+          "organization_members": {
+            "_note": "OWNER, not member. An organisation whose only seat could not roster anybody would be one nobody can ever join (ADR-0016 §4).",
+            "where": { "role": "owner" },
+            "count": 4
+          },
+          "organization_onboarding": {
+            "_note": "The submission survives its own approval, now naming what it became — which is what makes 'approved' a fact about a row rather than a status somebody has to keep in step.",
+            "where": { "email": "founder@northwind.example" },
+            "count": 1,
+            "none_match": { "decided_at": null, "decided_by": null, "organization_id": null }
+          }
+        }
+      }
+    },
+    {
+      "_step": "The owner signs in on the password they chose at verification and the username they chose with it. This is the first moment those credentials mean anything.",
+      "as": "anonymous",
+      "request": {
+        "method": "POST",
+        "path": "/auth/hirer/login",
+        "body": {
+          "username": "wren",
+          "password": "correct-horse-battery-staple"
+        }
+      },
+      "capture": { "wren_token": "$.access_token" },
+      "expect": {
+        "status": 200,
+        "body": {
+          "hirer": {
+            "id": "<uuid>",
+            "display_name": "Wren Halloran",
+            "email": "founder@northwind.example",
+            "principal_type": "hirer",
+            "verified": true,
+            "organization": {
+              "id": "<uuid>",
+              "name": "Northwind Traders",
+              "verified": true,
+              "_note": "Identity verified, payment not. ADR-0002 keeps the two apart: missing payment evidence is DISCLOSED to a contributor at contact time rather than blocking the company, and onboarding asked for no payment evidence at all.",
+              "payment_verified": false
+            }
+          },
+          "access_token": "<token>",
+          "refresh_token": "<token>",
+          "expires_in": 900
+        }
+      }
+    },
+    {
+      "_step": "And the owner is immediately capable. ADR-0002 puts capability on the ORGANISATION — a seat is verified when its organisation is, whatever its own column says — and the approval that created this seat verified its organisation in the same transaction.",
+      "as": "anonymous",
+      "request": {
+        "method": "GET",
+        "path": "/me",
+        "headers": { "Authorization": "Bearer {{wren_token}}" }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "id": "<uuid>",
+          "kind": "hirer",
+          "display_name": "Wren Halloran",
+          "verified": true,
+          "organization": { "name": "Northwind Traders", "verified": true },
+          "capabilities": {
+            "can_search": true,
+            "can_shortlist": true,
+            "can_view_scorecards": true
+          }
+        }
+      }
+    },
+    {
+      "_step": "The capability is real, not merely advertised — the same gate ADR-0002 names, evaluated on the real search endpoint.",
+      "as": "anonymous",
+      "request": {
+        "method": "GET",
+        "path": "/search?skills=go",
+        "headers": { "Authorization": "Bearer {{wren_token}}" }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "total": 0,
+          "inactive_hidden": 0,
+          "ranked_by": "skill:go",
+          "page": 1,
+          "per_page": 20,
+          "results": []
+        }
+      }
+    },
+    {
+      "_step": "THE SECOND CLAIM ON THE NAME IS REFUSED BY THE DATA, not by the reviewer. The administrator approved it; the slug was gone. That is a 409 rather than a silent failure, because the reviewer needs to know their decision did not land (ADR-0017 §Approval can fail).",
+      "as": "root",
+      "request": {
+        "method": "POST",
+        "path": "/admin/onboarding/{{rival}}/decide",
+        "body": {
+          "decision": "approved",
+          "reason": "Looks legitimate."
+        }
+      },
+      "expect": {
+        "status": 409,
+        "body": { "error": "slug_taken" },
+        "db": {
+          "organizations": {
+            "_note": "Still one Northwind. The whole promotion is one transaction, so a slug collision at the end undoes the seat and the membership with it.",
+            "where": { "name": "Northwind Traders" },
+            "count": 1
+          },
+          "hirer_accounts": {
+            "_note": "No seat for Kestrel — not a disabled one, not an orphaned one. Nothing.",
+            "where": { "username": "kestrel" },
+            "count": 0
+          },
+          "hirer_usernames": {
+            "_note": "The NAME, however, stays claimed. It was taken at verification and a username is never reissued (ADR-0016 §1), so a failed approval does not hand it to somebody else.",
+            "where": { "username": "kestrel" },
+            "count": 1
+          },
+          "organization_addresses": { "count": 1 },
+          "organization_onboarding": {
+            "_note": "Undecided still. The refusal was the data's, so the submission is exactly where it was and the administrator may reject it deliberately instead.",
+            "where": { "email": "rival@northwind-traders.example" },
+            "count": 1,
+            "all_match": { "decided_at": null, "decided_by": null, "organization_id": null }
+          }
+        }
+      }
+    },
+    {
+      "_step": "A rejection. The row is kept — it is the record of what was claimed and why it was refused, and a company appealing or revising needs something to point at (ADR-0017 §8).",
+      "as": "root",
+      "request": {
+        "method": "POST",
+        "path": "/admin/onboarding/{{flybynight}}/decide",
+        "body": {
+          "decision": "rejected",
+          "reason": "No registration, no trading address, and no verifiable client history."
+        }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "id": "<uuid>",
+          "status": "rejected",
+          "reviewed_at": "<timestamp>",
+          "reviewed_by": "<uuid>"
+        },
+        "db": {
+          "organization_onboarding": {
+            "_note": "Decided, with the reason on the row. organization_id stays null, which is what distinguishes a refusal from an approval without a second status column to keep in step.",
+            "where": { "email": "chancer@flybynight.example" },
+            "count": 1,
+            "all_match": {
+              "decision_reason": "No registration, no trading address, and no verifiable client history.",
+              "organization_id": null
+            },
+            "none_match": { "decided_at": null, "decided_by": null }
+          },
+          "organizations": {
+            "_note": "A rejection creates nothing. Four organisations: the three seeded and Northwind.",
+            "count": 4
+          },
+          "hirer_accounts": {
+            "where": { "username": "tern" },
+            "count": 0
+          }
+        }
+      }
+    },
+    {
+      "_step": "And the queue drains to what is genuinely still waiting: the rival submission, refused by the data but never decided by a person. Ghost Industries has still never appeared.",
+      "as": "root",
+      "request": {
+        "method": "GET",
+        "path": "/admin/onboarding"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "total": 1,
+          "submissions": [
+            {
+              "id": "<uuid>",
+              "name": "Northwind Traders",
+              "description": "We are the real Northwind Traders.",
+              "email": "rival@northwind-traders.example",
+              "phone": "",
+              "headcount": "1-10",
+              "address": null,
+              "owner": { "username": "kestrel", "display_name": "Kestrel Ibarra" },
+              "created_at": "<timestamp>",
+              "age_hours": "<number>"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

@@ -6,14 +6,25 @@
 // platform (ADR-0002).
 
 import { useState } from "react";
+import type { ContactRole, Engagement } from "../contract";
+
+/** Words, not enum values. "full_time" on a screen is the database leaking. */
+const ENGAGEMENT_LABELS: Record<Engagement, string> = {
+  full_time: "full time",
+  contract: "contract",
+  internship: "internship",
+  freelance: "freelance",
+};
 import {
   useMintShareLink,
   useMyContactRequests,
+  useMyRoles,
   useRespondToContact,
   useRevokeShareLink,
   useSetAvailability,
 } from "../hooks/contributor";
 import { useWhoAmI } from "../hooks/session";
+import { ProfileForm } from "../ui/ProfileForm";
 import * as format from "../logic/format";
 import {
   Banner,
@@ -33,6 +44,90 @@ const CHOICES = [
   ["open_to_freelance", "Open to freelance work"],
   ["not_looking", "Not looking"],
 ] as const;
+
+/**
+ * What is open to you right now (ADR-0019).
+ *
+ * Filtered against your own profile on the server: where you are, the shapes of
+ * work you ticked, the minimums, and what you said you expect to be paid. That
+ * last one is used HERE and nowhere else — it keeps roles paying less than you
+ * asked for out of your way, and no hirer ever sees the figure.
+ *
+ * This is a view, not an application. Nothing here contacts anybody: companies
+ * approach you, and you answer. Showing it is about knowing whether the pool
+ * you are in has anything in it for you.
+ */
+function OpenRoles() {
+  const roles = useMyRoles();
+  const list = roles.data?.roles ?? [];
+
+  return (
+    <Card>
+      <div className="section__head">
+        <h2 className="section__title">Open to you</h2>
+        <span className="section__note mono">{list.length}</span>
+      </div>
+
+      <p className="field__help">
+        Matched against what you said you are open to, where you are, and what you expect to be
+        paid. Nobody is shown that figure — it is used to keep roles below it out of your way, and
+        nothing else. You cannot apply from here: companies approach you, and you decide.
+      </p>
+
+      {roles.loading ? <Loading what="open roles" /> : null}
+      {roles.error ? <Failure message={roles.error.message} onRetry={roles.reload} /> : null}
+
+      {!roles.loading && list.length === 0 ? (
+        <Empty title="Nothing open to you yet" icon="bookmark">
+          Either nobody is hiring for what you said you want, or your profile does not say enough
+          yet for anything to match.
+        </Empty>
+      ) : null}
+
+      {list.map((role) => (
+        <RoleSummary key={role.id} role={role} />
+      ))}
+    </Card>
+  );
+}
+
+/** The job, as the person being approached sees it. */
+function RoleSummary({ role }: { role: ContactRole }) {
+  const pay =
+    role.engagement === "freelance"
+      ? role.hourly_rate != null
+        ? `${role.currency} ${(role.hourly_rate / 100).toLocaleString()} an hour`
+        : null
+      : role.yearly_ctc != null
+        ? `${role.currency} ${(role.yearly_ctc / 100).toLocaleString()} a year`
+        : null;
+
+  const process: string[] = [];
+  if (role.max_interview_rounds != null) {
+    process.push(`at most ${role.max_interview_rounds} interview rounds`);
+  }
+  if (role.avg_days_to_offer != null) {
+    process.push(`usually ${role.avg_days_to_offer} days to an offer`);
+  }
+  if (role.requires_online_test) process.push("an online test");
+
+  return (
+    <div className="ev__body">
+      <p className="small">
+        <strong>{role.title}</strong> · {ENGAGEMENT_LABELS[role.engagement]} ·{" "}
+        {role.location === "remote" ? "remote" : "at their office"}
+        {pay ? ` · ${pay}` : ""}
+      </p>
+      {role.description ? <p className="small muted">{role.description}</p> : null}
+      {role.eligible_countries.length > 0 ? (
+        <p className="field__help">Can hire in {role.eligible_countries.join(", ")}.</p>
+      ) : null}
+      {process.length > 0 ? (
+        <p className="field__help">Their process: {process.join(", ")}.</p>
+      ) : null}
+    </div>
+  );
+}
 
 export function DiscoverabilityPage() {
   const me = useWhoAmI();
@@ -54,7 +149,7 @@ export function DiscoverabilityPage() {
       <PageHead
         eyebrow="Visibility"
         title="Being found"
-        lede="Whether a hirer can see you, who has asked, and the one link you can publish."
+        lede="Whether a hirer can see you, what you are looking for, who has asked, and the one link you can publish."
       />
 
       <Card>
@@ -110,6 +205,10 @@ export function DiscoverabilityPage() {
         </div>
       </Card>
 
+      <ProfileForm />
+
+      <OpenRoles />
+
       <Card>
         <div className="section__head">
           <h2 className="section__title">Organisations interested</h2>
@@ -122,7 +221,9 @@ export function DiscoverabilityPage() {
         </p>
 
         {requests.loading ? <Loading what="contact requests" /> : null}
-        {requests.error ? <Failure message={requests.error.message} onRetry={requests.reload} /> : null}
+        {requests.error ? (
+          <Failure message={requests.error.message} onRetry={requests.reload} />
+        ) : null}
         {respond.error ? <Failure message={respond.error.message} /> : null}
 
         {!requests.loading && open.length === 0 ? (
@@ -135,7 +236,10 @@ export function DiscoverabilityPage() {
               <li className="row" key={r.id}>
                 <div className="row__mid">
                   <div className="row__ident">
-                    <span className="row__name">{r.organization.name}</span>
+                    <span className="row__name">
+                      {r.organization.name}
+                      {r.role ? ` — ${r.role.title}` : ""}
+                    </span>
                     {r.organization.verified ? <Pill tone="primary">Verified</Pill> : null}
                     <Pill tone={r.organization.payment_verified ? "primary" : "cherry"}>
                       {r.organization.payment_verified ? "Payment verified" : "Payment unverified"}
@@ -147,6 +251,13 @@ export function DiscoverabilityPage() {
                     <span>Expires {format.relativeDays(r.expires_at, new Date())}</span>
                   </div>
                   {r.disclosure ? <p className="ev__body">{r.disclosure}</p> : null}
+
+                  {/* What they are approaching you FOR (ADR-0019 §2). Your
+                      address is still released only if you accept — this is
+                      here so a decline can be informed rather than made on
+                      suspicion. The process figures are shown to you and to the
+                      organisation, and to nobody else. */}
+                  {r.role ? <RoleSummary role={r.role} /> : null}
                 </div>
                 <div className="row__right">
                   {r.status === "pending" ? (

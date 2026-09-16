@@ -50,6 +50,11 @@ func (c *ShortlistController) Routes() (string, http.Handler) {
 // --- shapes ------------------------------------------------------------------
 
 type createShortlistRequest struct {
+	// RoleID is the job this round is for (ADR-0019 §3). Required: without it
+	// a contact request can only say that somebody is interested, and the role
+	// details have no route to the person being contacted.
+	RoleID string `json:"role_id"`
+
 	Name                string `json:"name"`
 	Description         string `json:"description"`
 	TentativeResultDate Date   `json:"tentative_result_date"`
@@ -93,9 +98,9 @@ type shortlistEntryBody struct {
 	// empty one are the same thing, and null is the one that says so.
 	Note *string `json:"note"`
 
-	AddedBy    domain.HirerID `json:"added_by"`
-	NotifiedAt *time.Time     `json:"notified_at"`
-	AddedAt    time.Time      `json:"added_at"`
+	AddedBy    hirerRefBody `json:"added_by"`
+	NotifiedAt *time.Time   `json:"notified_at"`
+	AddedAt    time.Time    `json:"added_at"`
 }
 
 // shortlistBody is a round as a hirer sees it.
@@ -105,10 +110,14 @@ type shortlistEntryBody struct {
 // the one who owns it. The fuller picture — entries and their notification
 // state — is what GET /shortlists/{id} is for.
 type shortlistBody struct {
-	ID                  domain.ShortlistID `json:"id"`
-	Name                string             `json:"name"`
-	Status              string             `json:"status"`
-	TentativeResultDate Date               `json:"tentative_result_date"`
+	ID domain.ShortlistID `json:"id"`
+
+	// RoleID is the job this round is for (ADR-0019 §3). One round, one role.
+	RoleID domain.RoleID `json:"role_id"`
+
+	Name                string `json:"name"`
+	Status              string `json:"status"`
+	TentativeResultDate Date   `json:"tentative_result_date"`
 
 	// Counts rather than the entries themselves on a LIST. Loading every
 	// staged contributor for every round would be several joins per row to
@@ -118,7 +127,7 @@ type shortlistBody struct {
 	UnnotifiedCount *int `json:"unnotified_count,omitempty"`
 
 	Entries   []shortlistEntryBody `json:"entries,omitempty"`
-	CreatedBy domain.HirerID       `json:"created_by,omitempty"`
+	CreatedBy *hirerRefBody        `json:"created_by,omitempty"`
 	ClosedAt  *time.Time           `json:"closed_at,omitempty"`
 	CreatedAt time.Time            `json:"created_at"`
 }
@@ -136,7 +145,7 @@ type patchedShortlistBody struct {
 	Status              string             `json:"status"`
 	TentativeResultDate Date               `json:"tentative_result_date"`
 	Organization        *orgRef            `json:"organization,omitempty"`
-	CreatedBy           domain.HirerID     `json:"created_by"`
+	CreatedBy           hirerRefBody       `json:"created_by"`
 	EntryCount          int                `json:"entry_count"`
 	UnnotifiedCount     int                `json:"unnotified_count"`
 	FirstConfirmedAt    *time.Time         `json:"first_confirmed_at"`
@@ -165,7 +174,7 @@ func patchedShortlistBodyOf(p domain.Principal, s *domain.Shortlist) patchedShor
 		Status:              string(s.Status),
 		TentativeResultDate: Date{Time: s.TentativeResultDate},
 		Organization:        orgRefOf(p),
-		CreatedBy:           s.CreatedBy,
+		CreatedBy:           hirerRefBodyOf(s.CreatedBy),
 		EntryCount:          len(s.Entries),
 		UnnotifiedCount:     unnotified,
 		FirstConfirmedAt:    s.FirstConfirmedAt,
@@ -268,7 +277,16 @@ func (c *ShortlistController) create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	shortlist, err := c.shortlists.Create(r.Context(), p,
+	// Checked here rather than left to the database, so a missing or
+	// fat-fingered id is a named field error instead of a foreign key
+	// violation the caller has to decode.
+	if !isUUID(body.RoleID) {
+		writeFieldErrors(w, http.StatusUnprocessableEntity, service.CodeInvalidShortlist,
+			[]fieldError{{Field: "role_id", Reason: "required"}})
+		return
+	}
+
+	shortlist, err := c.shortlists.Create(r.Context(), p, domain.RoleID(body.RoleID),
 		body.Name, body.Description, body.TentativeResultDate.Time)
 	if err != nil {
 		if service.CodeOf(err) == "" && errors.Is(err, service.ErrInvalid) {
@@ -449,6 +467,7 @@ func (c *ShortlistController) contactRequests(w http.ResponseWriter, r *http.Req
 			User: entryContributorBody{
 				ID: req.UserID, DisplayName: req.DisplayName, GitHubLogin: req.GitHubLogin,
 			},
+			RequestedBy: hirerRefBodyOf(req.RequestedBy),
 			Status:      string(req.Status),
 			RespondedAt: req.RespondedAt,
 		}
@@ -475,11 +494,15 @@ type roundEntryBody struct {
 
 // roundDetailBody is a single round: who is on it, and where each stands.
 type roundDetailBody struct {
-	ID                  domain.ShortlistID `json:"id"`
-	Name                string             `json:"name"`
-	Status              string             `json:"status"`
-	TentativeResultDate Date               `json:"tentative_result_date"`
-	Entries             []roundEntryBody   `json:"entries"`
+	ID domain.ShortlistID `json:"id"`
+
+	// RoleID is the job this round is for (ADR-0019 §3).
+	RoleID domain.RoleID `json:"role_id"`
+
+	Name                string           `json:"name"`
+	Status              string           `json:"status"`
+	TentativeResultDate Date             `json:"tentative_result_date"`
+	Entries             []roundEntryBody `json:"entries"`
 }
 
 func roundDetailBodyOf(s *domain.Shortlist) roundDetailBody {
@@ -487,7 +510,7 @@ func roundDetailBodyOf(s *domain.Shortlist) roundDetailBody {
 		return roundDetailBody{Entries: []roundEntryBody{}}
 	}
 	out := roundDetailBody{
-		ID: s.ID, Name: s.Name, Status: string(s.Status),
+		ID: s.ID, RoleID: s.RoleID, Name: s.Name, Status: string(s.Status),
 		TentativeResultDate: Date{Time: s.TentativeResultDate},
 		Entries:             make([]roundEntryBody, 0, len(s.Entries)),
 	}
@@ -526,11 +549,17 @@ type closedShortlistBody struct {
 // address appears only once it has been released, which is the moment the
 // contributor consented to it (ADR-0005).
 type hirerContactBody struct {
-	ID          domain.ContactID     `json:"id"`
-	User        entryContributorBody `json:"user"`
-	Status      string               `json:"status"`
-	Email       *string              `json:"email"`
-	RespondedAt *time.Time           `json:"responded_at"`
+	ID   domain.ContactID     `json:"id"`
+	User entryContributorBody `json:"user"`
+
+	// RequestedBy names the colleague who asked, including one who has since
+	// left (ADR-0016 §9). A hirer looking at an old approach needs to know who
+	// on their side made it before making another.
+	RequestedBy hirerRefBody `json:"requested_by"`
+
+	Status      string     `json:"status"`
+	Email       *string    `json:"email"`
+	RespondedAt *time.Time `json:"responded_at"`
 }
 
 // --- helpers -----------------------------------------------------------------
@@ -597,7 +626,7 @@ func shortlistBodyOf(p domain.Principal, s *domain.Shortlist) shortlistBody {
 	}
 
 	out := shortlistBody{
-		ID: s.ID, Name: s.Name,
+		ID: s.ID, RoleID: s.RoleID, Name: s.Name,
 		Status: string(s.Status), TentativeResultDate: Date{Time: s.TentativeResultDate},
 		ClosedAt: s.ClosedAt, CreatedAt: s.CreatedAt,
 	}
@@ -624,7 +653,8 @@ func listedShortlistBodyOf(p domain.Principal, s *domain.Shortlist) shortlistBod
 
 	out.Entries = nil
 	out.EntryCount, out.UnnotifiedCount = &entryCount, &unnotified
-	out.CreatedBy = s.CreatedBy
+	createdBy := hirerRefBodyOf(s.CreatedBy)
+	out.CreatedBy = &createdBy
 	return out
 }
 
@@ -634,7 +664,7 @@ func entryBody(e domain.ShortlistEntry) shortlistEntryBody {
 		User: entryContributorBody{
 			ID: e.UserID, DisplayName: e.DisplayName, GitHubLogin: e.GitHubLogin,
 		},
-		AddedBy: e.AddedBy, NotifiedAt: e.NotifiedAt, AddedAt: e.AddedAt,
+		AddedBy: hirerRefBodyOf(e.AddedBy), NotifiedAt: e.NotifiedAt, AddedAt: e.AddedAt,
 	}
 	if e.Note != "" {
 		out.Note = &e.Note

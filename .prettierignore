@@ -12,6 +12,11 @@ go.sum
 *.schema
 *.sql
 
+# The design the frontend is built FROM, imported as-is. It is a reference
+# artifact rather than source we maintain, and reformatting it would make every
+# future diff against the original unreadable.
+frontend/design/
+
 node_modules/
 frontend/dist/
 backend/bin/

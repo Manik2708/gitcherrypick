@@ -66,8 +66,8 @@ func TestContactRepositoryVisibility(t *testing.T) {
 		bob := mustCreateContributor(ctx, t, db, "Bob Nakamura", 100002, "bobn")
 
 		s := mustCreateShortlist(ctx, t, db, hirer, "Platform team")
-		mustAddEntry(ctx, t, db, s.ID, alice.ID, hirer.ID)
-		mustAddEntry(ctx, t, db, s.ID, bob.ID, hirer.ID)
+		mustAddEntry(ctx, t, db, s.ID, alice.ID, hirer)
+		mustAddEntry(ctx, t, db, s.ID, bob.ID, hirer)
 		mustConfirm(ctx, t, db, s.ID)
 
 		got, err := db.Contacts().ListForUser(ctx, alice.ID, nil)
@@ -149,7 +149,7 @@ func TestSavedSearchRepository(t *testing.T) {
 		saved, err := db.SavedSearches().Create(ctx, &domain.SavedSearch{
 			OrganizationID: hirer.OrganizationID,
 			Name:           "Go + Kubernetes, available",
-			CreatedBy:      hirer.ID,
+			CreatedBy:      domain.RefTo(hirer),
 			Filters: domain.SearchQuery{
 				Skills:        []string{"go", "kubernetes"},
 				MinSkillScore: &score,
@@ -188,7 +188,7 @@ func TestSavedSearchRepository(t *testing.T) {
 		studio := mustRegister(ctx, t, db, "sam@studio.example", "Sam", "Tiny Studio", "tiny-studio")
 
 		if _, err := db.SavedSearches().Create(ctx, &domain.SavedSearch{
-			OrganizationID: acme.OrganizationID, Name: "Acme's", CreatedBy: acme.ID,
+			OrganizationID: acme.OrganizationID, Name: "Acme's", CreatedBy: domain.RefTo(acme),
 			Filters: domain.SearchQuery{Skills: []string{"go"}},
 		}); err != nil {
 			t.Fatalf("creating: %v", err)
@@ -228,7 +228,7 @@ func mustPendingContact(ctx context.Context, t *testing.T, db *postgres.DB) *dom
 		"Contributor "+strconv.FormatInt(contactSeq, 10), 400000+contactSeq, "c"+strconv.FormatInt(contactSeq, 10))
 
 	s := mustCreateShortlist(ctx, t, db, hirer, "Round "+strconv.FormatInt(contactSeq, 10))
-	mustAddEntry(ctx, t, db, s.ID, user.ID, hirer.ID)
+	mustAddEntry(ctx, t, db, s.ID, user.ID, hirer)
 	requests := mustConfirm(ctx, t, db, s.ID)
 	if len(requests) != 1 {
 		t.Fatalf("expected 1 contact request, got %d", len(requests))

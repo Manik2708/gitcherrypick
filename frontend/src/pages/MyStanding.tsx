@@ -11,7 +11,7 @@
 
 import { Link } from "react-router-dom";
 import type { UserSkill } from "../contract";
-import { useMyRank, useMySkills } from "../hooks/contributor";
+import { useMyProfile, useMyRank, useMySkills } from "../hooks/contributor";
 import { promotionDistance } from "../logic/claims";
 import * as format from "../logic/format";
 import {
@@ -23,6 +23,7 @@ import {
   Meter,
   PageHead,
   Pill,
+  Prompt,
 } from "../ui/primitives";
 
 function SkillRow({ skill }: { skill: UserSkill }) {
@@ -31,7 +32,9 @@ function SkillRow({ skill }: { skill: UserSkill }) {
   return (
     <li
       className={
-        skill.standing === "secondary" ? "standing__item standing__item--secondary" : "standing__item"
+        skill.standing === "secondary"
+          ? "standing__item standing__item--secondary"
+          : "standing__item"
       }
     >
       <div className="standing__head">
@@ -78,11 +81,43 @@ function SkillRow({ skill }: { skill: UserSkill }) {
   );
 }
 
+/**
+ * Asks once, on the screen a contributor actually lands on.
+ *
+ * Signing in with GitHub tells the platform what somebody has BUILT and nothing
+ * about what they WANT. Without this, a contributor who never opens "Being
+ * found" is invisible to every role and has no reason to suspect it — the nav
+ * item gives them no cause to click, and nothing else mentions it.
+ *
+ * It disappears the moment they answer, including if the answer is "none of
+ * these" (ADR-0018). A prompt that came back after being answered would be a
+ * nag about a decision they made.
+ */
+function ProfilePrompt() {
+  const profile = useMyProfile();
+  if (!profile.data?.needs_attention) return null;
+
+  return (
+    <Prompt
+      title="Hirers cannot find you yet"
+      action={<Link to="/being-found">Say what you are looking for</Link>}
+    >
+      Your standing comes from your merged pull requests. What kind of work you would take, and
+      where you are, is the part only you can tell us — and no role can reach you until you do.
+    </Prompt>
+  );
+}
+
 export function MyStandingPage() {
   const skills = useMySkills();
   const rank = useMyRank();
 
-  if (skills.loading) return <div className="page"><Loading what="your standing" /></div>;
+  if (skills.loading)
+    return (
+      <div className="page">
+        <Loading what="your standing" />
+      </div>
+    );
   if (skills.error) {
     return (
       <div className="page page--narrow">
@@ -91,7 +126,11 @@ export function MyStandingPage() {
     );
   }
   if (!skills.data) {
-    return <div className="page page--narrow"><Empty title="Nothing to show yet" /></div>;
+    return (
+      <div className="page page--narrow">
+        <Empty title="Nothing to show yet" />
+      </div>
+    );
   }
 
   const data = skills.data;
@@ -107,6 +146,8 @@ export function MyStandingPage() {
         lede="Derived from merged pull requests a model has read — not from anything you declared about yourself."
       />
 
+      <ProfilePrompt />
+
       {data.reevaluation_in_progress ? (
         <Banner icon="clock">
           One of your claims is being re-judged. These numbers will change when it finishes.
@@ -117,9 +158,7 @@ export function MyStandingPage() {
         <div className="hscore hscore--lead">
           <span className="hscore__label">Overall</span>
           <span className="hscore__n mono">{format.n1(data.overall_score)}</span>
-          <span className="hscore__note">
-            Depth. 0–100, weighted toward your strongest skills.
-          </span>
+          <span className="hscore__note">Depth. 0–100, weighted toward your strongest skills.</span>
           <Meter value={data.overall_score} />
           {rank.data?.ranked ? (
             <span className="hscore__rank mono">

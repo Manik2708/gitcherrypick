@@ -1,37 +1,34 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
-// The dev server proxies the API under /api rather than the client calling
-// 127.0.0.1:8080 directly.
+// The client talks to the API through a same-origin prefix.
 //
-// The API serves no Access-Control-* headers — it is not a browser-facing
-// origin, and adding CORS to it is a backend decision that belongs to the
-// Planner, not to this file. So the browser must never make a cross-origin
-// request in the first place: /api is same-origin, Vite forwards it, and the
-// preflight never happens.
+// Two reasons, and both are load-bearing rather than tidiness:
 //
-// The prefix has to be distinct because the API and the client share paths.
-// /auth/github/callback, /claims, /admin, /shortlists and /saved-searches are
-// all routes on BOTH sides; proxying any of them by name would swallow the
-// client route and break the OAuth return. /api collides with nothing, and the
-// rewrite strips it back off before the request reaches the API.
+//   The API mounts no CORS middleware, so a browser calling it on another
+//   origin is refused before the request is made. curl does not enforce that,
+//   which is why it is easy to miss from a terminal.
 //
-// cookiePathRewrite is what makes the OAuth round-trip actually complete. The
-// API scopes its state cookie to `Path=/auth`, which is correct when a browser
-// talks to it directly — but through this proxy the browser is calling
-// /api/auth/..., which does not match that path, so it would never send the
-// cookie back and every callback would answer 400 invalid_state. Rewriting the
-// path to / keeps the cookie in scope for the proxied requests.
+//   The OAuth state cookie is SameSite=Lax. localhost:5173 → 127.0.0.1:8080 is
+//   cross-SITE (different hosts), so the browser would withhold the cookie on
+//   the callback and every sign-in would fail its state check.
+//
+// Proxying makes both problems disappear without touching the backend: the
+// browser only ever sees localhost:5173, and the cookie is first-party.
 export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
     proxy: {
       "/api": {
-        target: "http://127.0.0.1:8080",
-        changeOrigin: true,
+        target: process.env.API_ORIGIN ?? "http://127.0.0.1:8080",
+        changeOrigin: false,
         rewrite: (path) => path.replace(/^\/api/, ""),
-        cookiePathRewrite: { "*": "/" },
+        // The API scopes its OAuth state cookie to Path=/auth. Behind the
+        // prefix the callback is /api/auth/..., which does not match, so the
+        // browser would withhold the cookie and every sign-in would fail its
+        // state check. Re-scope what the proxy passes through.
+        cookiePathRewrite: { "*": "/api" },
       },
     },
   },

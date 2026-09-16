@@ -9,6 +9,7 @@
         "method": "POST",
         "path": "/shortlists",
         "body": {
+          "role_id": "{{acme.role}}",
           "name": "Platform team, Q3",
           "description": "Two Go/Kubernetes hires.",
           "tentative_result_date": "2026-09-15"
@@ -22,6 +23,7 @@
         "_note": "status is draft, not open. A shortlist that notified people the moment it was created is what the confirm step exists to prevent.",
         "body": {
           "id": "<uuid>",
+          "role_id": "<uuid>",
           "name": "Platform team, Q3",
           "status": "draft",
           "tentative_result_date": "2026-09-15",
@@ -36,6 +38,7 @@
         "method": "POST",
         "path": "/shortlists",
         "body": {
+          "role_id": "{{acme.role}}",
           "name": "Vague plans"
         }
       },
@@ -58,6 +61,7 @@
         "method": "POST",
         "path": "/shortlists",
         "body": {
+          "role_id": "{{acme.role}}",
           "name": "Backdated",
           "tentative_result_date": "2026-01-01"
         }
@@ -83,6 +87,7 @@
         "method": "POST",
         "path": "/shortlists",
         "body": {
+          "role_id": "{{unverified_org.role}}",
           "name": "Fishing",
           "tentative_result_date": "2026-09-15"
         }
@@ -110,12 +115,18 @@
           "shortlists": [
             {
               "id": "<uuid>",
+              "role_id": "<uuid>",
               "name": "Platform team, Q3",
               "status": "draft",
               "tentative_result_date": "2026-09-15",
               "entry_count": 0,
               "unnotified_count": 0,
-              "created_by": "01920000-0000-7000-8000-00000000c001",
+              "created_by": {
+                "id": "01920000-0000-7000-8000-00000000c001",
+                "username": "hank",
+                "display_name": "Hank Rivera",
+                "active": true
+              },
               "created_at": "<timestamp>"
             }
           ]
@@ -160,7 +171,12 @@
             "id": "01920000-0000-7000-8000-00000000b001",
             "name": "Acme Corp"
           },
-          "created_by": "01920000-0000-7000-8000-00000000c001",
+          "created_by": {
+            "id": "01920000-0000-7000-8000-00000000c001",
+            "username": "hank",
+            "display_name": "Hank Rivera",
+            "active": true
+          },
           "entry_count": 0,
           "unnotified_count": 0,
           "first_confirmed_at": null,
@@ -215,7 +231,12 @@
             "github_login": "aliceok"
           },
           "note": "Strongest Go evidence in the pool.",
-          "added_by": "01920000-0000-7000-8000-00000000c001",
+          "added_by": {
+            "id": "01920000-0000-7000-8000-00000000c001",
+            "username": "hank",
+            "display_name": "Hank Rivera",
+            "active": true
+          },
           "notified_at": null,
           "added_at": "<timestamp>"
         },
@@ -258,7 +279,12 @@
             "github_login": "bobn"
           },
           "note": null,
-          "added_by": "01920000-0000-7000-8000-00000000c001",
+          "added_by": {
+            "id": "01920000-0000-7000-8000-00000000c001",
+            "username": "hank",
+            "display_name": "Hank Rivera",
+            "active": true
+          },
           "notified_at": null,
           "added_at": "<timestamp>"
         }
@@ -284,7 +310,12 @@
             "github_login": "cdiaz"
           },
           "note": null,
-          "added_by": "01920000-0000-7000-8000-00000000c001",
+          "added_by": {
+            "id": "01920000-0000-7000-8000-00000000c001",
+            "username": "hank",
+            "display_name": "Hank Rivera",
+            "active": true
+          },
           "notified_at": null,
           "added_at": "<timestamp>"
         }
@@ -453,6 +484,23 @@
               "status": "pending",
               "tentative_result_date": "2026-09-30",
               "disclosure": null,
+              "role": {
+                "id": "<uuid>",
+                "title": "Backend engineer",
+                "description": "Seeded so a round has a job to be for.",
+                "engagement": "full_time",
+                "location": "remote",
+                "currency": "",
+                "yearly_ctc": null,
+                "yearly_base": null,
+                "hourly_rate": null,
+                "expected_hours": null,
+                "eligible_countries": [],
+                "requires_online_test": null,
+                "max_interview_rounds": null,
+                "avg_days_to_offer": null,
+                "questions": []
+              },
               "expires_at": "<timestamp>",
               "created_at": "<timestamp>"
             }
@@ -510,7 +558,12 @@
             "github_login": "cdiaz"
           },
           "note": null,
-          "added_by": "01920000-0000-7000-8000-00000000c001",
+          "added_by": {
+            "id": "01920000-0000-7000-8000-00000000c001",
+            "username": "hank",
+            "display_name": "Hank Rivera",
+            "active": true
+          },
           "notified_at": null,
           "added_at": "<timestamp>"
         },
@@ -534,6 +587,7 @@
         "status": 200,
         "body": {
           "id": "<uuid>",
+          "role_id": "<uuid>",
           "name": "Platform team, Q3 (revised)",
           "status": "open",
           "tentative_result_date": "2026-09-30",
@@ -633,7 +687,7 @@
       },
       "expect": {
         "status": 200,
-        "_note": "Carol's email appears because she accepted. Alice and Bob are still pending, so theirs are null.",
+        "_note": "requested_by names the colleague who asked, including one who has since left (ADR-0016 §9). A hirer looking at an old approach needs to know who on their side made it before making another.",
         "body": {
           "total": 3,
           "requests": [
@@ -643,6 +697,12 @@
                 "id": "01920000-0000-7000-8000-00000000a001",
                 "display_name": "Alice Okafor",
                 "github_login": "aliceok"
+              },
+              "requested_by": {
+                "id": "01920000-0000-7000-8000-00000000c001",
+                "username": "hank",
+                "display_name": "Hank Rivera",
+                "active": true
               },
               "status": "pending",
               "email": null,
@@ -655,6 +715,12 @@
                 "display_name": "Bob Nakamura",
                 "github_login": "bobn"
               },
+              "requested_by": {
+                "id": "01920000-0000-7000-8000-00000000c001",
+                "username": "hank",
+                "display_name": "Hank Rivera",
+                "active": true
+              },
               "status": "pending",
               "email": null,
               "responded_at": null
@@ -665,6 +731,12 @@
                 "id": "01920000-0000-7000-8000-00000000a003",
                 "display_name": "Carol Diaz",
                 "github_login": "cdiaz"
+              },
+              "requested_by": {
+                "id": "01920000-0000-7000-8000-00000000c001",
+                "username": "hank",
+                "display_name": "Hank Rivera",
+                "active": true
               },
               "status": "accepted",
               "email": "carol@example.com",
@@ -754,6 +826,7 @@
         "method": "POST",
         "path": "/shortlists",
         "body": {
+          "role_id": "{{acme.role}}",
           "name": "Abandoned idea",
           "tentative_result_date": "2026-08-20"
         }
@@ -765,6 +838,7 @@
         "status": 201,
         "body": {
           "id": "<uuid>",
+          "role_id": "<uuid>",
           "name": "Abandoned idea",
           "status": "draft",
           "tentative_result_date": "2026-08-20",

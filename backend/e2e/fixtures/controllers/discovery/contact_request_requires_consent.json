@@ -1,12 +1,7 @@
 {
   "name": "shortlisting raises a request; the email is released only on acceptance",
-  "description": "ADR-0005, and the deliberate inversion of how sourcing tools normally work. Adding someone to a shortlist does NOT disclose their email \u2014 it creates a contact request the contributor must accept. Releasing contact details on the strength of one side's interest is what makes those tools feel extractive, and the whole consent model would be hollow if a shortlist click bypassed it.\n\nThe request also discloses what we know about the hirer: sam_studio's organization was verified on identity but never on payment, so the contributor is told before deciding.\n\nUpdated for RFC-0008 \u00a73a: adding an entry stages it privately and discloses nothing. The contact request \u2014 and therefore the disclosure this case is about \u2014 is created by confirm. That moves WHEN consent is sought without changing the rule that it must be sought.",
-  "seed": [
-    "principals",
-    "catalogue",
-    "repositories",
-    "scored_population"
-  ],
+  "description": "ADR-0005, and the deliberate inversion of how sourcing tools normally work. Adding someone to a shortlist does NOT disclose their email — it creates a contact request the contributor must accept. Releasing contact details on the strength of one side's interest is what makes those tools feel extractive, and the whole consent model would be hollow if a shortlist click bypassed it.\n\nThe request also discloses what we know about the hirer: sam_studio's organization was verified on identity but never on payment, so the contributor is told before deciding.\n\nUpdated for RFC-0008 §3a: adding an entry stages it privately and discloses nothing. The contact request — and therefore the disclosure this case is about — is created by confirm. That moves WHEN consent is sought without changing the rule that it must be sought.",
+  "seed": ["principals", "catalogue", "repositories", "scored_population"],
   "steps": [
     {
       "as": "sam_studio",
@@ -14,6 +9,7 @@
         "method": "POST",
         "path": "/shortlists",
         "body": {
+          "role_id": "{{startup.role}}",
           "name": "Backend contractor, Q3",
           "tentative_result_date": "2026-09-30"
         }
@@ -25,6 +21,7 @@
         "status": 201,
         "body": {
           "id": "<uuid>",
+          "role_id": "<uuid>",
           "name": "Backend contractor, Q3",
           "status": "draft",
           "tentative_result_date": "2026-09-30",
@@ -46,7 +43,7 @@
         "status": 201,
         "_note": "No email in the response. A contact request was raised instead.",
         "body": {
-          "_note": "Staged, not disclosed. notified_at is null until confirm, and no address appears anywhere \u2014 releasing one is what accepting a contact request does (ADR-0008 \u00a73a).",
+          "_note": "Staged, not disclosed. notified_at is null until confirm, and no address appears anywhere — releasing one is what accepting a contact request does (ADR-0008 §3a).",
           "shortlist_id": "<uuid>",
           "user": {
             "id": "01920000-0000-7000-8000-00000000a001",
@@ -54,13 +51,18 @@
             "github_login": "<string>"
           },
           "note": "Strong retry-semantics work.",
-          "added_by": "<uuid>",
+          "added_by": {
+            "id": "01920000-0000-7000-8000-00000000c003",
+            "username": "sam",
+            "display_name": "Sam Ortega",
+            "active": true
+          },
           "notified_at": null,
           "added_at": "<timestamp>"
         },
         "db": {
           "contact_requests": {
-            "_note": "Zero. Staging is private \u2014 RFC-0008 \u00a73a.",
+            "_note": "Zero. Staging is private — RFC-0008 §3a.",
             "where": {
               "user_id": "01920000-0000-7000-8000-00000000a001"
             },
@@ -116,7 +118,7 @@
       },
       "expect": {
         "status": 200,
-        "_note": "The full scorecard IS visible \u2014 that is what verification buys. The email is not part of it.",
+        "_note": "The full scorecard IS visible — that is what verification buys. The email is not part of it.",
         "body": {
           "email": null,
           "overall_score": 64.2,
@@ -135,6 +137,7 @@
                   "pr_number": 101,
                   "merged_at": "<timestamp>",
                   "score": 79.3,
+                  "url": "https://github.com/acme/bigrepo/pull/101",
                   "dimensions": {
                     "substance": {
                       "score": 83,
@@ -163,6 +166,7 @@
                   "pr_number": 12,
                   "merged_at": "<timestamp>",
                   "score": 64.4,
+                  "url": "https://github.com/indie/smalllib/pull/12",
                   "dimensions": {
                     "substance": {
                       "score": 66,
@@ -191,6 +195,7 @@
                   "pr_number": 102,
                   "merged_at": "<timestamp>",
                   "score": 62.1,
+                  "url": "https://github.com/acme/bigrepo/pull/102",
                   "dimensions": {
                     "substance": {
                       "score": 63,
@@ -219,6 +224,7 @@
                   "pr_number": 55,
                   "merged_at": "<timestamp>",
                   "score": 60.4,
+                  "url": "https://github.com/acme/platform/pull/55",
                   "dimensions": {
                     "substance": {
                       "score": 61,
@@ -247,6 +253,7 @@
                   "pr_number": 56,
                   "merged_at": "<timestamp>",
                   "score": 54.8,
+                  "url": "https://github.com/acme/platform/pull/56",
                   "dimensions": {
                     "substance": {
                       "score": 56,
@@ -305,7 +312,24 @@
               "status": "pending",
               "expires_at": "<timestamp>",
               "disclosure": "This organization is hiring for the first time and has not verified payment capability.",
-              "_note": "Not a warning against them \u2014 a fact. The contributor carries the risk of an unpaid engagement, so the contributor gets the fact and the choice.",
+              "role": {
+                "id": "<uuid>",
+                "title": "Backend engineer",
+                "description": "Seeded so a round has a job to be for.",
+                "engagement": "full_time",
+                "location": "remote",
+                "currency": "",
+                "yearly_ctc": null,
+                "yearly_base": null,
+                "hourly_rate": null,
+                "expected_hours": null,
+                "eligible_countries": [],
+                "requires_online_test": null,
+                "max_interview_rounds": null,
+                "avg_days_to_offer": null,
+                "questions": []
+              },
+              "_note": "Not a warning against them — a fact. The contributor carries the risk of an unpaid engagement, so the contributor gets the fact and the choice.",
               "created_at": "<timestamp>"
             }
           ],
@@ -351,6 +375,7 @@
         "status": 200,
         "body": {
           "id": "<uuid>",
+          "role_id": "<uuid>",
           "name": "Backend contractor, Q3",
           "status": "open",
           "tentative_result_date": "2026-09-30",
@@ -372,6 +397,7 @@
         "method": "POST",
         "path": "/shortlists",
         "body": {
+          "role_id": "{{acme.role}}",
           "name": "Platform team",
           "tentative_result_date": "2026-10-15"
         }
@@ -383,6 +409,7 @@
         "status": 201,
         "body": {
           "id": "<uuid>",
+          "role_id": "<uuid>",
           "name": "Platform team",
           "status": "draft",
           "tentative_result_date": "2026-10-15",
@@ -410,13 +437,18 @@
             "github_login": "<string>"
           },
           "note": null,
-          "added_by": "<uuid>",
+          "added_by": {
+            "id": "01920000-0000-7000-8000-00000000c001",
+            "username": "hank",
+            "display_name": "Hank Rivera",
+            "active": true
+          },
           "notified_at": null,
           "added_at": "<timestamp>"
         },
         "db": {
           "contact_requests": {
-            "_note": "Zero. Staging is private \u2014 RFC-0008 \u00a73a.",
+            "_note": "Zero. Staging is private — RFC-0008 §3a.",
             "where": {
               "user_id": "01920000-0000-7000-8000-00000000a001",
               "shortlist_id": "{{acme_shortlist}}"
@@ -487,6 +519,23 @@
               "status": "pending",
               "expires_at": "<timestamp>",
               "disclosure": null,
+              "role": {
+                "id": "<uuid>",
+                "title": "Backend engineer",
+                "description": "Seeded so a round has a job to be for.",
+                "engagement": "full_time",
+                "location": "remote",
+                "currency": "",
+                "yearly_ctc": null,
+                "yearly_base": null,
+                "hourly_rate": null,
+                "expected_hours": null,
+                "eligible_countries": [],
+                "requires_online_test": null,
+                "max_interview_rounds": null,
+                "avg_days_to_offer": null,
+                "questions": []
+              },
               "created_at": "<timestamp>"
             }
           ],
@@ -534,6 +583,7 @@
         "_note": "Only now does the email appear, and only for the organization the contributor accepted.",
         "body": {
           "id": "<uuid>",
+          "role_id": "<uuid>",
           "name": "Platform team",
           "status": "open",
           "tentative_result_date": "2026-10-15",
@@ -559,6 +609,7 @@
         "status": 200,
         "body": {
           "id": "<uuid>",
+          "role_id": "<uuid>",
           "name": "Backend contractor, Q3",
           "status": "open",
           "tentative_result_date": "2026-09-30",

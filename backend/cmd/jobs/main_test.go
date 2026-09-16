@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -21,18 +22,23 @@ func TestEveryJobIsRunnableAndDescribed(t *testing.T) {
 }
 
 func TestRegistryCoversPortJobService(t *testing.T) {
-	// port.JobService has four methods. If one gains a fifth and nobody
-	// registers it, production silently stops running it — so the registry is
-	// pinned against the interface here rather than trusted.
-	require.Len(t, jobs, 4)
+	// Every method on port.JobService must be registered. An unregistered one
+	// is a job production silently stops running, and nothing else would say
+	// so — the binary starts, the schedule runs, and the work never happens.
+	//
+	// Counted by REFLECTION rather than written down. A literal has to be
+	// edited by whoever adds a method, which is exactly the person who just
+	// forgot to register one.
+	want := reflect.TypeOf((*port.JobService)(nil)).Elem().NumMethod()
+	require.Len(t, jobs, want,
+		"port.JobService has %d methods and %d are registered", want, len(jobs))
+
 	for _, name := range []string{
-		"expire-availability", "overdue-sweep", "expire-contact-requests", "recompute-norms",
+		"expire-availability", "overdue-sweep", "expire-contact-requests",
+		"expire-onboarding", "recompute-norms",
 	} {
 		require.Contains(t, jobs, name)
 	}
-
-	var svc port.JobService
-	require.Nil(t, svc, "compile-time assertion that the interface still exists")
 }
 
 func TestJobListIsSortedAndComplete(t *testing.T) {

@@ -1,0 +1,426 @@
+-- ---------------------------------------------------------------------------
+-- RFC-0019 — Roles
+--
+-- Delta only. Everything not mentioned here stays as earlier RFCs defined it.
+--
+-- Nothing is edited at origin: this adds tables and touches none.
+-- ---------------------------------------------------------------------------
+
+
+-- ---------------------------------------------------------------------------
+-- 0. Who in an organisation may commit it to a salary.
+--
+-- A SETTING rather than a rule, chosen by the owner. The three options are the
+-- three defensible answers, and which one is right depends on the company:
+-- three recruiters and an absent founder want a different rule from two people
+-- who do everything together.
+--
+--   any_hirer          anybody with a seat does it outright
+--   draft_and_approve  anybody stages it; an OWNER commits it
+--   owners_only        only owners may do it at all
+--
+-- Held PER ACTION. Creating, changing and closing a role are different sizes
+-- of decision, and one dial for all three would force a company that wants an
+-- owner on new salaries to also put one on withdrawing a filled role.
+-- ---------------------------------------------------------------------------
+CREATE TYPE role_authority AS ENUM (
+    'any_hirer',
+    'draft_and_approve',
+    'owners_only'
+);
+
+-- A table rather than a column on `organizations`, because this is policy and
+-- that table is identity — and because settings accumulate, and each new one
+-- should not be another edit to the organisation record.
+--
+-- NO ROW MEANS THE DEFAULT. Nothing needs backfilling, and an organisation
+-- that never opens this screen behaves exactly as one that opened it and
+-- changed nothing.
+CREATE TABLE organization_settings (
+    organization_id uuid PRIMARY KEY REFERENCES organizations(id) ON DELETE CASCADE,
+
+    -- Opening a role commits the company to a salary in writing, to everybody
+    -- contacted. The safe middle by default: the work stays with whoever is
+    -- doing it, and the commitment is signed by somebody accountable for it.
+    role_create_authority role_authority NOT NULL DEFAULT 'draft_and_approve',
+
+    -- Changing an open role changes what people were already told.
+    role_update_authority role_authority NOT NULL DEFAULT 'draft_and_approve',
+
+    -- Closing only ever WITHDRAWS a commitment. Permissive by default, because
+    -- a rule that makes the safe direction harder than the unsafe one gets
+    -- worked around — but a setting, because that is the owner's call.
+    role_close_authority  role_authority NOT NULL DEFAULT 'any_hirer',
+
+    created_at      timestamptz NOT NULL DEFAULT now(),
+    updated_at      timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TRIGGER trg_organization_settings_updated_at
+    BEFORE UPDATE ON organization_settings
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+
+-- ---------------------------------------------------------------------------
+-- 1. What kind of engagement a role is.
+--
+-- The four from the source diagram. An enum rather than four booleans because
+-- these ARE exclusive — one role is one of these things, unlike a
+-- contributor's OpenTo* flags, which describe what somebody would consider.
+-- ---------------------------------------------------------------------------
+CREATE TYPE role_engagement AS ENUM (
+    'full_time',
+    'contract',
+    'internship',
+    'freelance'
+);
+
+-- Whether the work happens anywhere or somewhere.
+--
+-- 'address' means the role points at a row in organization_addresses — the
+-- diagram's AddressExist? branch, which reuses an address rather than retyping
+-- one (ADR-0017 §10).
+CREATE TYPE role_location AS ENUM ('remote', 'address');
+
+CREATE TYPE role_status AS ENUM ('draft', 'open', 'closed');
+
+-- Why a role stopped being open.
+--
+-- Asked, not inferred. A role that quietly disappears teaches nobody anything,
+-- and 'hired_via_platform' is the only outcome signal this platform has ever
+-- had — the fact that closes the loop between a ranked pool and a job.
+--
+--   not_needed          the headcount went away
+--   hired_elsewhere     filled, by somebody found some other way
+--   hired_via_platform  filled, by somebody contacted THROUGH here
+--   superseded          replaced by a revision (ADR-0019 §11), not a human act
+--   other               something else, and the note says what
+CREATE TYPE role_close_reason AS ENUM (
+    'not_needed',
+    'hired_elsewhere',
+    'hired_via_platform',
+    'superseded',
+    'other'
+);
+
+
+-- ---------------------------------------------------------------------------
+-- 2. The role.
+--
+-- One table with a discriminator rather than separate salaried and freelance
+-- tables. The two differ in exactly two columns — a yearly figure versus an
+-- hourly one — and everything else about them is identical, so splitting would
+-- duplicate fifteen columns to avoid two nulls.
+-- ---------------------------------------------------------------------------
+CREATE TABLE roles (
+    id                   uuid PRIMARY KEY,
+    organization_id      uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+
+    title                text NOT NULL,
+    description          text,
+
+    engagement           role_engagement NOT NULL,
+    status               role_status NOT NULL DEFAULT 'draft',
+
+    -- --- where ----------------------------------------------------------
+    location             role_location NOT NULL,
+
+    -- Set when location = 'address', NULL when remote. The reference is what
+    -- makes the diagram's AddressExist? branch mean something: a second role
+    -- at the same office points at the same row.
+    address_id           uuid REFERENCES organization_addresses(id) ON DELETE RESTRICT,
+
+    -- --- what it pays ---------------------------------------------------
+    --
+    -- MINOR UNITS and an ISO 4217 currency, exactly as ADR-0018 §8 requires of
+    -- a contributor's expectation — the two are compared, so they must be the
+    -- same kind of number.
+    currency             char(3),
+
+    -- Salaried. CTC is the whole package; base is what arrives monthly. Both,
+    -- because a contributor comparing offers needs to know which is which.
+    yearly_ctc           bigint,
+    yearly_base          bigint,
+
+    -- Freelance.
+    hourly_rate          bigint,
+    expected_hours       smallint,
+
+    -- --- who it is open to ----------------------------------------------
+    --
+    -- Minimum years. NULL means no minimum, which is different from zero — a
+    -- role open to anybody and a role explicitly open to people with no
+    -- commercial experience are different invitations.
+    min_office_yoe       smallint,
+    min_oss_yoe          smallint,
+
+    -- --- what the process looks like (ADR-0017 §The process fields) ------
+    --
+    -- On the ROLE, not the company: a staff engineering role and a
+    -- three-month contract at the same firm do not share an interview process,
+    -- and putting these on the organisation would state one answer where there
+    -- are several.
+    --
+    -- Disclosed to the contacted contributor and to the organisation, and to
+    -- nobody else.
+    requires_online_test boolean,
+    max_interview_rounds smallint,
+    avg_days_to_offer    smallint,
+
+    created_by           uuid NOT NULL REFERENCES hirer_accounts(id),
+
+    -- Who turned the numbers into a commitment, and when.
+    --
+    -- WHO is allowed to is organization_settings.role_authority; that the
+    -- person is RECORDED is not a setting. A role states a salary and an
+    -- interview process on the company's behalf, in writing, to everybody
+    -- contacted — so whoever opened it is named, under every policy. Same
+    -- reason organization_onboarding records decided_by: an approval nobody is
+    -- named against is not an approval.
+    opened_by            uuid REFERENCES hirer_accounts(id),
+    opened_at            timestamptz,
+
+    -- Somebody asked for this role to be closed and is waiting for an owner,
+    -- under role_close_authority = 'draft_and_approve'.
+    --
+    -- Columns rather than a fourth status: a role awaiting closure is STILL
+    -- OPEN. It matches, it can be shortlisted against, and the commitment it
+    -- makes stands until an owner actually withdraws it. A status would make
+    -- a request look like an outcome.
+    close_requested_by   uuid REFERENCES hirer_accounts(id),
+    close_requested_at   timestamptz,
+
+    -- The open role this one replaces.
+    --
+    -- AN OPEN ROLE IS IMMUTABLE. Changing one does not update it; it writes a
+    -- new row pointing here and closes the old one. Everybody already
+    -- contacted keeps reading the role they were actually shown — the salary
+    -- somebody agreed to talk about cannot be revised out from under them, and
+    -- that is a property of the table rather than of whoever writes the next
+    -- UPDATE.
+    --
+    -- Same device as organization_onboarding.supersedes_id (ADR-0017).
+    supersedes_id        uuid REFERENCES roles(id) ON DELETE RESTRICT,
+
+    created_at           timestamptz NOT NULL DEFAULT now(),
+    updated_at           timestamptz NOT NULL DEFAULT now(),
+
+    -- --- how it ended ---------------------------------------------------
+    closed_at            timestamptz,
+    closed_by            uuid REFERENCES hirer_accounts(id),
+    close_reason         role_close_reason,
+
+    -- Required when the reason is 'other'. A reason of "other" with nothing
+    -- after it is not a reason, and the whole point of asking is the answer.
+    close_note           text,
+
+
+    -- An address role needs an address; a remote one must not carry a stale
+    -- pointer to the office it used to be at.
+    CONSTRAINT ck_role_location CHECK (
+        (location = 'address' AND address_id IS NOT NULL) OR
+        (location = 'remote'  AND address_id IS NULL)
+    ),
+
+    -- Freelance pays by the hour; everything else pays by the year. Stated as
+    -- a constraint because a role advertising both is a role nobody can
+    -- compare against an expectation.
+    CONSTRAINT ck_role_compensation CHECK (
+        (engagement = 'freelance'
+            AND yearly_ctc IS NULL AND yearly_base IS NULL) OR
+        (engagement <> 'freelance'
+            AND hourly_rate IS NULL AND expected_hours IS NULL)
+    ),
+
+    -- Any amount needs a currency to mean anything (ADR-0018 §4).
+    CONSTRAINT ck_role_currency CHECK (
+        (yearly_ctc IS NULL AND yearly_base IS NULL AND hourly_rate IS NULL)
+        OR currency IS NOT NULL),
+    CONSTRAINT ck_role_currency_shape CHECK (currency IS NULL OR currency ~ '^[A-Z]{3}$'),
+
+    -- Base cannot exceed the total package it is part of.
+    CONSTRAINT ck_role_base_within_ctc CHECK (
+        yearly_ctc IS NULL OR yearly_base IS NULL OR yearly_base <= yearly_ctc),
+
+    CONSTRAINT ck_role_amounts_positive CHECK (
+        (yearly_ctc IS NULL OR yearly_ctc > 0) AND
+        (yearly_base IS NULL OR yearly_base > 0) AND
+        (hourly_rate IS NULL OR hourly_rate > 0) AND
+        (expected_hours IS NULL OR (expected_hours > 0 AND expected_hours <= 168))
+    ),
+
+    CONSTRAINT ck_role_yoe CHECK (
+        (min_office_yoe IS NULL OR (min_office_yoe >= 0 AND min_office_yoe <= 80)) AND
+        (min_oss_yoe IS NULL OR (min_oss_yoe >= 0 AND min_oss_yoe <= 80))
+    ),
+
+    CONSTRAINT ck_role_rounds CHECK (
+        max_interview_rounds IS NULL OR max_interview_rounds > 0),
+    CONSTRAINT ck_role_days_to_offer CHECK (
+        avg_days_to_offer IS NULL OR avg_days_to_offer >= 0),
+
+    -- A role that has ever been open carries the owner who opened it. A draft
+    -- carries neither. Stated here because "who approved this salary" is the
+    -- question asked after something goes wrong, and by then the service that
+    -- was supposed to set it is not around to be asked.
+    CONSTRAINT ck_role_opened CHECK (
+        (status = 'draft' AND opened_by IS NULL AND opened_at IS NULL) OR
+        (status <> 'draft' AND opened_by IS NOT NULL AND opened_at IS NOT NULL)
+    ),
+
+    CONSTRAINT ck_role_close_request CHECK (
+        (close_requested_by IS NULL) = (close_requested_at IS NULL)),
+
+    CONSTRAINT ck_role_not_self_superseding CHECK (supersedes_id <> id),
+
+    -- A closed role says when, by whom and why; an open one says none of it.
+    CONSTRAINT ck_role_closed CHECK (
+        (status = 'closed'
+            AND closed_at IS NOT NULL AND closed_by IS NOT NULL
+            AND close_reason IS NOT NULL) OR
+        (status <> 'closed'
+            AND closed_at IS NULL AND closed_by IS NULL
+            AND close_reason IS NULL AND close_note IS NULL)
+    ),
+
+    -- 'other' means nothing without the note that follows it.
+    CONSTRAINT ck_role_close_note CHECK (
+        close_reason <> 'other' OR close_note IS NOT NULL)
+);
+
+CREATE INDEX idx_roles_org ON roles (organization_id);
+
+-- A chain, not a tree: a role is replaced at most once. Two revisions of one
+-- role would leave two rows each claiming to be the current version, and
+-- nothing able to say which a contributor should be shown.
+CREATE UNIQUE INDEX uq_role_supersedes ON roles (supersedes_id)
+    WHERE supersedes_id IS NOT NULL;
+
+
+-- The matching read: open roles only. Partial, because a draft or closed role
+-- can never match anybody.
+CREATE INDEX idx_roles_open ON roles (organization_id, engagement)
+    WHERE status = 'open';
+
+
+-- ---------------------------------------------------------------------------
+-- 3. Where a role may hire.
+--
+-- A child table rather than an array column, so a match is a join the database
+-- can index rather than a scan of every open role.
+--
+-- NO ROWS MEANS ANYWHERE. A role that listed every country would be saying the
+-- same thing at far greater length, and an organisation that has not thought
+-- about it should not accidentally exclude the world.
+-- ---------------------------------------------------------------------------
+CREATE TABLE role_eligible_countries (
+    role_id    uuid   NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+    country    char(2) NOT NULL,
+
+    PRIMARY KEY (role_id, country),
+    CONSTRAINT ck_role_country CHECK (country ~ '^[A-Z]{2}$')
+);
+
+CREATE INDEX idx_role_countries_country ON role_eligible_countries (country);
+
+
+-- ---------------------------------------------------------------------------
+-- 3b. Who a role was filled with.
+--
+-- A TABLE, not a column, because one role can fill several seats — "two backend
+-- engineers" is one posting and two people. A single hired_user_id would have
+-- recorded the first and silently lost the rest, which is the failure mode
+-- worth avoiding in the one place this platform collects outcomes.
+--
+-- Written when the role is closed as 'hired_via_platform', in the same
+-- transaction. The invariant "that reason has at least one hire, and no other
+-- reason has any" spans two tables and so cannot be a CHECK; it belongs to the
+-- service, and is asserted there.
+--
+-- The hirer supplies an EMAIL and this stores an id. The address must be one an
+-- accepted contact request already released to this organisation: a company can
+-- only report hiring somebody who agreed to talk to them, and the restriction
+-- also stops this being an oracle for testing whether an address has an account
+-- here — every address it accepts is one the organisation was already given.
+-- ---------------------------------------------------------------------------
+CREATE TABLE role_hires (
+    role_id     uuid NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+    user_id     uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+
+    -- The hirer who reported it. A claim about a person carries who made it.
+    recorded_by uuid NOT NULL REFERENCES hirer_accounts(id),
+    recorded_at timestamptz NOT NULL DEFAULT now(),
+
+    PRIMARY KEY (role_id, user_id)
+);
+
+-- The outcome read: which contributors were hired out of this pool.
+CREATE INDEX idx_role_hires_user ON role_hires (user_id);
+
+
+-- ---------------------------------------------------------------------------
+-- 4. What a role asks a contributor.
+--
+-- The diagram's MoreYesNoQuestionsForContributor: visa status and the like.
+--
+-- Yes/no only, and deliberately. A free-text question is an interview, and an
+-- interview conducted before anybody has agreed to talk is exactly the
+-- asymmetry ADR-0005 exists to prevent. A closed question is answerable in one
+-- tap and reveals only what it asks.
+-- ---------------------------------------------------------------------------
+CREATE TABLE role_questions (
+    id        uuid PRIMARY KEY,
+    role_id   uuid NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+
+    question  text NOT NULL,
+    position  smallint NOT NULL,
+
+    -- What the organisation is hoping for. Recorded so an answer can be
+    -- reported as expected or not, WITHOUT the platform refusing anybody: a
+    -- required answer would be a filter the contributor never saw.
+    expected  boolean,
+
+    created_at timestamptz NOT NULL DEFAULT now(),
+
+    CONSTRAINT uq_role_question_position UNIQUE (role_id, position)
+);
+
+
+-- ---------------------------------------------------------------------------
+-- 5. What a contributor answered.
+--
+-- Keyed to the CONTACT REQUEST rather than to the contributor, because that is
+-- the thing they agreed to: answers belong to one approach by one organisation
+-- and do not follow somebody around.
+-- ---------------------------------------------------------------------------
+CREATE TABLE role_question_answers (
+    contact_request_id uuid NOT NULL REFERENCES contact_requests(id) ON DELETE CASCADE,
+    question_id        uuid NOT NULL REFERENCES role_questions(id) ON DELETE CASCADE,
+
+    answer             boolean NOT NULL,
+    answered_at        timestamptz NOT NULL DEFAULT now(),
+
+    PRIMARY KEY (contact_request_id, question_id)
+);
+
+
+CREATE TRIGGER trg_roles_updated_at
+    BEFORE UPDATE ON roles
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+
+-- ---------------------------------------------------------------------------
+-- 6. The forward reference from RFC-0005.
+--
+-- `shortlists.role_id` is declared where shortlists are, because that is where
+-- the column belongs and NOT NULL has to be stated at origin. The key can only
+-- be added once `roles` exists, which is here.
+--
+-- This is ordering within one schema, not a migration: `rfc/*.schema` applied
+-- in order IS the schema, and nothing is deployed.
+-- ---------------------------------------------------------------------------
+ALTER TABLE shortlists
+    ADD CONSTRAINT shortlists_role_id_fkey
+    FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE RESTRICT;
+
+CREATE INDEX idx_shortlists_role ON shortlists (role_id);

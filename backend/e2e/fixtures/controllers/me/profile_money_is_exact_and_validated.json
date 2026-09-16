@@ -1,0 +1,492 @@
+{
+  "name": "money is minor units and exact, and every bad field is named before the database sees it",
+  "description": "ADR-0018 \u00a78 and the validation half of step 4.\n\nMONEY IS bigint MINOR UNITS WITH A REQUIRED ISO 4217 CURRENCY, never a float. 45_00 goes in and 45_00 comes out: no rounding, no drift, no division by a hundred on the way through. One of the amounts here is 4_500_000_000 minor units, which is a perfectly ordinary annual figure in a currency with small units and does not fit in a 32-bit column \u2014 so a schema or a decoder that narrowed anywhere along the path fails rather than silently wrapping somebody's salary.\n\nAn amount with no currency is refused. A number without one is not a rate, and guessing one from the country would be worse than asking: people are paid in currencies they do not live in. Zero is refused too \u2014 nobody means to state a rate of zero, so it is far likelier to be an empty form than an offer.\n\nEVERY REFUSAL IS A NAMED ERROR AND NOTHING IS WRITTEN. The schema also carries check constraints for all of this, which is exactly the trap: a service that skipped validation would still be safe, and the caller would get a 500 out of a constraint violation nobody can read and no client can branch on. So each case here asserts the code AND that the table is untouched, which together say the refusal happened above the database rather than in it.\n\nThe country code is validated for SHAPE, since a malformed one cannot be a country in any vocabulary. Whether a well-formed code is a country the platform knows about is port.PlaceService's question and is deliberately not asserted here \u2014 see the note on the last step.\n\nZero office years is LEGAL and 81 is not. Somebody contributing before their first job is a real person with a real answer, and nobody has worked for 81 years.",
+  "seed": ["principals", "catalogue", "repositories"],
+  "steps": [
+    {
+      "_step": "Nothing stated yet. An empty currency and two nulls \u2014 and NO ROW, because absence is not an error and not a row of zeros either.",
+      "as": "alice",
+      "request": {
+        "method": "GET",
+        "path": "/me/compensation"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "currency": "",
+          "hourly_rate": null,
+          "yearly_amount": null
+        },
+        "db": {
+          "user_compensation": {
+            "where": {
+              "user_id": "{{alice.id}}"
+            },
+            "count": 0
+          }
+        }
+      }
+    },
+    {
+      "_step": "45_00 USD an hour. MINOR UNITS: the integer is forty-five dollars, and it is the same integer on the way back.",
+      "as": "alice",
+      "request": {
+        "method": "PUT",
+        "path": "/me/compensation",
+        "body": {
+          "currency": "USD",
+          "hourly_rate": 4500,
+          "yearly_amount": null
+        }
+      },
+      "expect": {
+        "status": 200,
+        "_note": "yearly_amount stays null rather than becoming 0. The two figures are independent: a freelancer may state an hourly rate and no annual one, and a permanent candidate the reverse.",
+        "body": {
+          "currency": "USD",
+          "hourly_rate": 4500,
+          "yearly_amount": null
+        },
+        "db": {
+          "user_compensation": {
+            "where": {
+              "user_id": "{{alice.id}}"
+            },
+            "count": 1,
+            "all_match": {
+              "currency": "USD",
+              "hourly_rate": 4500,
+              "yearly_amount": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "as": "alice",
+      "request": {
+        "method": "GET",
+        "path": "/me/compensation"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "currency": "USD",
+          "hourly_rate": 4500,
+          "yearly_amount": null
+        }
+      }
+    },
+    {
+      "_step": "A BIG ONE, AND AN ODD ONE. 4_500_000_000 minor units exceeds a 32-bit integer; 12_345 is an amount with a non-round remainder. Both survive exactly, and the currency change proves this is a replace and not a merge.",
+      "as": "alice",
+      "request": {
+        "method": "PUT",
+        "path": "/me/compensation",
+        "body": {
+          "currency": "VND",
+          "hourly_rate": 12345,
+          "yearly_amount": 4500000000
+        }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "currency": "VND",
+          "hourly_rate": 12345,
+          "yearly_amount": 4500000000
+        },
+        "db": {
+          "user_compensation": {
+            "_note": "Asserted in the table as well as in the response: a float column would round here, and a response built from the request rather than from the row would hide it.",
+            "where": {
+              "user_id": "{{alice.id}}"
+            },
+            "count": 1,
+            "all_match": {
+              "currency": "VND",
+              "hourly_rate": 12345,
+              "yearly_amount": 4500000000
+            }
+          }
+        }
+      }
+    },
+    {
+      "_step": "AN AMOUNT WITH NO CURRENCY. Refused by name \u2014 the constraint in the schema would have caught it too, with a 500 nobody can act on.",
+      "as": "alice",
+      "request": {
+        "method": "PUT",
+        "path": "/me/compensation",
+        "body": {
+          "currency": "",
+          "hourly_rate": 4500,
+          "yearly_amount": null
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "invalid_profile"
+        },
+        "db": {
+          "user_compensation": {
+            "_note": "The previous figure is intact. A refused write must not half-land.",
+            "where": {
+              "user_id": "{{alice.id}}"
+            },
+            "count": 1,
+            "all_match": {
+              "currency": "VND",
+              "yearly_amount": 4500000000
+            }
+          }
+        }
+      }
+    },
+    {
+      "_step": "Two letters is a country code, not a currency. ISO 4217 is three.",
+      "as": "alice",
+      "request": {
+        "method": "PUT",
+        "path": "/me/compensation",
+        "body": {
+          "currency": "US",
+          "hourly_rate": 4500,
+          "yearly_amount": null
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "invalid_profile"
+        }
+      }
+    },
+    {
+      "_step": "Lower case is refused rather than upper-cased. Silently correcting a client's input is how two systems end up disagreeing about which of them normalises.",
+      "as": "alice",
+      "request": {
+        "method": "PUT",
+        "path": "/me/compensation",
+        "body": {
+          "currency": "usd",
+          "hourly_rate": 4500,
+          "yearly_amount": null
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "invalid_profile"
+        }
+      }
+    },
+    {
+      "_step": "Zero is not a rate anybody means to state \u2014 far likelier an empty field than an offer.",
+      "as": "alice",
+      "request": {
+        "method": "PUT",
+        "path": "/me/compensation",
+        "body": {
+          "currency": "USD",
+          "hourly_rate": 0,
+          "yearly_amount": null
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "invalid_profile"
+        }
+      }
+    },
+    {
+      "as": "alice",
+      "request": {
+        "method": "PUT",
+        "path": "/me/compensation",
+        "body": {
+          "currency": "USD",
+          "hourly_rate": null,
+          "yearly_amount": -9500000
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "invalid_profile"
+        }
+      }
+    },
+    {
+      "_step": "A FIELD THIS ENDPOINT DOES NOT HAVE. Refused, so a client that thought it was stating a monthly figure learns that it was not.",
+      "as": "alice",
+      "request": {
+        "method": "PUT",
+        "path": "/me/compensation",
+        "body": {
+          "currency": "USD",
+          "hourly_rate": 4500,
+          "yearly_amount": null,
+          "monthly_amount": 300000
+        }
+      },
+      "expect": {
+        "status": 400,
+        "body": {
+          "error": "invalid_profile"
+        },
+        "db": {
+          "user_compensation": {
+            "where": {
+              "user_id": "{{alice.id}}"
+            },
+            "count": 1,
+            "all_match": {
+              "currency": "VND"
+            }
+          }
+        }
+      }
+    },
+    {
+      "_step": "CLEARING IT. Both amounts and the currency go, and the read that follows is indistinguishable from never having stated one \u2014 which is the only honest thing for it to be.",
+      "as": "alice",
+      "request": {
+        "method": "PUT",
+        "path": "/me/compensation",
+        "body": {
+          "currency": "",
+          "hourly_rate": null,
+          "yearly_amount": null
+        }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "currency": "",
+          "hourly_rate": null,
+          "yearly_amount": null
+        },
+        "db": {
+          "user_compensation": {
+            "_note": "The row survives with NULLs rather than being deleted; the check constraint permits that exactly because two nulls need no currency.",
+            "where": {
+              "user_id": "{{alice.id}}"
+            },
+            "count": 1,
+            "all_match": {
+              "currency": null,
+              "hourly_rate": null,
+              "yearly_amount": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "_step": "NOW THE PROFILE'S OWN TWO FALLIBLE FIELDS. 'usa' is three characters where the vocabulary has two.",
+      "as": "alice",
+      "request": {
+        "method": "PUT",
+        "path": "/me/profile",
+        "body": {
+          "open_to_remote": true,
+          "open_to_internships": false,
+          "open_to_onsite": false,
+          "open_to_contract": false,
+          "current_country": "usa",
+          "office_yoe": 4
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "invalid_profile"
+        },
+        "db": {
+          "user_work_preferences": {
+            "_note": "NO ROW AT ALL. The flags in the same body did not land either, so the refusal is the whole request and not one field of it.",
+            "where": {
+              "user_id": "{{alice.id}}"
+            },
+            "count": 0
+          }
+        }
+      }
+    },
+    {
+      "as": "alice",
+      "request": {
+        "method": "PUT",
+        "path": "/me/profile",
+        "body": {
+          "open_to_remote": true,
+          "open_to_internships": false,
+          "open_to_onsite": false,
+          "open_to_contract": false,
+          "current_country": "g",
+          "office_yoe": 4
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "invalid_profile"
+        }
+      }
+    },
+    {
+      "_step": "Nobody has worked for 81 years.",
+      "as": "alice",
+      "request": {
+        "method": "PUT",
+        "path": "/me/profile",
+        "body": {
+          "open_to_remote": true,
+          "open_to_internships": false,
+          "open_to_onsite": false,
+          "open_to_contract": false,
+          "current_country": "GB",
+          "office_yoe": 81
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "invalid_profile"
+        }
+      }
+    },
+    {
+      "_step": "And a negative career is not a career.",
+      "as": "alice",
+      "request": {
+        "method": "PUT",
+        "path": "/me/profile",
+        "body": {
+          "open_to_remote": true,
+          "open_to_internships": false,
+          "open_to_onsite": false,
+          "open_to_contract": false,
+          "current_country": "GB",
+          "office_yoe": -1
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "invalid_profile"
+        },
+        "db": {
+          "user_work_preferences": {
+            "where": {
+              "user_id": "{{alice.id}}"
+            },
+            "count": 0
+          }
+        }
+      }
+    },
+    {
+      "_step": "ZERO IS LEGAL, and 80 is the last legal year. Both ends of the range, because an off-by-one at either would refuse a real person's honest answer.",
+      "as": "alice",
+      "request": {
+        "method": "PUT",
+        "path": "/me/profile",
+        "body": {
+          "open_to_remote": true,
+          "open_to_internships": false,
+          "open_to_onsite": false,
+          "open_to_contract": false,
+          "current_country": "GB",
+          "office_yoe": 0
+        }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "preferences": {
+            "open_to_remote": true,
+            "open_to_internships": false,
+            "open_to_onsite": false,
+            "open_to_contract": false,
+            "current_country": "GB",
+            "office_yoe": 0,
+            "first_pr_url": "",
+            "latest_pr_url": ""
+          },
+          "availability": {
+            "status": "looking_for_job",
+            "expires_at": "<timestamp>"
+          },
+          "needs_attention": false,
+          "matchable": true
+        },
+        "db": {
+          "user_work_preferences": {
+            "_note": "0 in the column, not NULL. 'No employment yet' and 'declined to say' are different answers and the table keeps them apart.",
+            "where": {
+              "user_id": "{{alice.id}}"
+            },
+            "count": 1,
+            "all_match": {
+              "office_yoe": 0
+            }
+          }
+        }
+      }
+    },
+    {
+      "_step": "GB is a country the stand-in's picker lists, and 80 is the boundary. Whether a WELL-FORMED code the picker does not list \u2014 'ZZ' \u2014 should be refused is not asserted anywhere in this suite: ADR-0018 \u00a79 calls the country list a closed vocabulary two systems must agree on, and \u00a7PlaceService says the check FAILS OPEN when the provider is down, which only means something if there is a check when it is up. No implementation consults PlaceService on a write. That gap belongs to the Planner rather than to a fixture that picks whichever answer is easier to assert.",
+      "as": "alice",
+      "request": {
+        "method": "PUT",
+        "path": "/me/profile",
+        "body": {
+          "open_to_remote": false,
+          "open_to_internships": false,
+          "open_to_onsite": false,
+          "open_to_contract": true,
+          "current_country": "GB",
+          "office_yoe": 80
+        }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "preferences": {
+            "open_to_remote": false,
+            "open_to_internships": false,
+            "open_to_onsite": false,
+            "open_to_contract": true,
+            "current_country": "GB",
+            "office_yoe": 80,
+            "first_pr_url": "",
+            "latest_pr_url": ""
+          },
+          "availability": {
+            "status": "looking_for_job",
+            "expires_at": "<timestamp>"
+          },
+          "needs_attention": false,
+          "matchable": true
+        },
+        "db": {
+          "user_work_preferences": {
+            "where": {
+              "user_id": "{{alice.id}}"
+            },
+            "count": 1,
+            "all_match": {
+              "office_yoe": 80,
+              "open_to_remote": false,
+              "open_to_contract": true
+            }
+          }
+        }
+      }
+    }
+  ]
+}

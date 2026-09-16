@@ -25,11 +25,20 @@ func (db *DB) SavedSearches() *SavedSearchRepository { return &SavedSearchReposi
 
 var _ port.SavedSearchRepository = (*SavedSearchRepository)(nil)
 
+// savedSearchColumns resolves the AUTHOR rather than emitting their id
+// (ADR-0016 §9). Always used with savedSearchFrom, which carries the join.
+var savedSearchColumns = `
+	ss.id, ss.organization_id, ss.name, ss.filters, ` + hirerRefColumns("author") + `,
+	ss.created_at`
+
+const savedSearchFrom = `
+	FROM saved_searches ss
+	JOIN hirer_accounts author ON author.id = ss.created_by`
+
 // ByID reads one saved search.
 func (r *SavedSearchRepository) ByID(ctx context.Context, id domain.SavedSearchID) (*domain.SavedSearch, error) {
 	s, err := scanSavedSearch(r.db.pool.QueryRow(ctx,
-		`SELECT id, organization_id, name, filters, created_by, created_at
-		 FROM saved_searches WHERE id = $1`, string(id)))
+		`SELECT`+savedSearchColumns+savedSearchFrom+` WHERE ss.id = $1`, string(id)))
 	if err != nil {
 		return nil, translate(err, fmt.Sprintf("saved search %s", id))
 	}
@@ -39,9 +48,9 @@ func (r *SavedSearchRepository) ByID(ctx context.Context, id domain.SavedSearchI
 // ListByOrganization reads an org's saved searches.
 func (r *SavedSearchRepository) ListByOrganization(ctx context.Context, id domain.OrganizationID) ([]domain.SavedSearch, error) {
 	rows, err := r.db.pool.Query(ctx,
-		`SELECT id, organization_id, name, filters, created_by, created_at
-		 FROM saved_searches WHERE organization_id = $1
-		 ORDER BY created_at`, string(id))
+		`SELECT`+savedSearchColumns+savedSearchFrom+`
+		 WHERE ss.organization_id = $1
+		 ORDER BY ss.created_at`, string(id))
 	if err != nil {
 		return nil, translate(err, fmt.Sprintf("listing saved searches for %s", id))
 	}
@@ -74,11 +83,16 @@ func (r *SavedSearchRepository) Create(ctx context.Context, s *domain.SavedSearc
 		return nil, fmt.Errorf("encoding filters: %w", err)
 	}
 
+	// A CTE so the author can be joined: RETURNING cannot reach another table.
 	created, err := scanSavedSearch(r.db.pool.QueryRow(ctx, `
-		INSERT INTO saved_searches (id, organization_id, name, filters, created_by)
-		VALUES ($1, $2, $3, $4, $5)
-		RETURNING id, organization_id, name, filters, created_by, created_at`,
-		id.String(), string(s.OrganizationID), s.Name, string(filters), string(s.CreatedBy)))
+		WITH ss AS (
+		    INSERT INTO saved_searches (id, organization_id, name, filters, created_by)
+		    VALUES ($1, $2, $3, $4, $5)
+		    RETURNING id, organization_id, name, filters, created_by, created_at
+		)
+		SELECT`+savedSearchColumns+`
+		FROM ss JOIN hirer_accounts author ON author.id = ss.created_by`,
+		id.String(), string(s.OrganizationID), s.Name, string(filters), string(s.CreatedBy.ID)))
 	if err != nil {
 		return nil, translate(err, "creating saved search")
 	}
@@ -102,7 +116,11 @@ func scanSavedSearch(row rowScanner) (*domain.SavedSearch, error) {
 		s       domain.SavedSearch
 		filters []byte
 	)
-	if err := row.Scan(&s.ID, &s.OrganizationID, &s.Name, &filters, &s.CreatedBy, &s.CreatedAt); err != nil {
+	targets := scanTargets(
+		[]any{&s.ID, &s.OrganizationID, &s.Name, &filters},
+		&s.CreatedBy,
+		[]any{&s.CreatedAt})
+	if err := row.Scan(targets...); err != nil {
 		return nil, err
 	}
 	if err := json.Unmarshal(filters, &s.Filters); err != nil {

@@ -139,8 +139,88 @@ type contactRequestBody struct {
 	// either way, so a client renders one field rather than inferring it.
 	Disclosure *string `json:"disclosure"`
 
+	// Role is what they are being approached FOR (ADR-0019 §2).
+	//
+	// The whole point of the invitation carrying it: a contributor can decline
+	// INFORMED rather than declining on suspicion, and the company gets fewer
+	// yeses that evaporate on the first call. Their address is still released
+	// only on acceptance — nothing about consent moves.
+	//
+	// This is also the one place the process fields are disclosed: the online
+	// test, the number of rounds, and how long an offer takes (ADR-0017). Not
+	// searchable, not on a scorecard, not on the public picker — here, to the
+	// person being asked, and nowhere else.
+	Role *contactRoleBody `json:"role"`
+
 	ExpiresAt time.Time `json:"expires_at"`
 	CreatedAt time.Time `json:"created_at"`
+}
+
+// contactRoleBody is the job, as the person being approached sees it.
+//
+// A narrower shape than the hirer's roleBody: no status, no draft history, no
+// supersedes chain, no hires, and no internal ids beyond the role's own. What
+// somebody needs in order to answer, and nothing about how the company runs its
+// hiring.
+type contactRoleBody struct {
+	ID          domain.RoleID `json:"id"`
+	Title       string        `json:"title"`
+	Description string        `json:"description"`
+	Engagement  string        `json:"engagement"`
+	Location    string        `json:"location"`
+
+	Currency      string `json:"currency"`
+	YearlyCTC     *int64 `json:"yearly_ctc"`
+	YearlyBase    *int64 `json:"yearly_base"`
+	HourlyRate    *int64 `json:"hourly_rate"`
+	ExpectedHours *int   `json:"expected_hours"`
+
+	// Empty means ANYWHERE, not nowhere. A client showing this has to say so.
+	EligibleCountries []string `json:"eligible_countries"`
+
+	// The process, disclosed here and nowhere else (ADR-0017).
+	RequiresOnlineTest *bool `json:"requires_online_test"`
+	MaxInterviewRounds *int  `json:"max_interview_rounds"`
+	AvgDaysToOffer     *int  `json:"avg_days_to_offer"`
+
+	// Questions are the yes/no answers the organisation would like before a
+	// first call. They gate nothing: an answer is reported, never used to
+	// refuse somebody who was never shown the question (ADR-0019 §9).
+	Questions []contactQuestionBody `json:"questions"`
+}
+
+// contactQuestionBody is one yes/no question, WITHOUT the answer the
+// organisation hopes for.
+//
+// `expected` is deliberately absent. Telling somebody which answer is wanted
+// before they answer turns a screening question into a leading one, and the
+// platform would be coaching one party at the other's expense.
+type contactQuestionBody struct {
+	ID       string `json:"id"`
+	Question string `json:"question"`
+}
+
+func contactRoleBodyOf(r domain.Role) contactRoleBody {
+	out := contactRoleBody{
+		ID: r.ID, Title: r.Title, Description: r.Description,
+		Engagement: string(r.Engagement), Location: string(r.Location),
+		Currency: r.Currency, YearlyCTC: r.YearlyCTC, YearlyBase: r.YearlyBase,
+		HourlyRate: r.HourlyRate, ExpectedHours: r.ExpectedHours,
+		EligibleCountries:  r.EligibleCountries,
+		RequiresOnlineTest: r.RequiresOnlineTest,
+		MaxInterviewRounds: r.MaxInterviewRounds,
+		AvgDaysToOffer:     r.AvgDaysToOffer,
+	}
+	if out.EligibleCountries == nil {
+		out.EligibleCountries = []string{}
+	}
+	out.Questions = make([]contactQuestionBody, 0, len(r.Questions))
+	for _, q := range r.Questions {
+		out.Questions = append(out.Questions, contactQuestionBody{
+			ID: q.ID, Question: q.Question,
+		})
+	}
+	return out
 }
 
 // unverifiedPaymentDisclosure is shown before a contributor releases their
@@ -162,6 +242,10 @@ func contactBody(c domain.ContactRequest) contactRequestBody {
 	if !c.PaymentVerified {
 		disclosure := unverifiedPaymentDisclosure
 		out.Disclosure = &disclosure
+	}
+	if c.Role != nil {
+		role := contactRoleBodyOf(*c.Role)
+		out.Role = &role
 	}
 	return out
 }
@@ -292,4 +376,27 @@ func orgRefOf(p domain.Principal) *orgRef {
 		return nil
 	}
 	return &orgRef{ID: p.Hirer.Organization.ID, Name: p.Hirer.Organization.Name}
+}
+
+// hirerRefBody names the seat that authored something (ADR-0016 §9).
+//
+// A bare id, which is what this replaced, sends a reader to look up a person
+// who may no longer be listed anywhere they can reach. Four fields instead:
+// the id for machines, the username and display name for people, and `active`
+// so a revoked seat is legible AS revoked rather than silently missing.
+//
+// The email is deliberately absent. Attribution says who did something; it is
+// not a directory, and a round shared inside an organization should not carry
+// a contact address for every recruiter who touched it.
+type hirerRefBody struct {
+	ID          domain.HirerID `json:"id"`
+	Username    string         `json:"username"`
+	DisplayName string         `json:"display_name"`
+	Active      bool           `json:"active"`
+}
+
+func hirerRefBodyOf(r domain.HirerRef) hirerRefBody {
+	return hirerRefBody{
+		ID: r.ID, Username: r.Username, DisplayName: r.DisplayName, Active: r.Active,
+	}
 }

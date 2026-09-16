@@ -74,9 +74,10 @@
             "RUN_OVERDUE_SWEEP",
             "ADVANCE_CLOCK",
             "REDELIVER_LAST_JOB",
-            "REJECT_N_REEVALUATIONS"
+            "REJECT_N_REEVALUATIONS",
+            "READ_EMAIL"
           ],
-          "description": "HTTP verbs, plus harness pseudo-methods that drive the evaluator, the clock, and the daily jobs. A pseudo-method is not an endpoint and must never appear in the routing table."
+          "description": "HTTP verbs, plus harness pseudo-methods that drive the evaluator, the clock, the daily jobs, and the inbox. A pseudo-method is not an endpoint and must never appear in the routing table. READ_EMAIL exists because ADR-0016 makes an emailed proof the only way to redeem a roster entry: the token is stored hashed and no response returns it, so reading the delivered message is what its recipient does."
         },
         "path": { "type": "string", "pattern": "^/" },
         "headers": { "type": "object", "additionalProperties": { "type": "string" } },

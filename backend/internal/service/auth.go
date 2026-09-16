@@ -232,6 +232,10 @@ func (s *AuthService) CompleteGoogle(ctx context.Context, code, state, expectedS
 // RegisterHirer creates the organization, the seat and the verification
 // request.
 func (s *AuthService) RegisterHirer(ctx context.Context, req port.RegisterHirerRequest) (*port.HirerRegistration, error) {
+	if req.Username == "" {
+		return nil, fmt.Errorf("a hirer account needs a username: %w", ErrInvalid)
+	}
+
 	hash, err := s.hasher.Hash(req.Password)
 	if err != nil {
 		return nil, fmt.Errorf("hashing the password: %w", err)
@@ -246,12 +250,9 @@ func (s *AuthService) RegisterHirer(ctx context.Context, req port.RegisterHirerR
 		var err error
 		registration, err = s.hirers.Register(ctx, tx, port.NewHirerAccount{
 			Hirer: &domain.Hirer{
-				Email: req.Email, DisplayName: req.DisplayName,
+				Email: req.Email, Username: req.Username,
+				DisplayName:  req.DisplayName,
 				AuthProvider: domain.ProviderEmail,
-			},
-			Organization: &domain.Organization{
-				Name: req.OrganizationName, Slug: slugify(req.OrganizationName),
-				Website: req.Website, LinkedInURL: req.LinkedInURL,
 			},
 			PasswordHash: hash,
 			Proofs:       req.Proofs,
@@ -260,7 +261,11 @@ func (s *AuthService) RegisterHirer(ctx context.Context, req port.RegisterHirerR
 	})
 	if err != nil {
 		if errors.Is(err, port.ErrConflict) {
-			return nil, fmt.Errorf("that email or organization is taken: %w", ErrConflict)
+			// Only the username can clash now that registration creates no
+			// organisation. Named as such, but with no detail about who holds
+			// it or where (ADR-0016 §0).
+			return nil, Coded(ErrConflict, CodeUsernameTaken,
+				"that username is not available")
 		}
 		return nil, fmt.Errorf("registering: %w", err)
 	}
@@ -268,8 +273,14 @@ func (s *AuthService) RegisterHirer(ctx context.Context, req port.RegisterHirerR
 }
 
 // LoginHirer signs in through the email provider.
-func (s *AuthService) LoginHirer(ctx context.Context, email, password string) (*domain.Hirer, *domain.TokenPair, error) {
-	hirer, err := s.hirers.ByEmail(ctx, email)
+//
+// Keyed on USERNAME since ADR-0016. An email identifies nobody: two seats may
+// share a contact address, and a work address outlives the person who held it.
+//
+// ByUsername excludes disabled seats, so a revoked one fails here exactly as a
+// wrong password does — sign-in must not reveal that a seat used to exist.
+func (s *AuthService) LoginHirer(ctx context.Context, username, password string) (*domain.Hirer, *domain.TokenPair, error) {
+	hirer, err := s.hirers.ByUsername(ctx, username)
 	if err != nil {
 		// Deliberately the same error, and reached by the same path, as a
 		// wrong password.
@@ -466,6 +477,16 @@ func (s *AuthService) ResolvePrincipal(ctx context.Context, claims port.AccessCl
 		hirer, err := s.hirers.ByID(ctx, domain.HirerID(claims.Subject))
 		if err != nil {
 			return nil, resolveFailure("hirer", err)
+		}
+		// A revoked seat keeps a signed access token for up to fifteen
+		// minutes. Removing a roster entry revokes the session families too,
+		// so the family check above usually catches this first — but that
+		// check is skipped for a token carrying no family, and a seat disabled
+		// by any other path would otherwise keep searching the pool until its
+		// token expired. Access ends when the owner says it ends (ADR-0016 §5).
+		if hirer.DisabledAt != nil {
+			return nil, Coded(ErrInvalidCredentials, CodeSessionRevoked,
+				"hirer %s is disabled", hirer.ID)
 		}
 		return &domain.Principal{Kind: domain.KindHirer, Hirer: hirer}, nil
 

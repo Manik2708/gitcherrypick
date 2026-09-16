@@ -298,6 +298,9 @@
             {
               "position": 1,
               "pr_number": 55,
+              "repo_owner": "acme",
+              "repo_name": "platform",
+              "url": "https://github.com/acme/platform/pull/55",
               "scores": [
                 {
                   "skill": "go",
@@ -330,6 +333,9 @@
             {
               "position": 2,
               "pr_number": 56,
+              "repo_owner": "acme",
+              "repo_name": "platform",
+              "url": "https://github.com/acme/platform/pull/56",
               "scores": [
                 {
                   "skill": "go",

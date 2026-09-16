@@ -223,12 +223,21 @@ func (s *DiscoveryService) SaveSearch(ctx context.Context, p domain.Principal, n
 	if err := s.access.RequireHiringCapability(ctx, p); err != nil {
 		return nil, err
 	}
+	// saved_searches.organization_id is NOT NULL, and an INDEPENDENT hirer has
+	// no organisation (ADR-0017 §1). Refused plainly here rather than passed
+	// down to fail as an invalid uuid and reach the caller as a 500. Same
+	// provisional gap as ShortlistService.capable — reported to the Planner.
+	if hirer.OrganizationID == "" {
+		return nil, Coded(ErrNotCapable, CodeOrganizationRequired,
+			"saved searches belong to an organisation, and this account has none")
+	}
 	if err := s.validateFilters(ctx, q); err != nil {
 		return nil, err
 	}
 
 	saved, err := s.saved.Create(ctx, &domain.SavedSearch{
-		OrganizationID: hirer.OrganizationID, Name: name, Filters: q, CreatedBy: hirer.ID,
+		OrganizationID: hirer.OrganizationID, Name: name, Filters: q,
+		CreatedBy: domain.RefTo(hirer),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("saving search: %w", err)
@@ -246,6 +255,11 @@ func (s *DiscoveryService) SavedSearches(ctx context.Context, p domain.Principal
 		return nil, err
 	}
 
+	if hirer.OrganizationID == "" {
+		// Never nil: an account with no organisation has no saved searches,
+		// which is an empty list rather than a failure.
+		return []domain.SavedSearch{}, nil
+	}
 	out, err := s.saved.ListByOrganization(ctx, hirer.OrganizationID)
 	if err != nil {
 		return nil, fmt.Errorf("listing saved searches: %w", err)

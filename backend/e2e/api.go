@@ -84,6 +84,14 @@ func StartAPI(ctx context.Context, schema string) (*API, error) {
 		"--google-redirect-uri="+BaseURL()+"/auth/google/callback",
 		"--resend-api-url="+control+"/resend",
 		"--resend-api-key=e2e",
+		// The country picker's provider (ADR-0018 §10). No live vendor is
+		// chosen, so the stand-in is the only one there is — but the flag still
+		// has to be passed: without it the adapter has no base URL, every
+		// lookup fails, and /places/countries answers the empty
+		// degraded list that the controller falls open to. That is
+		// indistinguishable from "the provider is down", which is precisely
+		// what the picker fixture must not be asserting.
+		"--places-api-url="+control+"/places",
 	)
 	cmd.Stdout = log
 	cmd.Stderr = log
