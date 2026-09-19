@@ -644,9 +644,10 @@ func seedScoredSet(ctx context.Context, conn *pgx.Conn, s scoredSet, bindings ma
 
 		for _, e := range c.PREvidence {
 			// The merge date comes from the repositories seed, not from
-			// now(). It is what evidence_within_months filters on, and
-			// stamping every seeded PR as merged this instant makes an age
-			// filter incapable of excluding anything.
+			// now(). Stamping every seeded PR as merged this instant would
+			// make the whole corpus the same age, and the rubric's recency
+			// term reads it — a population that was all merged a second ago
+			// scores differently from a realistic one.
 			mergedAt, err := mergedAtFor(merges, e.Repo, e.PRNumber)
 			if err != nil {
 				return fmt.Errorf("claim %s evidence %d: %w", c.Key, e.Position, err)

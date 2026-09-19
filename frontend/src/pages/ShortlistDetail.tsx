@@ -23,6 +23,7 @@ import {
   Button,
   By,
   Card,
+  Checkbox,
   Empty,
   Failure,
   Icon,
@@ -210,14 +211,11 @@ export function ShortlistDetailPage() {
                 ) : null}
               </Notice>
 
-              <label className="checkline">
-                <input
-                  type="checkbox"
-                  checked={acknowledged}
-                  onChange={(event) => setAcknowledged(event.target.checked)}
-                />
-                <span className="checkline__text">I understand this cannot be undone</span>
-              </label>
+              <Checkbox
+                label="I understand this cannot be undone"
+                checked={acknowledged}
+                onChange={setAcknowledged}
+              />
 
               <Button
                 variant="danger"

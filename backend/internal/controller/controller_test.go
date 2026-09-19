@@ -90,6 +90,7 @@ func newHarness(t *testing.T) *harness {
 		controller.NewShortlistController(h.shortlists),
 		controller.NewOrganizationController(h.orgs),
 		controller.NewRoleController(h.roles),
+		controller.NewOpeningsController(h.roles),
 		controller.NewOrganizationsController(h.redemption, h.onboarding),
 		controller.NewPlacesController(h.places),
 		controller.NewAdminController(h.admin, h.evaluation, h.onboarding, clock),

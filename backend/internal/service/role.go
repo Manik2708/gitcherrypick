@@ -27,7 +27,20 @@ import (
 //     definition of "hired through the platform" and what stops the field being
 //     a way to test whether an address has an account here.
 type RoleService struct {
-	roles    port.RoleRepository
+	roles port.RoleRepository
+
+	// openings are roles made PUBLIC, with a bar on them (ADR-0020). A
+	// separate repository because an opening is a separate row: an open role
+	// is immutable, and a bar living on the role could not be raised without
+	// superseding the job underneath.
+	openings port.OpeningRepository
+
+	// skills resolves a bar's SLUGS to ids. A hirer names "go", not a uuid —
+	// the catalogue is slug-keyed everywhere a human touches it (search,
+	// claims, the leaderboard), and an advert should not be the one place
+	// that is different.
+	skills port.SkillRepository
+
 	settings port.OrgSettingsRepository
 	contacts port.ContactRepository
 	profiles port.ProfileRepository
@@ -40,6 +53,8 @@ type RoleService struct {
 // NewRoleService wires openings.
 func NewRoleService(
 	roles port.RoleRepository,
+	openings port.OpeningRepository,
+	skills port.SkillRepository,
 	settings port.OrgSettingsRepository,
 	contacts port.ContactRepository,
 	profiles port.ProfileRepository,
@@ -48,8 +63,9 @@ func NewRoleService(
 	tx port.TxManager,
 	clock port.Clock,
 ) *RoleService {
-	return &RoleService{roles: roles, settings: settings, contacts: contacts,
-		profiles: profiles, users: users, orgs: orgs, tx: tx, clock: clock}
+	return &RoleService{roles: roles, openings: openings, skills: skills, settings: settings,
+		contacts: contacts, profiles: profiles, users: users, orgs: orgs,
+		tx: tx, clock: clock}
 }
 
 var _ port.RoleService = (*RoleService)(nil)
@@ -249,13 +265,16 @@ func (s *RoleService) Close(ctx context.Context, p domain.Principal, org domain.
 	}
 
 	// Resolve the people BEFORE deciding whether this seat may commit, so a
-	// recruiter staging a closure still learns that an address was wrong rather
-	// than discovering it after an owner approves.
-	hires, err := s.resolveHires(ctx, org, in)
+	// recruiter staging a closure still learns that somebody was not eligible
+	// rather than discovering it after an owner approves.
+	hires, err := s.resolveHires(ctx, id, in)
 	if err != nil {
 		return nil, err
 	}
 
+	// A seat that may STAGE but not COMMIT gets its request recorded and the
+	// role stays open. Returning a refusal would lose the fact that somebody
+	// asked.
 	if !settings.RoleCloseAuthority.Commits(owner) {
 		var out *domain.Role
 		if err := s.tx.InTx(ctx, func(ctx context.Context, tx port.Tx) error {
@@ -288,50 +307,63 @@ func (s *RoleService) Close(ctx context.Context, p domain.Principal, org domain.
 	return out, nil
 }
 
-// resolveHires turns the addresses a hirer typed into contributors.
+// resolveHires checks that everybody named was a candidate on THIS role who
+// accepted.
 //
-// EVERY address must already have been released to this organisation by an
-// accepted contact request. The refusal names WHICH one failed, because a hirer
-// entering several must not be left guessing — and it offers the honest
-// alternative rather than silently downgrading the reason, which would leave a
-// company believing it had recorded something it had not.
-func (s *RoleService) resolveHires(ctx context.Context, org domain.OrganizationID, in port.CloseRequest) ([]domain.UserID, error) {
+// Ids off the role's own candidate list rather than typed addresses. That is a
+// better form of the same rule: a company may record hiring somebody who
+// agreed to talk to it and nobody else (ADR-0019 §15), and picking from a list
+// it already holds means the question "does this address have an account
+// here?" can no longer be asked at all.
+//
+// Accepted, specifically. A STAGED candidate has been told nothing, a notified
+// one has not answered, and a declined one said no — recording any of them as
+// a hire would be a company asserting something about a person who never
+// agreed to talk to it.
+func (s *RoleService) resolveHires(ctx context.Context, role domain.RoleID, in port.CloseRequest) ([]domain.UserID, error) {
 	if in.Reason != domain.CloseHiredViaPlatform {
-		if len(in.HiredEmails) > 0 {
+		if len(in.Hired) > 0 {
 			return nil, Coded(ErrInvalid, CodeInvalidRole,
 				"only a role closed as hired through the platform names anybody")
 		}
 		return nil, nil
 	}
 
-	if len(in.HiredEmails) == 0 {
+	if len(in.Hired) == 0 {
 		return nil, Coded(ErrInvalid, CodeInvalidRole,
 			"tell us who you hired — this is the one thing that closes the loop "+
 				"between a ranked contributor and a job")
 	}
 
+	candidates, err := s.roles.Candidates(ctx, role)
+	if err != nil {
+		return nil, fmt.Errorf("reading the candidates: %w", err)
+	}
+	accepted := map[domain.UserID]bool{}
+	for _, c := range candidates {
+		if c.Accepted {
+			accepted[c.UserID] = true
+		}
+	}
+
 	seen := map[domain.UserID]bool{}
-	out := make([]domain.UserID, 0, len(in.HiredEmails))
-	for _, email := range in.HiredEmails {
-		email = strings.TrimSpace(email)
-		if email == "" {
+	out := make([]domain.UserID, 0, len(in.Hired))
+	for _, user := range in.Hired {
+		if user == "" || seen[user] {
 			continue
 		}
-		id, err := s.contacts.ReleasedTo(ctx, org, email)
-		if err != nil {
-			if errors.Is(err, port.ErrNotFound) {
-				return nil, Coded(ErrInvalid, CodeHireNotReleased,
-					"%s never accepted a contact request from you, so we cannot "+
-						"record them as hired through the platform — if you found "+
-						"them another way, close this as hired elsewhere", email)
-			}
-			return nil, fmt.Errorf("resolving %s: %w", email, err)
+		if !accepted[user] {
+			// One refusal for every way of failing — never shortlisted,
+			// never answered, declined — because telling them apart would
+			// report a contributor's answer to a question about somebody
+			// else's hiring.
+			return nil, Coded(ErrInvalid, CodeHireNotAccepted,
+				"only somebody who accepted a contact request for this role can "+
+					"be recorded as hired through the platform — if you found "+
+					"them another way, close this as hired elsewhere")
 		}
-		if seen[id] {
-			continue
-		}
-		seen[id] = true
-		out = append(out, id)
+		seen[user] = true
+		out = append(out, user)
 	}
 	if len(out) == 0 {
 		return nil, Coded(ErrInvalid, CodeInvalidRole, "tell us who you hired")
@@ -357,6 +389,22 @@ func (s *RoleService) Role(ctx context.Context, p domain.Principal, org domain.O
 		return nil, err
 	}
 	return s.owned(ctx, org, id)
+}
+
+// Candidates lists everybody already on a round for this role.
+func (s *RoleService) Candidates(ctx context.Context, p domain.Principal, org domain.OrganizationID, id domain.RoleID) ([]domain.RoleCandidate, error) {
+	if _, _, err := s.seat(ctx, p, org); err != nil {
+		return nil, err
+	}
+	if _, err := s.owned(ctx, org, id); err != nil {
+		return nil, err
+	}
+
+	out, err := s.roles.Candidates(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("listing candidates: %w", err)
+	}
+	return out, nil
 }
 
 // Settings returns the organisation's policy.
@@ -404,66 +452,6 @@ func (s *RoleService) SaveSettings(ctx context.Context, p domain.Principal, org 
 		return nil, fmt.Errorf("saving settings: %w", err)
 	}
 	return s.settings.Settings(ctx, org)
-}
-
-// Matching returns the open roles a contributor could be approached for.
-//
-// A contributor's own view, and the ONE place their compensation expectation is
-// used: it keeps roles paying less than they asked for out of their way, and
-// travels no further (ADR-0018 §5).
-func (s *RoleService) Matching(ctx context.Context, id domain.UserID, limit, offset int) ([]domain.Role, error) {
-	prefs, err := s.profiles.WorkPreferences(ctx, id)
-	if err != nil {
-		return nil, fmt.Errorf("reading work preferences: %w", err)
-	}
-
-	pay, err := s.profiles.Compensation(ctx, id)
-	if err != nil {
-		return nil, fmt.Errorf("reading compensation: %w", err)
-	}
-
-	match := port.RoleMatch{
-		Country:   prefs.CurrentCountry,
-		Shapes:    shapesOf(prefs),
-		OfficeYOE: prefs.OfficeYOE,
-		OSSYears:  prefs.OSSYears(s.clock.Now()),
-		Currency:  pay.Currency,
-		MinYearly: pay.YearlyAmount,
-		MinHourly: pay.HourlyRate,
-		Limit:     limit, Offset: offset,
-	}
-
-	out, err := s.roles.Matching(ctx, match)
-	if err != nil {
-		return nil, fmt.Errorf("matching roles: %w", err)
-	}
-	return out, nil
-}
-
-// shapesOf turns a contributor's flags into the engagements they admit.
-//
-// The inverse of Engagement.Shape, kept next to it so the two cannot disagree
-// about what a tick means.
-func shapesOf(w *domain.WorkPreferences) []domain.Engagement {
-	out := []domain.Engagement{}
-	for _, e := range []domain.Engagement{
-		domain.EngagementFullTime, domain.EngagementContract,
-		domain.EngagementInternship, domain.EngagementFreelance,
-	} {
-		if e == domain.EngagementFreelance {
-			// Freelance is answered by availability_status rather than a flag
-			// (ADR-0018 §2), and this query does not read it — so a contributor
-			// who ticked nothing sees no freelance roles either. Matching on it
-			// here would show freelance work to somebody who said they wanted
-			// none of these, which is the failure the empty case exists to
-			// prevent.
-			continue
-		}
-		if e.Shape(w) {
-			out = append(out, e)
-		}
-	}
-	return out
 }
 
 // --- shared checks -----------------------------------------------------------
@@ -629,4 +617,228 @@ func (s *RoleService) addressBelongs(ctx context.Context, org domain.Organizatio
 	}
 	return Coded(ErrInvalid, CodeInvalidRole,
 		"that address does not belong to this organisation")
+}
+
+/* --- public openings (ADR-0020) --------------------------------------------- */
+
+// Opening reads the advert on a role.
+func (s *RoleService) Opening(ctx context.Context, p domain.Principal, org domain.OrganizationID, id domain.RoleID) (*domain.Opening, error) {
+	if _, _, err := s.seat(ctx, p, org); err != nil {
+		return nil, err
+	}
+	if _, err := s.owned(ctx, org, id); err != nil {
+		return nil, err
+	}
+
+	out, err := s.openings.ByRole(ctx, id)
+	if err != nil {
+		if errors.Is(err, port.ErrNotFound) {
+			return nil, Coded(ErrNotFound, CodeOpeningNotFound,
+				"this role has not been advertised")
+		}
+		return nil, fmt.Errorf("reading the opening: %w", err)
+	}
+	return out, nil
+}
+
+// SaveOpening writes the bar. It does NOT publish.
+func (s *RoleService) SaveOpening(ctx context.Context, p domain.Principal, org domain.OrganizationID, id domain.RoleID, in domain.Opening) (*domain.Opening, error) {
+	hirer, settings, err := s.seat(ctx, p, org)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := s.owned(ctx, org, id); err != nil {
+		return nil, err
+	}
+	if !settings.RoleCreateAuthority.Permits(hirer.OrgRole == domain.RoleOwner) {
+		return nil, Coded(ErrForbidden, CodeForbidden,
+			"only an owner may advertise a role in this organisation")
+	}
+	if err := validateOpening(&in); err != nil {
+		return nil, err
+	}
+	if err := s.resolveSkills(ctx, &in); err != nil {
+		return nil, err
+	}
+
+	in.RoleID = id
+	in.CreatedBy = hirer.ID
+
+	var out *domain.Opening
+	if err := s.tx.InTx(ctx, func(ctx context.Context, tx port.Tx) error {
+		saved, err := s.openings.Save(ctx, tx, &in)
+		out = saved
+		return err
+	}); err != nil {
+		return nil, fmt.Errorf("saving the opening: %w", err)
+	}
+	return out, nil
+}
+
+// PublishOpening makes the advert visible to contributors.
+//
+// The COMMITTING half, so it reads Commits: an opening states a public bar on
+// the organisation's behalf, which is the kind of thing ADR-0019 §11 put
+// behind an owner. It reuses role_create_authority rather than adding a fourth
+// setting, because a dial for a thing published alongside the role it
+// describes is a dial nobody sets.
+func (s *RoleService) PublishOpening(ctx context.Context, p domain.Principal, org domain.OrganizationID, id domain.RoleID) (*domain.Opening, error) {
+	hirer, settings, err := s.seat(ctx, p, org)
+	if err != nil {
+		return nil, err
+	}
+	role, err := s.owned(ctx, org, id)
+	if err != nil {
+		return nil, err
+	}
+	if !settings.RoleCreateAuthority.Commits(hirer.OrgRole == domain.RoleOwner) {
+		return nil, Coded(ErrForbidden, CodeOwnerApprovalRequired,
+			"an owner has to approve this before it goes out publicly — it "+
+				"states a salary and a bar on the organisation's behalf")
+	}
+
+	// Only an OPEN role may be advertised. A draft is not a commitment and a
+	// closed role is a withdrawn job, so neither is something anybody should
+	// be reading about.
+	if !role.IsOpen() {
+		return nil, Coded(ErrConflict, CodeRoleImmutable,
+			"only an open role can be advertised — open the role first")
+	}
+
+	var out *domain.Opening
+	if err := s.tx.InTx(ctx, func(ctx context.Context, tx port.Tx) error {
+		published, err := s.openings.Publish(ctx, tx, id, hirer.ID, s.clock.Now())
+		out = published
+		return err
+	}); err != nil {
+		if errors.Is(err, port.ErrNotFound) {
+			return nil, Coded(ErrNotFound, CodeOpeningNotFound,
+				"write what the role asks for before advertising it")
+		}
+		return nil, fmt.Errorf("publishing the opening: %w", err)
+	}
+	return out, nil
+}
+
+// WithdrawOpening takes it down. Under role_close_authority, because it only
+// ever withdraws something.
+func (s *RoleService) WithdrawOpening(ctx context.Context, p domain.Principal, org domain.OrganizationID, id domain.RoleID) (*domain.Opening, error) {
+	hirer, settings, err := s.seat(ctx, p, org)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := s.owned(ctx, org, id); err != nil {
+		return nil, err
+	}
+	if !settings.RoleCloseAuthority.Permits(hirer.OrgRole == domain.RoleOwner) {
+		return nil, Coded(ErrForbidden, CodeForbidden,
+			"only an owner may withdraw an advert in this organisation")
+	}
+
+	var out *domain.Opening
+	if err := s.tx.InTx(ctx, func(ctx context.Context, tx port.Tx) error {
+		withdrawn, err := s.openings.Withdraw(ctx, tx, id, s.clock.Now())
+		out = withdrawn
+		return err
+	}); err != nil {
+		return nil, fmt.Errorf("withdrawing the opening: %w", err)
+	}
+	return out, nil
+}
+
+// Openings is the contributor's read.
+//
+// It sends NOTHING to anybody. No application, no interest, no view count —
+// the consent model runs one way, and this only changes what somebody can see
+// (ADR-0020 §8). There is deliberately no write path from here.
+func (s *RoleService) Openings(ctx context.Context, id domain.UserID, limit, offset int) (*port.OpeningResults, error) {
+	out, err := s.openings.Matching(ctx, port.OpeningMatch{
+		UserID: id, Limit: limit, Offset: offset,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("reading openings: %w", err)
+	}
+
+	// The role travels with each advert, so a contributor sees what the job
+	// IS and not only what it demands.
+	for i := range out.Openings {
+		role, err := s.roles.ByID(ctx, out.Openings[i].RoleID)
+		if err != nil {
+			// A role that will not load leaves the advert thinner rather than
+			// failing the page. The rest are still worth showing.
+			continue
+		}
+		out.Openings[i].Role = role
+	}
+	return out, nil
+}
+
+// resolveSkills turns the slugs a hirer named into ids.
+//
+// An unknown slug is REFUSED rather than dropped. A bar quietly missing the
+// skill it was written around would advertise a role to people who do not have
+// it, and nothing in the response would say so.
+func (s *RoleService) resolveSkills(ctx context.Context, o *domain.Opening) error {
+	for i := range o.Skills {
+		slug := strings.ToLower(strings.TrimSpace(o.Skills[i].Slug))
+		if slug == "" {
+			continue // already an id, from a caller that held one
+		}
+		skill, err := s.skills.BySlug(ctx, slug)
+		if err != nil {
+			if errors.Is(err, port.ErrNotFound) {
+				return Coded(ErrInvalid, CodeUnknownSkill,
+					"%q is not a skill in the catalogue", slug)
+			}
+			return fmt.Errorf("resolving skill %q: %w", slug, err)
+		}
+		o.Skills[i].SkillID = skill.ID
+		o.Skills[i].Name = skill.Name
+	}
+	return nil
+}
+
+// validateOpening checks the bar.
+//
+// Every refusal is CODED. A bare ErrInvalid falls back to invalid_claim at the
+// controller, which would tell a hirer their EVIDENCE was rejected when what
+// was wrong was a threshold.
+func validateOpening(o *domain.Opening) error {
+	if o.MinOverallScore != nil && (*o.MinOverallScore < 0 || *o.MinOverallScore > 100) {
+		return Coded(ErrInvalid, CodeInvalidOpening,
+			"an overall score is between 0 and 100")
+	}
+	if o.MinGeneralistScore != nil && *o.MinGeneralistScore < 0 {
+		// No upper bound: breadth is unbounded by construction (ADR-0007).
+		return Coded(ErrInvalid, CodeInvalidOpening,
+			"a generalist score cannot be negative")
+	}
+	if o.MinOSSYOE != nil && (*o.MinOSSYOE < 0 || *o.MinOSSYOE > 80) {
+		return Coded(ErrInvalid, CodeInvalidOpening,
+			"years in open source must be between 0 and 80")
+	}
+
+	// Keyed on whichever the caller gave: a slug before resolution, an id
+	// after. Both are the same skill named two ways, and listing one twice is
+	// the same mistake either way.
+	seen := map[string]bool{}
+	for _, s := range o.Skills {
+		key := strings.ToLower(strings.TrimSpace(s.Slug))
+		if key == "" {
+			key = string(s.SkillID)
+		}
+		if key == "" {
+			return Coded(ErrInvalid, CodeInvalidOpening, "name the skill")
+		}
+		if seen[key] {
+			return Coded(ErrInvalid, CodeInvalidOpening,
+				"the same skill is listed twice")
+		}
+		seen[key] = true
+		if s.MinScore < 0 || s.MinScore > 100 {
+			return Coded(ErrInvalid, CodeInvalidOpening,
+				"a skill score is between 0 and 100")
+		}
+	}
+	return nil
 }

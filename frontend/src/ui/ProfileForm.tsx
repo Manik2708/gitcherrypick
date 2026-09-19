@@ -7,14 +7,23 @@
 
 import { useEffect, useState } from "react";
 import {
-  useCountries,
   useMyCompensation,
   useMyProfile,
   useSaveCompensation,
   useSaveProfile,
 } from "../hooks/contributor";
 import type { CompensationExpectation, WorkPreferences } from "../contract";
-import { Banner, Button, Card, Failure, Field, Loading, SectionTitle } from "./primitives";
+import { CountryPicker } from "./countries";
+import {
+  Banner,
+  Button,
+  Card,
+  Checkbox,
+  Failure,
+  Field,
+  Loading,
+  SectionTitle,
+} from "./primitives";
 
 const SHAPES: Array<{ key: keyof WorkPreferences; label: string; help: string }> = [
   { key: "open_to_remote", label: "Remote roles", help: "Working from where you are." },
@@ -45,7 +54,6 @@ const EMPTY: WorkPreferences = {
 export function ProfileForm() {
   const profile = useMyProfile();
   const save = useSaveProfile();
-  const countries = useCountries();
 
   const [form, setForm] = useState<WorkPreferences>(EMPTY);
   const [loaded, setLoaded] = useState(false);
@@ -93,17 +101,13 @@ export function ProfileForm() {
         ) : null}
 
         {SHAPES.map((shape) => (
-          <label className="od-row" key={shape.key} style={{ ["--od-gap" as string]: "10px" }}>
-            <input
-              type="checkbox"
-              checked={form[shape.key] === true}
-              onChange={(e) => setForm({ ...form, [shape.key]: e.target.checked })}
-            />
-            <span className="od-field od-fill">
-              <span>{shape.label}</span>
-              <span className="field__help">{shape.help}</span>
-            </span>
-          </label>
+          <Checkbox
+            key={shape.key}
+            label={shape.label}
+            help={shape.help}
+            checked={form[shape.key] === true}
+            onChange={(on) => setForm({ ...form, [shape.key]: on })}
+          />
         ))}
 
         <p className="field__help">
@@ -113,39 +117,15 @@ export function ProfileForm() {
       </Card>
 
       <Card>
-        <Field
+        {/* The same picker a hirer searches with (ADR-0018 §9). One
+            vocabulary, or the two never match. */}
+        <CountryPicker
+          id="country"
           label="Where you are"
-          htmlFor="country"
-          help={
-            countries.data?.degraded
-              ? "The country list could not be loaded. Type a two-letter code, such as GB."
-              : "Used to match roles that can only hire in certain countries."
-          }
-        >
-          {countries.data?.degraded || countries.error ? (
-            <input
-              className="input"
-              id="country"
-              maxLength={2}
-              value={form.current_country}
-              onChange={(e) => setForm({ ...form, current_country: e.target.value.toUpperCase() })}
-            />
-          ) : (
-            <select
-              className="input"
-              id="country"
-              value={form.current_country}
-              onChange={(e) => setForm({ ...form, current_country: e.target.value })}
-            >
-              <option value="">Prefer not to say</option>
-              {(countries.data?.countries ?? []).map((c) => (
-                <option key={c.code} value={c.code}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          )}
-        </Field>
+          help="Used to match roles that can only hire in certain countries."
+          value={form.current_country}
+          onChange={(code) => setForm({ ...form, current_country: code })}
+        />
 
         <Field
           label="Years you have worked in a job"

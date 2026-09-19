@@ -18,7 +18,6 @@ const ENGAGEMENT_LABELS: Record<Engagement, string> = {
 import {
   useMintShareLink,
   useMyContactRequests,
-  useMyRoles,
   useRespondToContact,
   useRevokeShareLink,
   useSetAvailability,
@@ -44,52 +43,6 @@ const CHOICES = [
   ["open_to_freelance", "Open to freelance work"],
   ["not_looking", "Not looking"],
 ] as const;
-
-/**
- * What is open to you right now (ADR-0019).
- *
- * Filtered against your own profile on the server: where you are, the shapes of
- * work you ticked, the minimums, and what you said you expect to be paid. That
- * last one is used HERE and nowhere else — it keeps roles paying less than you
- * asked for out of your way, and no hirer ever sees the figure.
- *
- * This is a view, not an application. Nothing here contacts anybody: companies
- * approach you, and you answer. Showing it is about knowing whether the pool
- * you are in has anything in it for you.
- */
-function OpenRoles() {
-  const roles = useMyRoles();
-  const list = roles.data?.roles ?? [];
-
-  return (
-    <Card>
-      <div className="section__head">
-        <h2 className="section__title">Open to you</h2>
-        <span className="section__note mono">{list.length}</span>
-      </div>
-
-      <p className="field__help">
-        Matched against what you said you are open to, where you are, and what you expect to be
-        paid. Nobody is shown that figure — it is used to keep roles below it out of your way, and
-        nothing else. You cannot apply from here: companies approach you, and you decide.
-      </p>
-
-      {roles.loading ? <Loading what="open roles" /> : null}
-      {roles.error ? <Failure message={roles.error.message} onRetry={roles.reload} /> : null}
-
-      {!roles.loading && list.length === 0 ? (
-        <Empty title="Nothing open to you yet" icon="bookmark">
-          Either nobody is hiring for what you said you want, or your profile does not say enough
-          yet for anything to match.
-        </Empty>
-      ) : null}
-
-      {list.map((role) => (
-        <RoleSummary key={role.id} role={role} />
-      ))}
-    </Card>
-  );
-}
 
 /** The job, as the person being approached sees it. */
 function RoleSummary({ role }: { role: ContactRole }) {
@@ -206,8 +159,6 @@ export function DiscoverabilityPage() {
       </Card>
 
       <ProfileForm />
-
-      <OpenRoles />
 
       <Card>
         <div className="section__head">

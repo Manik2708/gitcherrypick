@@ -24,8 +24,17 @@ import (
 // and nothing in the response would say so.
 var knownFilters = map[string]struct{}{
 	"skills": {}, "min_skill_score": {}, "min_overall_score": {},
-	"min_generalist_score": {}, "availability": {}, "evidence_within_months": {},
+	"min_generalist_score": {}, "availability": {},
 	"q": {}, "include_inactive": {}, "page": {}, "per_page": {},
+
+	// What a contributor said about themselves (ADR-0018). No pay filter is
+	// here, and none may ever be added: a hirer able to filter on it would
+	// learn an upper bound across a few searches (ADR-0018 §5).
+	"min_office_yoe": {}, "min_oss_yoe": {}, "countries": {}, "open_to": {},
+
+	// The only filter about the HIRER'S own history rather than about the
+	// contributor: exclude everybody already on a round for this job.
+	"for_role": {},
 }
 
 // MaxPerPage bounds a page of results.
@@ -115,12 +124,18 @@ type searchResultBody struct {
 // no single skill score and `rank` would otherwise mean different things in
 // different responses.
 type searchResultsBody struct {
-	Total          int                `json:"total"`
-	InactiveHidden int                `json:"inactive_hidden"`
-	RankedBy       string             `json:"ranked_by"`
-	Page           int                `json:"page"`
-	PerPage        int                `json:"per_page"`
-	Results        []searchResultBody `json:"results"`
+	Total          int `json:"total"`
+	InactiveHidden int `json:"inactive_hidden"`
+
+	// AlreadyShortlisted is how many matches were dropped for being on a
+	// round for `for_role` already. Omitted when that filter was not asked
+	// for, because a zero would read as "nobody" rather than "not asked".
+	AlreadyShortlisted *int `json:"already_shortlisted,omitempty"`
+
+	RankedBy string             `json:"ranked_by"`
+	Page     int                `json:"page"`
+	PerPage  int                `json:"per_page"`
+	Results  []searchResultBody `json:"results"`
 }
 
 type leaderboardEntryBody struct {
@@ -290,7 +305,7 @@ func (c *DiscoveryController) search(w http.ResponseWriter, r *http.Request) {
 		c.writeCapabilityError(w, p, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, searchResultsOf(results))
+	writeJSON(w, http.StatusOK, searchResultsOf(results, query.ForRole != nil))
 }
 
 func (c *DiscoveryController) leaderboard(w http.ResponseWriter, r *http.Request) {
@@ -447,7 +462,9 @@ func (c *DiscoveryController) replaySavedSearch(w http.ResponseWriter, r *http.R
 		c.writeCapabilityError(w, p, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, searchResultsOf(results))
+	// A saved search stores for_role like any other key, so a replay reports
+	// the count exactly when the saved question asked for it.
+	writeJSON(w, http.StatusOK, searchResultsOf(results, results.AlreadyShortlisted > 0))
 }
 
 func (c *DiscoveryController) deleteSavedSearch(w http.ResponseWriter, r *http.Request) {
@@ -554,9 +571,25 @@ func parseSearchQuery(r *http.Request) (domain.SearchQuery, []fieldError, string
 	q.MinSkillScore = floatPointer(values.Get("min_skill_score"))
 	q.MinOverallScore = floatPointer(values.Get("min_overall_score"))
 	q.MinGeneralistScore = floatPointer(values.Get("min_generalist_score"))
-	q.EvidenceWithinMonths = intPointer(values.Get("evidence_within_months"))
 
 	var problems []fieldError
+
+	q.MinOfficeYOE = intPointer(values.Get("min_office_yoe"))
+	q.MinOSSYOE = intPointer(values.Get("min_oss_yoe"))
+	q.Countries = csvUpper(values.Get("countries"))
+	q.OpenTo = csvLower(values.Get("open_to"))
+
+	if raw := values.Get("for_role"); raw != "" {
+		if !isUUID(raw) {
+			problems = append(problems, fieldError{
+				Field: "for_role", Reason: "not_a_uuid", Value: raw,
+			})
+		} else {
+			role := domain.RoleID(raw)
+			q.ForRole = &role
+		}
+	}
+
 	if raw := values.Get("per_page"); raw != "" {
 		if requested, err := strconv.Atoi(raw); err == nil && requested > MaxPerPage {
 			problems = append(problems, fieldError{
@@ -564,11 +597,83 @@ func parseSearchQuery(r *http.Request) (domain.SearchQuery, []fieldError, string
 			})
 		}
 	}
+	// A country code is a CLOSED VOCABULARY the picker fills in (ADR-0018 §9),
+	// so a three-letter one is a client that built the query by hand. Refused
+	// by SHAPE rather than by membership: checking membership would put a
+	// third-party call on the search path, and the list is already fetched by
+	// the picker that produced the value.
+	//
+	// It matters because the failure is otherwise silent — "USA" matches
+	// nobody, and an empty result set would read as "nobody is in America".
+	for _, code := range q.Countries {
+		if !isAlpha2(code) {
+			problems = append(problems, fieldError{
+				Field: "countries", Reason: "not_alpha2", Value: code,
+			})
+		}
+	}
+	for _, shape := range q.OpenTo {
+		if !knownShape(shape) {
+			problems = append(problems, fieldError{
+				Field: "open_to", Reason: "unknown_shape", Value: shape,
+				Allowed: []string{"remote", "onsite", "contract", "internship"},
+			})
+		}
+	}
+
 	problems = append(problems, scoreRangeProblems(q)...)
 	if len(problems) > 0 {
 		return domain.SearchQuery{}, problems, service.CodeInvalidQuery
 	}
 	return q, nil, ""
+}
+
+// csvUpper splits a comma-separated list and upper-cases it.
+//
+// Country codes are a closed vocabulary two systems have to agree on: "gb" and
+// "GB" cannot be two countries, because the value is compared against what a
+// contributor stored (ADR-0018 §6).
+func csvUpper(raw string) []string { return csvFold(raw, strings.ToUpper) }
+
+// csvLower is the same for the shape names, which are lower-case enums.
+func csvLower(raw string) []string { return csvFold(raw, strings.ToLower) }
+
+func csvFold(raw string, fold func(string) string) []string {
+	if raw == "" {
+		return nil
+	}
+	var out []string
+	for _, value := range strings.Split(raw, ",") {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			out = append(out, fold(trimmed))
+		}
+	}
+	return out
+}
+
+// isAlpha2 reports an ISO 3166-1 alpha-2 shape: two letters, nothing else.
+func isAlpha2(s string) bool {
+	if len(s) != 2 {
+		return false
+	}
+	for _, r := range s {
+		if r < 'A' || r > 'Z' {
+			return false
+		}
+	}
+	return true
+}
+
+// knownShape reports one of the four OpenTo flags (ADR-0018 §2).
+//
+// Freelance is deliberately absent: availability_status carries it, and two
+// controls that both mean "freelance" can disagree.
+func knownShape(s string) bool {
+	switch s {
+	case "remote", "onsite", "contract", "internship":
+		return true
+	}
+	return false
 }
 
 // scoreRangeProblems rejects thresholds no score can reach.
@@ -628,7 +733,10 @@ func intPointer(raw string) *int {
 
 // --- serialization -----------------------------------------------------------
 
-func searchResultsOf(r *domain.SearchResults) searchResultsBody {
+// asked is whether the caller set for_role, which decides whether the
+// already-shortlisted count is reported at all. Absent and zero are different
+// answers: one means "not asked", the other "asked, and nobody".
+func searchResultsOf(r *domain.SearchResults, asked bool) searchResultsBody {
 	if r == nil {
 		return searchResultsBody{Results: []searchResultBody{}}
 	}
@@ -637,6 +745,10 @@ func searchResultsOf(r *domain.SearchResults) searchResultsBody {
 		Total: r.Total, InactiveHidden: r.InactiveHidden,
 		RankedBy: string(r.RankedBy), Page: r.Page, PerPage: r.PerPage,
 		Results: make([]searchResultBody, 0, len(r.Results)),
+	}
+	if asked {
+		count := r.AlreadyShortlisted
+		out.AlreadyShortlisted = &count
 	}
 	for _, item := range r.Results {
 		out.Results = append(out.Results, searchResultBody{

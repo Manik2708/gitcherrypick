@@ -1,0 +1,122 @@
+/* ==========================================================================
+   Type — the single place every size, weight and ink is decided.
+   ==========================================================================
+
+   The problem this file exists to solve is the one spacing.css already solved
+   for gaps. The stylesheet declared six type tokens — display/hero/h2/h3/
+   body/small/eyebrow — and then hand-picked 68 more font sizes around them:
+   13px in 20 places, 12.5px in 14, 12px in 12, 11px in 11, plus one-off 10,
+   15, 18, 19, 22, 25, 26, 27, 30 and 38. More sizes were chosen by eye than
+   came from the scale.
+
+   That is what "the text does not match" looks like from the inside. It is
+   not carelessness at any one call site: the scale had holes — nothing between
+   12 and 14, nothing between 17 and 20 — so authors filled them, and two
+   controls that should read alike ended up a pixel and a half apart.
+
+   Two layers, and the distinction is the point:
+
+   1 · THE SCALE (--t-*) is the raw vocabulary. Twelve steps, no more. Nothing
+       outside it is a legal font size anywhere in the app.
+
+   2 · THE ROLES (--text-*) name what a piece of text IS — a label, a helper
+       line, a figure, a page title. A rule should reach for a role, because
+       "the explanation under a control" is a decision that should change
+       everywhere at once, while --t-xs only says "12px".
+
+   INK belongs here too, for the same reason. A role is a size AND a colour: a
+   helper line that is 12px somewhere and 12px-but-black somewhere else still
+   reads as two different things, and colour was the half nobody tokenised.
+
+   Reach for the scale directly only for a genuine one-off with no role — a
+   piece of display typography that exists once. If you want a value that is
+   not here, the answer is almost always the nearest step, not a new one.
+   ========================================================================== */
+
+:root {
+  /* ---------- 1 · the scale ---------------------------------------------- */
+  --t-3xs: 10px; /* legal only for all-caps micro labels */
+  --t-2xs: 11px;
+  --t-xs: 12px;
+  --t-sm: 13px;
+  --t-md: 14px;
+  --t-lg: 15px;
+  --t-xl: 16px;
+  --t-2xl: 18px;
+  --t-3xl: 20px;
+  --t-4xl: 24px;
+  --t-5xl: 30px;
+  --t-6xl: 40px;
+  --t-7xl: 64px;
+
+  /* ---------- 2 · weights ------------------------------------------------- */
+  --w-regular: 400;
+  --w-medium: 500;
+  --w-semibold: 600;
+
+  /* ---------- 3 · line heights -------------------------------------------- */
+  /* Tight for headings, where a large size already carries the leading; open
+     for body, where a reader's eye has to find the next line. */
+  --lh-tight: 1.2;
+  --lh-snug: 1.35;
+  --lh-normal: 1.45;
+  --lh-relaxed: 1.6;
+
+  /* ---------- 4 · the roles ----------------------------------------------- */
+  /* Each role is a size, a weight and an ink. Use all three together: taking
+     the size and inventing the colour is how the two halves drifted apart in
+     the first place. */
+
+  /* A control's own name: the label above an input, beside a checkbox, on a
+     switch. THE most repeated text in the app, and the one that must not
+     wobble — two controls in one panel reading at different sizes look like
+     two different kinds of control. */
+  --text-label-size: var(--t-md);
+  --text-label-weight: var(--w-semibold);
+  --text-label-ink: var(--ink-2);
+
+  /* The explanation under a control. Quieter than the label it belongs to,
+     always, because it is read second. */
+  --text-help-size: var(--t-sm);
+  --text-help-weight: var(--w-regular);
+  --text-help-ink: var(--ink-3);
+
+  /* A group heading inside a panel — "Availability", "Your process". */
+  --text-grouptitle-size: var(--t-lg);
+  --text-grouptitle-weight: var(--w-semibold);
+  --text-grouptitle-ink: var(--ink);
+
+  /* THESE THREE SIT TOGETHER on every form, and they are a LADDER — each rung
+     one step smaller and one shade quieter than the one above:
+
+         group title   15 · semibold · ink      "Availability"
+         label         14 · semibold · ink-2    "Looking for a job"
+         help          13 · regular  · ink-3    "Any of these matches…"
+
+     Getting the ORDER right is the whole job. Before this they were
+     13/600/ink-2, 13/400/ink-3 and — for a checkbox — 14/400/inherit: a
+     checkbox's name was bigger than the label beside it but lighter than the
+     help beneath it. A reader cannot build a hierarchy out of that, and from
+     outside it simply looks like the text does not match. */
+
+  /* Running prose. */
+  --text-body-size: var(--t-xl);
+  --text-body-weight: var(--w-regular);
+  --text-body-ink: var(--ink-2);
+
+  /* Secondary prose and list meta. */
+  --text-secondary-size: var(--t-md);
+  --text-secondary-weight: var(--w-regular);
+  --text-secondary-ink: var(--ink-3);
+
+  /* An all-caps kicker above a title. */
+  --text-eyebrow-size: var(--t-xs);
+  --text-eyebrow-weight: var(--w-semibold);
+  --text-eyebrow-ink: var(--ink-3);
+
+  /* A number the reader compares against another number. Always mono, so the
+     digits line up column to column. */
+  --text-figure-size: var(--t-xs);
+  --text-figure-weight: var(--w-regular);
+  --text-figure-ink: var(--ink-3);
+}

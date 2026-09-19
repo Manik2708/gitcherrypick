@@ -108,6 +108,74 @@ func (_c *RoleRepository_ByID_Call) RunAndReturn(run func(ctx context.Context, i
 	return _c
 }
 
+// Candidates provides a mock function for the type RoleRepository
+func (_mock *RoleRepository) Candidates(ctx context.Context, id domain.RoleID) ([]domain.RoleCandidate, error) {
+	ret := _mock.Called(ctx, id)
+
+	if len(ret) == 0 {
+		panic("no return value specified for Candidates")
+	}
+
+	var r0 []domain.RoleCandidate
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.RoleID) ([]domain.RoleCandidate, error)); ok {
+		return returnFunc(ctx, id)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.RoleID) []domain.RoleCandidate); ok {
+		r0 = returnFunc(ctx, id)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]domain.RoleCandidate)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, domain.RoleID) error); ok {
+		r1 = returnFunc(ctx, id)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// RoleRepository_Candidates_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Candidates'
+type RoleRepository_Candidates_Call struct {
+	*mock.Call
+}
+
+// Candidates is a helper method to define mock.On call
+//   - ctx context.Context
+//   - id domain.RoleID
+func (_e *RoleRepository_Expecter) Candidates(ctx interface{}, id interface{}) *RoleRepository_Candidates_Call {
+	return &RoleRepository_Candidates_Call{Call: _e.mock.On("Candidates", ctx, id)}
+}
+
+func (_c *RoleRepository_Candidates_Call) Run(run func(ctx context.Context, id domain.RoleID)) *RoleRepository_Candidates_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 domain.RoleID
+		if args[1] != nil {
+			arg1 = args[1].(domain.RoleID)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *RoleRepository_Candidates_Call) Return(roleCandidates []domain.RoleCandidate, err error) *RoleRepository_Candidates_Call {
+	_c.Call.Return(roleCandidates, err)
+	return _c
+}
+
+func (_c *RoleRepository_Candidates_Call) RunAndReturn(run func(ctx context.Context, id domain.RoleID) ([]domain.RoleCandidate, error)) *RoleRepository_Candidates_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Close provides a mock function for the type RoleRepository
 func (_mock *RoleRepository) Close(ctx context.Context, tx port.Tx, id domain.RoleID, c port.RoleClosure) (*domain.Role, error) {
 	ret := _mock.Called(ctx, tx, id, c)

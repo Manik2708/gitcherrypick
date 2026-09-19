@@ -68,6 +68,7 @@
           "closed_at": null,
           "close_reason": null,
           "hires": [],
+          "advertised": false,
           "supersedes": null,
           "created_at": "<timestamp>",
           "updated_at": "<timestamp>"
@@ -185,6 +186,7 @@
           "closed_at": null,
           "close_reason": null,
           "hires": [],
+          "advertised": false,
           "supersedes": null,
           "created_at": "<timestamp>",
           "updated_at": "<timestamp>"
@@ -259,6 +261,7 @@
           "closed_at": null,
           "close_reason": null,
           "hires": [],
+          "advertised": false,
           "supersedes": "<uuid>",
           "created_at": "<timestamp>",
           "updated_at": "<timestamp>"
@@ -306,6 +309,7 @@
           "closed_at": "<timestamp>",
           "close_reason": "superseded",
           "hires": [],
+          "advertised": false,
           "supersedes": null,
           "created_at": "<timestamp>",
           "updated_at": "<timestamp>"
@@ -365,6 +369,7 @@
           "closed_at": null,
           "close_reason": null,
           "hires": [],
+          "advertised": false,
           "supersedes": "<uuid>",
           "created_at": "<timestamp>",
           "updated_at": "<timestamp>"
@@ -423,38 +428,40 @@
       }
     },
     {
-      "_step": "AND AN ADDRESS THE ORGANISATION WAS NEVER GIVEN IS REFUSED. alice@example.com is a real contributor who never accepted a request from Acme.",
+      "_step": "AND SOMEBODY WHO WAS NEVER ON THIS ROLE IS REFUSED. Alice is a real contributor who was never staged for it, let alone contacted. A company may record hiring somebody who agreed to talk to it and nobody else.",
       "as": "hank",
       "request": {
         "method": "POST",
         "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles/{{revision}}/close",
         "body": {
           "reason": "hired_via_platform",
-          "hired_emails": ["alice@example.com"]
+          "note": "",
+          "hired": ["01920000-0000-7000-8000-00000000a001"]
         }
       },
       "expect": {
         "status": 422,
         "body": {
-          "error": "hire_email_not_released"
+          "error": "hire_not_accepted"
         }
       }
     },
     {
-      "_step": "An address with NO account here is refused identically. The two must be indistinguishable, or the refusal itself answers the question the rule exists to withhold.",
+      "_step": "A contributor who does not exist is refused IDENTICALLY. Hires are now picked from the role's own candidate list rather than typed as addresses, so the question 'does this person have an account here?' cannot be asked at all — and the one refusal covers never-staged, never-answered and declined without saying which.",
       "as": "hank",
       "request": {
         "method": "POST",
         "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles/{{revision}}/close",
         "body": {
           "reason": "hired_via_platform",
-          "hired_emails": ["nobody-at-all@example.com"]
+          "note": "",
+          "hired": ["01920000-0000-7000-8000-0000000fffff"]
         }
       },
       "expect": {
         "status": 422,
         "body": {
-          "error": "hire_email_not_released"
+          "error": "hire_not_accepted"
         }
       }
     },
@@ -496,6 +503,7 @@
           "closed_at": "<timestamp>",
           "close_reason": "hired_elsewhere",
           "hires": [],
+          "advertised": false,
           "supersedes": "<uuid>",
           "created_at": "<timestamp>",
           "updated_at": "<timestamp>"

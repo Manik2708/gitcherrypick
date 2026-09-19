@@ -48,6 +48,17 @@ func (c *RoleController) Routes() (string, http.Handler) {
 	r.Post("/{orgID}/roles/{roleID}/open", c.open)
 	r.Post("/{orgID}/roles/{roleID}/close", c.close)
 
+	// The advert on a role (ADR-0020). Writing the bar and publishing it are
+	// separate, because publishing is the commitment.
+	// Who is already on a round for this role — read before searching again,
+	// and picked from when closing.
+	r.Get("/{orgID}/roles/{roleID}/candidates", c.candidates)
+
+	r.Get("/{orgID}/roles/{roleID}/opening", c.opening)
+	r.Put("/{orgID}/roles/{roleID}/opening", c.saveOpening)
+	r.Post("/{orgID}/roles/{roleID}/opening/publish", c.publishOpening)
+	r.Post("/{orgID}/roles/{roleID}/opening/withdraw", c.withdrawOpening)
+
 	r.Get("/{orgID}/settings", c.settings)
 	r.Put("/{orgID}/settings", c.saveSettings)
 
@@ -130,13 +141,14 @@ func (b roleRequest) role() domain.Role {
 
 // closeRequest is why a role stopped being open.
 //
-// HiredEmails carries ADDRESSES because that is what a hirer has: they know who
-// they hired, not what this platform calls them. The service resolves each
-// against the contact requests the organisation was already given.
+// Hired carries the ids of people ON THIS ROLE'S OWN CANDIDATE LIST, not typed
+// addresses. A hirer picks from a list they already hold, which is both easier
+// than retyping an email and strictly safer: there is no longer any address to
+// guess, so the endpoint cannot be asked whether one has an account here.
 type closeRequest struct {
-	Reason      string   `json:"reason"`
-	Note        string   `json:"note"`
-	HiredEmails []string `json:"hired_emails"`
+	Reason string   `json:"reason"`
+	Note   string   `json:"note"`
+	Hired  []string `json:"hired"`
 }
 
 // settingsRequest is who may do what with a role.
@@ -202,6 +214,9 @@ type roleBody struct {
 
 	Hires []roleHireBody `json:"hires"`
 
+	// Advertised is whether a contributor can currently see this role.
+	Advertised bool `json:"advertised"`
+
 	// Supersedes is the role this one replaced. An open role is immutable, so a
 	// change is a new row — and this is the thread back through its history.
 	Supersedes *domain.RoleID `json:"supersedes"`
@@ -225,6 +240,7 @@ func roleBodyOf(r domain.Role) roleBody {
 		OpenedAt:           r.OpenedAt,
 		CloseRequestedAt:   r.CloseRequestedAt,
 		ClosedAt:           r.ClosedAt, CloseNote: r.CloseNote,
+		Advertised: r.Advertised,
 		Supersedes: r.Supersedes,
 		CreatedAt:  r.CreatedAt, UpdatedAt: r.UpdatedAt,
 	}
@@ -413,9 +429,13 @@ func (c *RoleController) close(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	hired := make([]domain.UserID, 0, len(body.Hired))
+	for _, id := range body.Hired {
+		hired = append(hired, domain.UserID(id))
+	}
+
 	out, err := c.roles.Close(r.Context(), p, orgID, roleID, port.CloseRequest{
-		Reason: domain.CloseReason(body.Reason), Note: body.Note,
-		HiredEmails: body.HiredEmails,
+		Reason: domain.CloseReason(body.Reason), Note: body.Note, Hired: hired,
 	})
 	if err != nil {
 		c.writeRoleError(w, err)
@@ -518,7 +538,7 @@ func (c *RoleController) saveSettings(w http.ResponseWriter, r *http.Request) {
 func (c *RoleController) writeRoleError(w http.ResponseWriter, err error) {
 	code := service.CodeOf(err)
 	switch {
-	case code == service.CodeRoleNotFound:
+	case code == service.CodeRoleNotFound, code == service.CodeOpeningNotFound:
 		writeCode(w, http.StatusNotFound, code)
 	case code == service.CodeRoleImmutable:
 		writeCode(w, http.StatusConflict, code)
@@ -536,32 +556,280 @@ func (c *RoleController) writeRoleError(w http.ResponseWriter, err error) {
 	}
 }
 
-// --- the contributor's half --------------------------------------------------
+// roleCandidateBody is somebody already on a round for this role.
+//
+// No email, ever — not even for an accepted request. The hirer who needs it
+// has it from the contact request itself, and a list read in bulk is the wrong
+// place to hand out addresses (ADR-0005 §9).
+type roleCandidateBody struct {
+	UserID      domain.UserID `json:"user_id"`
+	DisplayName string        `json:"display_name"`
+	GitHubLogin string        `json:"github_login,omitempty"`
 
-// myRoles is GET /me/roles, mounted by MeController.
+	ShortlistID   domain.ShortlistID `json:"shortlist_id"`
+	ShortlistName string             `json:"shortlist_name"`
+
+	// Empty while still STAGED — told nothing, and removable.
+	ContactStatus string     `json:"contact_status"`
+	NotifiedAt    *time.Time `json:"notified_at"`
+
+	// Accepted is the only state a hire may be recorded from.
+	Accepted bool `json:"accepted"`
+}
+
+// candidates lists everybody already approached for this role.
+func (c *RoleController) candidates(w http.ResponseWriter, r *http.Request) {
+	p, orgID, ok := c.roleContext(w, r)
+	if !ok {
+		return
+	}
+	roleID, valid := roleIDFrom(w, r)
+	if !valid {
+		return
+	}
+
+	out, err := c.roles.Candidates(r.Context(), p, orgID, roleID)
+	if err != nil {
+		c.writeRoleError(w, err)
+		return
+	}
+
+	bodies := make([]roleCandidateBody, 0, len(out))
+	for _, x := range out {
+		bodies = append(bodies, roleCandidateBody{
+			UserID: x.UserID, DisplayName: x.DisplayName, GitHubLogin: x.GitHubLogin,
+			ShortlistID: x.ShortlistID, ShortlistName: x.ShortlistName,
+			ContactStatus: string(x.ContactStatus), NotifiedAt: x.NotifiedAt,
+			Accepted: x.Accepted,
+		})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"candidates": bodies})
+}
+
+/* --- public openings (ADR-0020) --------------------------------------------- */
+
+// openingSkillBody is one skill and the score it asks for.
+// openingSkillBody is one skill and the score it asks for.
 //
-// A contributor's own view: open roles whose countries include theirs, whose
-// minimums they meet, whose engagement matches a shape they ticked, and whose
-// pay is not below what they asked for. The compensation filter runs HERE,
-// where only they can see the result — it never reaches a hirer (ADR-0018 §5).
+// A hirer names a SLUG — "go" — because the catalogue is slug-keyed everywhere
+// a human touches it: search, claims, the leaderboard. The id comes back on a
+// read for a client that wants it, and is ignored on a write.
+type openingSkillBody struct {
+	Slug     string  `json:"slug"`
+	SkillID  string  `json:"skill_id,omitempty"`
+	Name     string  `json:"name,omitempty"`
+	MinScore float64 `json:"min_score"`
+}
+
+// openingRequest is the bar a hirer sets.
 //
-// It answers in the CONTACT-REQUEST shape, not the hirer's. Three of the
-// hirer's fields have no business here: `status` is always open by
-// construction, `supersedes` is a company's editing history, and `hires` names
-// OTHER CONTRIBUTORS — a list of who a company hired, handed to somebody
-// browsing openings, would disclose people who agreed to talk to that company
-// and not to anybody else (ADR-0019 §16).
-func myRoles(roles port.RoleService) http.HandlerFunc {
+// Every threshold is a pointer, because NULL means "no bar" and 0 means "a bar
+// of zero" — a role open to anybody and one that has decided to accept the
+// lowest score on the platform are different invitations.
+type openingRequest struct {
+	MinOverallScore    *float64           `json:"min_overall_score"`
+	MinGeneralistScore *float64           `json:"min_generalist_score"`
+	MinOSSYOE          *int               `json:"min_oss_yoe"`
+	Skills             []openingSkillBody `json:"skills"`
+}
+
+// openingBody is an advert as the API reports it.
+//
+// No view count, and there never will be: reading an opening sends nothing,
+// and a counter would become a ranking signal nobody consented to produce
+// (ADR-0020 §8).
+type openingBody struct {
+	ID     domain.OpeningID `json:"id"`
+	RoleID domain.RoleID    `json:"role_id"`
+
+	MinOverallScore    *float64           `json:"min_overall_score"`
+	MinGeneralistScore *float64           `json:"min_generalist_score"`
+	MinOSSYOE          *int               `json:"min_oss_yoe"`
+	Skills             []openingSkillBody `json:"skills"`
+
+	// Live is published and not withdrawn, reported rather than left for a
+	// client to derive from two timestamps and get subtly wrong.
+	Live        bool       `json:"live"`
+	PublishedAt *time.Time `json:"published_at"`
+	WithdrawnAt *time.Time `json:"withdrawn_at"`
+}
+
+func openingBodyOf(o domain.Opening) openingBody {
+	out := openingBody{
+		ID: o.ID, RoleID: o.RoleID,
+		MinOverallScore: o.MinOverallScore, MinGeneralistScore: o.MinGeneralistScore,
+		MinOSSYOE: o.MinOSSYOE,
+		Live:      o.Live(), PublishedAt: o.PublishedAt, WithdrawnAt: o.WithdrawnAt,
+	}
+	out.Skills = make([]openingSkillBody, 0, len(o.Skills))
+	for _, s := range o.Skills {
+		out.Skills = append(out.Skills, openingSkillBody{
+			SkillID: string(s.SkillID), Slug: s.Slug, Name: s.Name, MinScore: s.MinScore,
+		})
+	}
+	return out
+}
+
+// contributorOpeningBody is an advert as the person reading it sees it.
+//
+// The role comes through in the CONTACT-REQUEST shape (ADR-0019 §2): no
+// status, no supersede chain, and no `hires`, which names other contributors.
+// The bar is included because they have already cleared it, so it discloses
+// nothing they could not infer — and a role that states what it wanted is more
+// legible than one that simply appeared.
+type contributorOpeningBody struct {
+	ID           domain.OpeningID `json:"id"`
+	Organization string           `json:"organization"`
+	Role         *contactRoleBody `json:"role"`
+	Bar          openingBarBody   `json:"bar"`
+
+	// PostedAt is the ROLE'S opened_at, not the advert's. A company that
+	// advertised late should not look fresher than one that published at once
+	// (ADR-0020 §10).
+	PostedAt *time.Time `json:"posted_at"`
+}
+
+type openingBarBody struct {
+	MinOverallScore    *float64           `json:"min_overall_score"`
+	MinGeneralistScore *float64           `json:"min_generalist_score"`
+	MinOSSYOE          *int               `json:"min_oss_yoe"`
+	Skills             []openingSkillBody `json:"skills"`
+}
+
+func contributorOpeningBodyOf(o domain.Opening) contributorOpeningBody {
+	out := contributorOpeningBody{
+		ID: o.ID, Organization: o.OrganizationName,
+		Bar: openingBarBody{
+			MinOverallScore: o.MinOverallScore, MinGeneralistScore: o.MinGeneralistScore,
+			MinOSSYOE: o.MinOSSYOE,
+			Skills:    make([]openingSkillBody, 0, len(o.Skills)),
+		},
+	}
+	for _, s := range o.Skills {
+		out.Bar.Skills = append(out.Bar.Skills, openingSkillBody{
+			SkillID: string(s.SkillID), Slug: s.Slug, Name: s.Name, MinScore: s.MinScore,
+		})
+	}
+	if o.Role != nil {
+		role := contactRoleBodyOf(*o.Role)
+		out.Role = &role
+		out.PostedAt = o.Role.OpenedAt
+	}
+	return out
+}
+
+// opening returns the advert on a role.
+func (c *RoleController) opening(w http.ResponseWriter, r *http.Request) {
+	p, orgID, ok := c.roleContext(w, r)
+	if !ok {
+		return
+	}
+	roleID, valid := roleIDFrom(w, r)
+	if !valid {
+		return
+	}
+
+	out, err := c.roles.Opening(r.Context(), p, orgID, roleID)
+	if err != nil {
+		c.writeRoleError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, openingBodyOf(*out))
+}
+
+// saveOpening writes the bar. PUT, because the form submits every threshold it
+// shows and a merge would leave a skill somebody had just removed.
+func (c *RoleController) saveOpening(w http.ResponseWriter, r *http.Request) {
+	p, orgID, ok := c.roleContext(w, r)
+	if !ok {
+		return
+	}
+	roleID, valid := roleIDFrom(w, r)
+	if !valid {
+		return
+	}
+
+	var body openingRequest
+	if err := decode(w, r, &body); err != nil {
+		writeCode(w, http.StatusBadRequest, service.CodeInvalidOpening)
+		return
+	}
+
+	in := domain.Opening{
+		MinOverallScore:    body.MinOverallScore,
+		MinGeneralistScore: body.MinGeneralistScore,
+		MinOSSYOE:          body.MinOSSYOE,
+	}
+	for _, s := range body.Skills {
+		in.Skills = append(in.Skills, domain.OpeningSkill{
+			Slug: s.Slug, MinScore: s.MinScore,
+		})
+	}
+
+	out, err := c.roles.SaveOpening(r.Context(), p, orgID, roleID, in)
+	if err != nil {
+		c.writeRoleError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, openingBodyOf(*out))
+}
+
+func (c *RoleController) publishOpening(w http.ResponseWriter, r *http.Request) {
+	p, orgID, ok := c.roleContext(w, r)
+	if !ok {
+		return
+	}
+	roleID, valid := roleIDFrom(w, r)
+	if !valid {
+		return
+	}
+
+	out, err := c.roles.PublishOpening(r.Context(), p, orgID, roleID)
+	if err != nil {
+		c.writeRoleError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, openingBodyOf(*out))
+}
+
+func (c *RoleController) withdrawOpening(w http.ResponseWriter, r *http.Request) {
+	p, orgID, ok := c.roleContext(w, r)
+	if !ok {
+		return
+	}
+	roleID, valid := roleIDFrom(w, r)
+	if !valid {
+		return
+	}
+
+	out, err := c.roles.WithdrawOpening(r.Context(), p, orgID, roleID)
+	if err != nil {
+		c.writeRoleError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, openingBodyOf(*out))
+}
+
+// myOpenings is GET /openings, mounted by MeController.
+//
+// What this contributor CLEARS, and a bare count of what they do not. The
+// count is the whole of the compromise: an empty list on its own lies about
+// why it is empty — nobody hiring, or nothing they qualify for — and the
+// number answers that without itemising anybody's shortfall or exposing a
+// company's bar (ADR-0020 §6).
+//
+// There is NO WRITE PATH from here. Reading an opening sends nothing.
+func myOpenings(roles port.RoleService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		p, ok := require(w, r, domain.KindContributor)
 		if !ok {
 			return
 		}
 
-		limit, offset := 50, 0
+		limit, offset := 25, 0
 		if raw := r.URL.Query().Get("limit"); raw != "" {
 			parsed, err := strconv.Atoi(raw)
-			if err != nil || parsed <= 0 || parsed > 200 {
+			if err != nil || parsed <= 0 || parsed > 100 {
 				writeCode(w, http.StatusBadRequest, service.CodeInvalidQuery)
 				return
 			}
@@ -576,16 +844,20 @@ func myRoles(roles port.RoleService) http.HandlerFunc {
 			offset = parsed
 		}
 
-		out, err := roles.Matching(r.Context(), domain.UserID(p.Subject()), limit, offset)
+		out, err := roles.Openings(r.Context(), domain.UserID(p.Subject()), limit, offset)
 		if err != nil {
 			writeError(w, err)
 			return
 		}
 
-		bodies := make([]contactRoleBody, 0, len(out))
-		for _, role := range out {
-			bodies = append(bodies, contactRoleBodyOf(role))
+		bodies := make([]contributorOpeningBody, 0, len(out.Openings))
+		for _, o := range out.Openings {
+			bodies = append(bodies, contributorOpeningBodyOf(o))
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"roles": bodies})
+		writeJSON(w, http.StatusOK, map[string]any{
+			"openings": bodies,
+			"matched":  out.Matched,
+			"missed":   out.Missed,
+		})
 	}
 }

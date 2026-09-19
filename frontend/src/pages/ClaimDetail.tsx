@@ -41,6 +41,7 @@ import {
   Banner,
   Button,
   Card,
+  Checkbox,
   Empty,
   Failure,
   Field,
@@ -440,16 +441,13 @@ export function ClaimDetailPage() {
                   ))}
                 </ul>
               </Notice>
-              <label className="checkline">
-                <input
-                  type="checkbox"
-                  checked={acknowledged}
-                  onChange={(event) => setAcknowledged(event.target.checked)}
-                />
-                <span className="checkline__text">
-                  I understand this unranks {demotions.length === 1 ? "that skill" : "those skills"}
-                </span>
-              </label>
+              <Checkbox
+                label={`I understand this unranks ${
+                  demotions.length === 1 ? "that skill" : "those skills"
+                }`}
+                checked={acknowledged}
+                onChange={setAcknowledged}
+              />
             </>
           ) : null}
 

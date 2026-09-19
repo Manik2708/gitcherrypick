@@ -236,7 +236,15 @@ export function Button({
   title?: string;
   type?: "button" | "submit";
 }) {
-  const classes = ["btn", variant ? `btn--${variant}` : "", size ? `btn--${size}` : ""]
+  // A BUTTON WITH NO VARIANT IS STILL A BUTTON. `.btn` alone sets a size, a
+  // weight and a transparent border — every piece of chrome comes from a
+  // variant — so a bare <Button> used to render as bold text with padding and
+  // nothing else, indistinguishable from a heading. That is a trap rather than
+  // a default, and it caught the first person to write one.
+  //
+  // "ghost" is the ordinary secondary button: a line, a surface, real edges.
+  // Anything that genuinely wants no chrome asks for "quiet" and says so.
+  const classes = ["btn", `btn--${variant ?? "ghost"}`, size ? `btn--${size}` : ""]
     .filter(Boolean)
     .join(" ");
   return (
@@ -265,6 +273,97 @@ export function Field({
       {children}
       {help ? <p className="field__help">{help}</p> : null}
     </div>
+  );
+}
+
+/**
+ * A checkbox and its label, as ONE component.
+ *
+ * There were three idioms for this before — `.checkline`, a bare `.od-row`,
+ * and an ad-hoc label — and they disagreed about the one thing a reader
+ * notices: the label inherited the body size in some places and the small size
+ * in others, so two groups of checkboxes on the same screen were typeset
+ * differently. That is not a styling nit; it reads as two different kinds of
+ * control, and somebody scanning a filter panel pauses on the difference
+ * looking for the meaning that is not there.
+ *
+ * So the markup and the type scale live here, once. Nothing else in the app
+ * should write `<input type="checkbox">` directly.
+ */
+export function Checkbox({
+  label,
+  help,
+  meta,
+  checked,
+  onChange,
+  disabled,
+}: {
+  label: ReactNode;
+  /** A second line, in the same voice as Field's help. */
+  help?: ReactNode;
+  /** A short right-aligned figure — a count, a score. */
+  meta?: ReactNode;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <label className="cbx">
+      <input
+        className="cbx__box"
+        type="checkbox"
+        checked={checked}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.checked)}
+      />
+      <span className="cbx__body">
+        <span className="cbx__label">{label}</span>
+        {help ? <span className="cbx__help">{help}</span> : null}
+      </span>
+      {meta ? <span className="cbx__meta">{meta}</span> : null}
+    </label>
+  );
+}
+
+/**
+ * A radio and its label. The same component as Checkbox, one attribute apart.
+ *
+ * It is here rather than left as raw markup because the two appear TOGETHER —
+ * the close-a-role dialogue has radios directly beside checkboxes — and
+ * typesetting them differently is the exact inconsistency Checkbox exists to
+ * remove. A shared class is what keeps them the same control.
+ */
+export function Radio({
+  name,
+  label,
+  help,
+  checked,
+  onChange,
+  disabled,
+}: {
+  /** Radios in one group share a name; the browser enforces the exclusivity. */
+  name: string;
+  label: ReactNode;
+  help?: ReactNode;
+  checked: boolean;
+  onChange: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <label className="cbx">
+      <input
+        className="cbx__box"
+        type="radio"
+        name={name}
+        checked={checked}
+        disabled={disabled}
+        onChange={onChange}
+      />
+      <span className="cbx__body">
+        <span className="cbx__label">{label}</span>
+        {help ? <span className="cbx__help">{help}</span> : null}
+      </span>
+    </label>
   );
 }
 

@@ -48,11 +48,6 @@ export const endpoints = {
     shareLink: () => "/me/share-link",
     revokeShareLink: (id: string) => `/me/share-link/${encodeURIComponent(id)}`,
     contactRequests: () => "/me/contact-requests",
-
-    // What is open to this person (ADR-0019). Under /me because the filter
-    // reads their profile — including the pay they expect, which is why the
-    // result can only be theirs.
-    roles: () => "/me/roles",
     respondContact: (id: string, accept: boolean) =>
       `/me/contact-requests/${encodeURIComponent(id)}/${accept ? "accept" : "decline"}`,
   },
@@ -140,6 +135,23 @@ export const endpoints = {
       `/org-roles/${encodeURIComponent(orgId)}/roles/${encodeURIComponent(id)}/close`,
 
     settings: (orgId: string) => `/org-roles/${encodeURIComponent(orgId)}/settings`,
+
+    // The public advert on a role (ADR-0020). Writing the bar and publishing
+    // it are separate calls, because publishing is the commitment.
+    candidates: (orgId: string, id: string) =>
+      `/org-roles/${encodeURIComponent(orgId)}/roles/${encodeURIComponent(id)}/candidates`,
+    opening: (orgId: string, id: string) =>
+      `/org-roles/${encodeURIComponent(orgId)}/roles/${encodeURIComponent(id)}/opening`,
+    publishOpening: (orgId: string, id: string) =>
+      `/org-roles/${encodeURIComponent(orgId)}/roles/${encodeURIComponent(id)}/opening/publish`,
+    withdrawOpening: (orgId: string, id: string) =>
+      `/org-roles/${encodeURIComponent(orgId)}/roles/${encodeURIComponent(id)}/opening/withdraw`,
+  },
+
+  // What a contributor can see. Read-only, and it stays read-only: there is
+  // no apply route, and reading one sends nothing to anybody.
+  openings: {
+    list: () => "/openings",
   },
   public: {
     scorecard: (token: string) => `/scorecard/${encodeURIComponent(token)}`,

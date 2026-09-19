@@ -12,13 +12,53 @@ import "time"
 // saved search replays as a query string with no translation layer, and a
 // renamed parameter cannot silently diverge from what was stored.
 type SearchQuery struct {
-	Skills               []string             `json:"skills,omitempty"`
-	MinSkillScore        *float64             `json:"min_skill_score,omitempty"`
-	MinOverallScore      *float64             `json:"min_overall_score,omitempty"`
-	MinGeneralistScore   *float64             `json:"min_generalist_score,omitempty"`
-	Availability         []AvailabilityStatus `json:"availability,omitempty"`
-	EvidenceWithinMonths *int                 `json:"evidence_within_months,omitempty"`
-	Query                string               `json:"q,omitempty"`
+	Skills             []string             `json:"skills,omitempty"`
+	MinSkillScore      *float64             `json:"min_skill_score,omitempty"`
+	MinOverallScore    *float64             `json:"min_overall_score,omitempty"`
+	MinGeneralistScore *float64             `json:"min_generalist_score,omitempty"`
+	Availability       []AvailabilityStatus `json:"availability,omitempty"`
+	Query              string               `json:"q,omitempty"`
+
+	// What a contributor said about themselves (ADR-0018), as opposed to what
+	// their evidence says. Everything here is opt-in, and an unstated value
+	// therefore does NOT clear a stated minimum: a filter that quietly matched
+	// people with no figure would be a filter that does nothing, and the
+	// contributor's remedy is the profile prompt that already exists.
+	//
+	// NOTHING HERE TOUCHES COMPENSATION, and nothing ever may. A hirer who
+	// could filter on pay would learn an upper bound across a few searches,
+	// and an expectation would stop being a floor and become a ceiling
+	// (ADR-0018 §5).
+
+	// MinOfficeYOE is years in a job. SELF-REPORTED, and presented as such.
+	MinOfficeYOE *int `json:"min_office_yoe,omitempty"`
+
+	// MinOSSYEO is years contributing, VERIFIED and dated from when the
+	// contributor's first pull request was authored (ADR-0019 §7). Unknown
+	// never clears it — the whole value of a checked number is that it cannot
+	// be cleared by an unreadable link.
+	MinOSSYOE *int `json:"min_oss_yoe,omitempty"`
+
+	// Countries is ISO 3166-1 alpha-2, matched against where the contributor
+	// says they are. OR, not AND: a role open to three countries wants anybody
+	// in any of them.
+	Countries []string `json:"countries,omitempty"`
+
+	// ForRole excludes everybody already on a round for that job, and is the
+	// only filter here that is about the HIRER'S own history rather than
+	// about the contributor (ADR-0008 amendment 3).
+	//
+	// It must be one of the caller's own organisation's roles. Not because
+	// another company's shortlist could be read through it — it could not —
+	// but because the count of who was excluded would say how many people
+	// matching this query that company has already approached.
+	ForRole *RoleID `json:"for_role,omitempty"`
+
+	// OpenTo are the shapes of work a contributor ticked: remote, onsite,
+	// contract, internship. OR again, and composed with availability exactly
+	// as ADR-0018 §4 requires — somebody is available for the shapes they
+	// enabled and for nothing else.
+	OpenTo []string `json:"open_to,omitempty"`
 
 	// Default false. Reveals contributors whose availability window lapsed.
 	// It does NOT reveal not_looking, which no toggle reveals (ADR-0008 §1a).
@@ -54,10 +94,20 @@ func RankedBySkill(slug string) RankedBy { return RankedBy("skill:" + slug) }
 type SearchResults struct {
 	Total          int
 	InactiveHidden int
-	RankedBy       RankedBy
-	Page           int
-	PerPage        int
-	Results        []SearchResult
+
+	// AlreadyShortlisted is how many matches were dropped for being on a
+	// round for this role already, and is set only when for_role was asked
+	// for.
+	//
+	// Reported rather than silently subtracted, for the reason ADR-0008 gives
+	// about inactive contributors: a list that shrinks with no account of why
+	// makes a hirer doubt the filter rather than read the result.
+	AlreadyShortlisted int
+
+	RankedBy RankedBy
+	Page     int
+	PerPage  int
+	Results  []SearchResult
 }
 
 // SearchResult is one contributor as a hirer sees them.

@@ -3,6 +3,7 @@ package postgres_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/Manik2708/gitcherrypick/backend/internal/domain"
 	"github.com/Manik2708/gitcherrypick/backend/internal/port"
@@ -478,7 +479,12 @@ func TestRank(t *testing.T) {
 // --- fixture -----------------------------------------------------------------
 
 type searchPopulation struct {
-	hirer      domain.HirerID
+	hirer domain.HirerID
+
+	// The same seat as `hirer`, kept whole because writing a role needs the
+	// organisation off it and not only the id.
+	owner *domain.Hirer
+
 	daveHiring domain.HirerID
 	alice      domain.UserID
 	bob        domain.UserID
@@ -533,7 +539,7 @@ func newSearchPopulation(ctx context.Context, t *testing.T, db *postgres.DB) sea
 	setUserScores(ctx, t, db, dave.ID, 58.0, 58.0)
 
 	return searchPopulation{
-		hirer: hirer.ID, daveHiring: daveHiring.ID,
+		hirer: hirer.ID, owner: hirer, daveHiring: daveHiring.ID,
 		alice: alice.ID, bob: bob.ID, carol: carol.ID, dave: dave.ID,
 		goSkill: skillID(ctx, t, db, "go"),
 	}
@@ -569,3 +575,258 @@ func mustSearch(ctx context.Context, t *testing.T, db *postgres.DB, caller domai
 }
 
 func f(v float64) *float64 { return &v }
+
+// The profile filters (ADR-0018, ADR-0019), which replaced evidence recency.
+//
+// The property worth holding is that they are OPT-IN in both directions. A
+// contributor who never opened the form stays findable by everything else and
+// fails every one of these that is actually set — because a filter that
+// matched people with no figure is a filter that does nothing, and the hirer
+// asking for five years meant five years.
+func TestProfileFiltersGate(t *testing.T) {
+	db, ctx := newDB(t), testContext(t)
+	p := newSearchPopulation(ctx, t, db)
+
+	six, two := 6, 2
+	save := func(user domain.UserID, w domain.WorkPreferences) {
+		t.Helper()
+		w.UserID = user
+		if err := db.InTx(ctx, func(ctx context.Context, tx port.Tx) error {
+			return db.Profiles().SaveWorkPreferences(ctx, tx, &w)
+		}); err != nil {
+			t.Fatalf("saving preferences: %v", err)
+		}
+	}
+
+	// Alice: six years in a job, in Great Britain, open to remote work, and
+	// contributing since 2016 — verified.
+	save(p.alice, domain.WorkPreferences{
+		OpenToRemote: true, CurrentCountry: "GB", OfficeYOE: &six,
+		FirstPRURL: "https://github.com/acme/platform/pull/1",
+	})
+	verifyFirstPR(ctx, t, db, p.alice, "2016-03-01")
+
+	// Bob: two years, in Germany, open to contract work only, and his first
+	// pull request is stated but UNVERIFIED — a fetch nobody could complete.
+	save(p.bob, domain.WorkPreferences{
+		OpenToContract: true, CurrentCountry: "DE", OfficeYOE: &two,
+		FirstPRURL: "https://github.com/acme/platform/pull/2",
+	})
+
+	// Dave never opened the form at all.
+
+	has := func(got *domain.SearchResults, id domain.UserID) bool {
+		for _, r := range got.Results {
+			if r.UserID == id {
+				return true
+			}
+		}
+		return false
+	}
+
+	t.Run("years in a job is a minimum, and unstated does not clear it", func(t *testing.T) {
+		got := mustSearch(ctx, t, db, p.hirer, domain.SearchQuery{MinOfficeYOE: &two})
+		if !has(got, p.alice) || !has(got, p.bob) {
+			t.Error("both stated figures clear a minimum of two")
+		}
+		if has(got, p.dave) {
+			t.Error("a contributor who stated nothing cleared a stated minimum")
+		}
+
+		got = mustSearch(ctx, t, db, p.hirer, domain.SearchQuery{MinOfficeYOE: &six})
+		if !has(got, p.alice) || has(got, p.bob) {
+			t.Errorf("six years should keep alice and drop bob: %+v", got.Results)
+		}
+	})
+
+	t.Run("unverified open-source years never clear a minimum", func(t *testing.T) {
+		// The asymmetry with office years is deliberate. That figure is
+		// self-reported either way; this one is CHECKED, and the whole value
+		// of a checked number is that an unreadable link cannot clear it.
+		one := 1
+		got := mustSearch(ctx, t, db, p.hirer, domain.SearchQuery{MinOSSYOE: &one})
+		if !has(got, p.alice) {
+			t.Error("alice's verified 2016 first pull request clears one year")
+		}
+		if has(got, p.bob) {
+			t.Error("bob's first pull request was never verified and must not clear it")
+		}
+	})
+
+	t.Run("countries are an OR", func(t *testing.T) {
+		got := mustSearch(ctx, t, db, p.hirer,
+			domain.SearchQuery{Countries: []string{"GB", "IE"}})
+		if !has(got, p.alice) || has(got, p.bob) {
+			t.Errorf("expected alice only: %+v", got.Results)
+		}
+
+		got = mustSearch(ctx, t, db, p.hirer,
+			domain.SearchQuery{Countries: []string{"GB", "DE"}})
+		if !has(got, p.alice) || !has(got, p.bob) {
+			t.Error("both countries listed should match both people")
+		}
+	})
+
+	t.Run("shapes of work are an OR", func(t *testing.T) {
+		got := mustSearch(ctx, t, db, p.hirer, domain.SearchQuery{OpenTo: []string{"remote"}})
+		if !has(got, p.alice) || has(got, p.bob) {
+			t.Errorf("expected alice only: %+v", got.Results)
+		}
+
+		got = mustSearch(ctx, t, db, p.hirer,
+			domain.SearchQuery{OpenTo: []string{"remote", "contract"}})
+		if !has(got, p.alice) || !has(got, p.bob) {
+			t.Error("either shape should match")
+		}
+		if has(got, p.dave) {
+			t.Error("somebody who ticked nothing is open to nothing")
+		}
+	})
+
+	t.Run("the total agrees with the page", func(t *testing.T) {
+		// counts runs the same CTEs with the paging pair dropped and every
+		// parameter renumbered. A filter applied to one and not the other
+		// would report a total the page can never produce, and a hirer would
+		// page towards results that do not exist.
+		got := mustSearch(ctx, t, db, p.hirer, domain.SearchQuery{Countries: []string{"GB"}})
+		if got.Total != len(got.Results) {
+			t.Errorf("total %d but %d results — counts and the page disagree",
+				got.Total, len(got.Results))
+		}
+	})
+}
+
+// verifyFirstPR stamps what a verification pass would have established.
+func verifyFirstPR(ctx context.Context, t *testing.T, db *postgres.DB, user domain.UserID, authored string) {
+	t.Helper()
+	if err := db.InTx(ctx, func(ctx context.Context, tx port.Tx) error {
+		at, err := time.Parse("2006-01-02", authored)
+		if err != nil {
+			return err
+		}
+		now := time.Now()
+		return db.Profiles().SaveVerifiedPRDates(ctx, tx, port.VerifiedPRDates{
+			UserID: user, FirstAuthoredAt: &at, VerifiedAt: &now,
+		})
+	}); err != nil {
+		t.Fatalf("verifying the first pull request: %v", err)
+	}
+}
+
+// Searching again for the same job should not keep offering the people you
+// already put on it (ADR-0008 amendment 3).
+//
+// The exclusion is a gate in SQL rather than a filter above it, so the hidden
+// never reach a result count — and what they were hidden FOR is reported
+// separately, because a list that shrinks with no account of why makes a hirer
+// doubt the filter rather than read the result.
+func TestSearchExcludesWhoIsAlreadyOnTheRound(t *testing.T) {
+	db, ctx := newDB(t), testContext(t)
+	p := newSearchPopulation(ctx, t, db)
+
+	before := mustSearch(ctx, t, db, p.hirer, domain.SearchQuery{Skills: []string{"go"}})
+	if before.Total != 2 {
+		t.Fatalf("expected alice and bob, got %d", before.Total)
+	}
+
+	round := mustCreateShortlist(ctx, t, db, p.owner, "Platform team")
+	mustAddEntry(ctx, t, db, round.ID, p.alice, p.owner)
+
+	after := mustSearch(ctx, t, db, p.hirer,
+		domain.SearchQuery{Skills: []string{"go"}, ForRole: &round.RoleID})
+	if after.Total != 1 {
+		t.Errorf("alice is already on a round for that role: total = %d", after.Total)
+	}
+	if after.AlreadyShortlisted != 1 {
+		t.Errorf("the exclusion must be REPORTED, got %d", after.AlreadyShortlisted)
+	}
+	if after.InactiveHidden != 0 {
+		// Two reasons behind one number is a number a hirer cannot act on.
+		t.Errorf("an excluded candidate is not an inactive one: %d", after.InactiveHidden)
+	}
+
+	t.Run("without the filter she is still there", func(t *testing.T) {
+		// The exclusion is a question the hirer asked, not a new gate on the
+		// pool. Searching without naming a role sees everybody.
+		got := mustSearch(ctx, t, db, p.hirer, domain.SearchQuery{Skills: []string{"go"}})
+		if got.Total != 2 {
+			t.Errorf("total = %d, want 2", got.Total)
+		}
+		if got.AlreadyShortlisted != 0 {
+			t.Errorf("nothing was excluded, got %d", got.AlreadyShortlisted)
+		}
+	})
+
+	t.Run("a STAGED entry counts", func(t *testing.T) {
+		// Staged is exactly the case worth catching: the hirer put them on the
+		// round ten minutes ago and nobody has been told yet. Waiting for the
+		// confirm would offer them back in the window where it matters most.
+		got := mustSearch(ctx, t, db, p.hirer,
+			domain.SearchQuery{Skills: []string{"go"}, ForRole: &round.RoleID})
+		for _, r := range got.Results {
+			if r.UserID == p.alice {
+				t.Error("a staged candidate is still a candidate")
+			}
+		}
+	})
+
+	t.Run("it spans every round for that role", func(t *testing.T) {
+		// One job can be worked over several rounds, and "have I already
+		// approached them for this" is a question about the job.
+		second := mustCreateShortlistFor(ctx, t, db, p.owner, round.RoleID, "Second pass")
+		mustAddEntry(ctx, t, db, second.ID, p.bob, p.owner)
+
+		got := mustSearch(ctx, t, db, p.hirer,
+			domain.SearchQuery{Skills: []string{"go"}, ForRole: &round.RoleID})
+		if got.Total != 0 || got.AlreadyShortlisted != 2 {
+			t.Errorf("both are on rounds for this role: total=%d excluded=%d",
+				got.Total, got.AlreadyShortlisted)
+		}
+	})
+
+	t.Run("another role's rounds exclude nobody", func(t *testing.T) {
+		other := mustCreateOpenRole(ctx, t, db, p.owner)
+		got := mustSearch(ctx, t, db, p.hirer,
+			domain.SearchQuery{Skills: []string{"go"}, ForRole: &other.ID})
+		if got.Total != 2 {
+			t.Errorf("a different job has its own history: total = %d", got.Total)
+		}
+	})
+}
+
+// The candidate list is one row per PERSON, and reports who may be recorded
+// as a hire (ADR-0019 §15).
+func TestRoleCandidatesAreDistinctPeople(t *testing.T) {
+	db, ctx := newDB(t), testContext(t)
+	p := newSearchPopulation(ctx, t, db)
+
+	first := mustCreateShortlist(ctx, t, db, p.owner, "Round one")
+	second := mustCreateShortlistFor(ctx, t, db, p.owner, first.RoleID, "Round two")
+
+	// Alice is on BOTH rounds for the one job.
+	mustAddEntry(ctx, t, db, first.ID, p.alice, p.owner)
+	mustAddEntry(ctx, t, db, second.ID, p.alice, p.owner)
+	mustAddEntry(ctx, t, db, first.ID, p.bob, p.owner)
+
+	got, err := db.Roles().Candidates(ctx, first.RoleID)
+	if err != nil {
+		t.Fatalf("listing candidates: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("two people on three entries, got %d rows", len(got))
+	}
+
+	for _, c := range got {
+		if c.Accepted {
+			// Nobody has been contacted, let alone answered. A staged
+			// candidate must never look like somebody who agreed to talk.
+			t.Errorf("%s is staged and must not read as accepted", c.DisplayName)
+		}
+		if c.ContactStatus != "" {
+			t.Errorf("a staged entry has no contact status, got %q", c.ContactStatus)
+		}
+		if c.DisplayName == "" {
+			t.Error("a candidate list names people rather than ids")
+		}
+	}
+}

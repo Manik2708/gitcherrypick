@@ -416,15 +416,76 @@
       }
     },
     {
-      "_step": "evidence_within_months has NO default, so an unset filter filters nothing — RFC-0008 §1. It is about the age of the CODE, not the availability window.",
+      "_step": "Alice says what she wants (ADR-0018). The filters below read THIS, not her evidence — what somebody has built and what they are looking for are different questions, and until now search could only ask the first.",
+      "as": "alice",
+      "request": {
+        "method": "PUT",
+        "path": "/me/profile",
+        "body": {
+          "open_to_remote": true,
+          "open_to_internships": false,
+          "open_to_onsite": false,
+          "open_to_contract": false,
+          "current_country": "GB",
+          "office_yoe": 6,
+          "first_pr_url": "",
+          "latest_pr_url": ""
+        }
+      },
+      "expect": {
+        "status": 200
+      }
+    },
+    {
+      "_step": "Years in a job, as a minimum. Self-reported and presented as such — it is the one number here nobody can check.",
       "as": "hank",
       "request": {
         "method": "GET",
-        "path": "/search?skills=go&evidence_within_months=1"
+        "path": "/search?skills=go&min_office_yoe=5"
       },
       "expect": {
         "status": 200,
-        "_note": "Seeded evidence is older than a month, so an explicit recency filter empties a search that returned two results with no filter at all.",
+        "body": {
+          "total": 1,
+          "inactive_hidden": 0,
+          "ranked_by": "skill:go",
+          "page": 1,
+          "per_page": 20,
+          "results": [
+            {
+              "rank": 1,
+              "id": "<uuid>",
+              "display_name": "Alice Okafor",
+              "github_login": "aliceok",
+              "active": true,
+              "availability": {
+                "status": "looking_for_job",
+                "expires_at": "<timestamp>"
+              },
+              "skills": [
+                {
+                  "slug": "go",
+                  "standing": "primary",
+                  "score": 64.2,
+                  "rank": 1
+                }
+              ],
+              "overall_score": 64.2,
+              "generalist_score": 64.2
+            }
+          ]
+        }
+      }
+    },
+    {
+      "_step": "Seven years drops her, and — the part that matters — so does the contributor who never filled the form in. An unstated figure does NOT clear a stated minimum: a filter that matched people with no figure would be a filter that does nothing, and the hirer asking for seven years meant seven.",
+      "as": "hank",
+      "request": {
+        "method": "GET",
+        "path": "/search?skills=go&min_office_yoe=7"
+      },
+      "expect": {
+        "status": 200,
         "body": {
           "total": 0,
           "inactive_hidden": 0,
@@ -432,6 +493,183 @@
           "page": 1,
           "per_page": 20,
           "results": []
+        }
+      }
+    },
+    {
+      "_step": "Countries are an OR, and case-folded — 'gb' and 'GB' cannot be two countries, because the value is compared against what the contributor stored.",
+      "as": "hank",
+      "request": {
+        "method": "GET",
+        "path": "/search?skills=go&countries=de,gb"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "total": 1,
+          "inactive_hidden": 0,
+          "ranked_by": "skill:go",
+          "page": 1,
+          "per_page": 20,
+          "results": [
+            {
+              "rank": 1,
+              "id": "<uuid>",
+              "display_name": "Alice Okafor",
+              "github_login": "aliceok",
+              "active": true,
+              "availability": {
+                "status": "looking_for_job",
+                "expires_at": "<timestamp>"
+              },
+              "skills": [
+                {
+                  "slug": "go",
+                  "standing": "primary",
+                  "score": 64.2,
+                  "rank": 1
+                }
+              ],
+              "overall_score": 64.2,
+              "generalist_score": 64.2
+            }
+          ]
+        }
+      }
+    },
+    {
+      "as": "hank",
+      "request": {
+        "method": "GET",
+        "path": "/search?skills=go&countries=DE"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "total": 0,
+          "inactive_hidden": 0,
+          "ranked_by": "skill:go",
+          "page": 1,
+          "per_page": 20,
+          "results": []
+        }
+      }
+    },
+    {
+      "_step": "The shapes of work she ticked. She said remote and nothing else, so a search for contract work does not reach her — availability and the flags COMPOSE (ADR-0018 §4): somebody is available for the shapes they enabled and for nothing else.",
+      "as": "hank",
+      "request": {
+        "method": "GET",
+        "path": "/search?skills=go&open_to=remote"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "total": 1,
+          "inactive_hidden": 0,
+          "ranked_by": "skill:go",
+          "page": 1,
+          "per_page": 20,
+          "results": [
+            {
+              "rank": 1,
+              "id": "<uuid>",
+              "display_name": "Alice Okafor",
+              "github_login": "aliceok",
+              "active": true,
+              "availability": {
+                "status": "looking_for_job",
+                "expires_at": "<timestamp>"
+              },
+              "skills": [
+                {
+                  "slug": "go",
+                  "standing": "primary",
+                  "score": 64.2,
+                  "rank": 1
+                }
+              ],
+              "overall_score": 64.2,
+              "generalist_score": 64.2
+            }
+          ]
+        }
+      }
+    },
+    {
+      "as": "hank",
+      "request": {
+        "method": "GET",
+        "path": "/search?skills=go&open_to=contract,internship"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "total": 0,
+          "inactive_hidden": 0,
+          "ranked_by": "skill:go",
+          "page": 1,
+          "per_page": 20,
+          "results": []
+        }
+      }
+    },
+    {
+      "_step": "OPEN-SOURCE YEARS FAIL CLOSED, and this is the one asymmetry in the set. Office years are self-reported either way, so an unstated figure merely fails a comparison. This figure is VERIFIED — dated from when a first pull request was AUTHORED (ADR-0019 §7) — and unknown must never clear it, or a minimum becomes clearable by having a link nobody could read. Alice stated no first pull request, so she is unknown, so she is out.",
+      "as": "hank",
+      "request": {
+        "method": "GET",
+        "path": "/search?skills=go&min_oss_yoe=1"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "total": 0,
+          "inactive_hidden": 0,
+          "ranked_by": "skill:go",
+          "page": 1,
+          "per_page": 20,
+          "results": []
+        }
+      }
+    },
+    {
+      "_step": "THERE IS NO PAY FILTER, and there must never be one. A hirer able to filter on what somebody expects would learn an upper bound across a few searches, and an expectation would stop being a floor and become a ceiling (ADR-0018 §5). An unknown key is refused rather than ignored.",
+      "as": "hank",
+      "request": {
+        "method": "GET",
+        "path": "/search?skills=go&max_yearly=9000000"
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "unknown_filter",
+          "items": [
+            {
+              "field": "max_yearly",
+              "reason": "unknown_filter"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "_step": "evidence_within_months is GONE. It asked how old somebody's code was, which the scores already price in — and it was the only filter in the set that punished a contributor for a maintainer's merge queue. A stale parameter is refused rather than ignored, so a client still sending it is told its search did not mean what it thought.",
+      "as": "hank",
+      "request": {
+        "method": "GET",
+        "path": "/search?skills=go&evidence_within_months=1"
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "unknown_filter",
+          "items": [
+            {
+              "field": "evidence_within_months",
+              "reason": "unknown_filter"
+            }
+          ]
         }
       }
     },

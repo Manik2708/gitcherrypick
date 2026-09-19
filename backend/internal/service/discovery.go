@@ -19,6 +19,14 @@ import (
 type DiscoveryService struct {
 	search port.SearchRepository
 	skills port.SkillRepository
+
+	// roles checks that a `for_role` filter names one of the CALLER'S OWN
+	// roles. Not because another company's shortlist could be read through it
+	// — it could not — but because the count of who was excluded would say
+	// how many people matching this query that company has already approached
+	// (ADR-0008 amendment 3).
+	roles port.RoleRepository
+
 	saved  port.SavedSearchRepository
 	access port.AccessService
 
@@ -31,13 +39,38 @@ type DiscoveryService struct {
 func NewDiscoveryService(
 	search port.SearchRepository,
 	skills port.SkillRepository,
+	roles port.RoleRepository,
 	saved port.SavedSearchRepository,
 	access port.AccessService,
 	rubric string,
 ) *DiscoveryService {
 	return &DiscoveryService{
-		search: search, skills: skills, saved: saved, access: access, rubric: rubric,
+		search: search, skills: skills, roles: roles, saved: saved,
+		access: access, rubric: rubric,
 	}
+}
+
+// ownsRole refuses a for_role filter naming somebody else's job.
+//
+// NOT FOUND rather than forbidden, and deliberately the same answer as a role
+// id that does not exist at all: distinguishing them would confirm that a
+// guessed id belongs to a real company, which is half of what the check is
+// here to withhold.
+func (s *DiscoveryService) ownsRole(ctx context.Context, hirer *domain.Hirer, id *domain.RoleID) error {
+	if id == nil {
+		return nil
+	}
+	role, err := s.roles.ByID(ctx, *id)
+	if err != nil {
+		if errors.Is(err, port.ErrNotFound) {
+			return Coded(ErrInvalid, CodeRoleNotFound, "no such role")
+		}
+		return fmt.Errorf("reading role %s: %w", *id, err)
+	}
+	if role.OrgID != hirer.OrganizationID {
+		return Coded(ErrInvalid, CodeRoleNotFound, "no such role")
+	}
+	return nil
 }
 
 var _ port.DiscoveryService = (*DiscoveryService)(nil)
@@ -57,6 +90,9 @@ func (s *DiscoveryService) Search(ctx context.Context, p domain.Principal, q dom
 	// replayed for months, and a typo would go on returning nothing with
 	// nobody watching, so SaveSearch validates the slugs.
 	if err := validateRanges(q); err != nil {
+		return nil, err
+	}
+	if err := s.ownsRole(ctx, hirer, q.ForRole); err != nil {
 		return nil, err
 	}
 

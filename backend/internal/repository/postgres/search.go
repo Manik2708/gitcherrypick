@@ -83,13 +83,46 @@ func scoreRubricVersion(userColumn string, baselineParam int) string {
 	), $%d::text)`, userColumn, baselineParam)
 }
 
+// alreadyShortlisted is everybody on a round for one role (ADR-0008
+// amendment 3).
+//
+// A CTE over the ROUNDS rather than a correlated subquery per candidate:
+// measured at 1,000 contributors and 500 shortlists it resolves in 0.84ms
+// against idx_shortlists_role, and it does not grow with the population —
+// only with how heavily that one job has been worked.
+//
+// DISTINCT because one person can be on several rounds for one role, and the
+// anti-join wants people rather than entries.
+const alreadyShortlisted = `
+	already AS (
+	    SELECT DISTINCT e.user_id
+	      FROM shortlist_entries e
+	      JOIN shortlists s ON s.id = e.shortlist_id
+	     WHERE $%[1]d::uuid IS NOT NULL AND s.role_id = $%[1]d::uuid
+	)`
+
 // eligibleCTE applies every gate except the inactive one, which is counted
 // separately so a hidden contributor can be REPORTED rather than silently
 // vanishing from a result count.
-func eligibleCTE(nowParam int) string {
+// The three profile parameters are passed as a BASE rather than fixed, because
+// the page and the count renumber everything: the count drops the paging pair,
+// so what is $16 in one query is $14 in the other. Naming the base once is what
+// keeps the two from drifting — and a drift here would make a total the page
+// could never produce.
+func eligibleCTE(nowParam, profileParam int) string {
+	ossParam, countryParam, shapeParam := profileParam, profileParam+1, profileParam+2
 	return fmt.Sprintf(`	eligible AS (
-	    SELECT r.*
+	    -- `+"`shortlisted`"+` is carried as a COLUMN rather than filtered away,
+	    -- so the count of who was dropped and the page itself come off one
+	    -- pass. Filtering here would need a second CTE layer and a second
+	    -- materialisation of the whole eligible set to count what it removed.
+	    SELECT r.*, (sl.user_id IS NOT NULL) AS shortlisted
 	    FROM ranked r
+	    -- LEFT, not inner: a contributor who has never opened the profile form
+	    -- must still be findable. They simply fail every filter below that is
+	    -- actually set.
+	    LEFT JOIN user_work_preferences w ON w.user_id = r.user_id
+	    LEFT JOIN already sl ON sl.user_id = r.user_id
 	    WHERE NOT EXISTS (
 	              -- AssertNotSelf, as a join condition rather than a
 	              -- post-filter, so a self-match never reaches a result count.
@@ -118,20 +151,49 @@ func eligibleCTE(nowParam int) string {
 	              WHERE u.id = r.user_id
 	                AND (u.display_name ILIKE '%%' || $9 || '%%' OR gi.github_login ILIKE '%%' || $9 || '%%')
 	          ))
-	      AND ($10::int IS NULL OR EXISTS (
-	              SELECT 1
-	              FROM user_skill_pr_links l
-	              JOIN claim_pr_evidence e
-	                ON e.repo_owner = l.repo_owner AND e.repo_name = l.repo_name
-	               AND e.pr_number = l.pr_number
-	              WHERE l.user_id = r.user_id AND l.status = 'scored'
-	                AND e.merged_at > $%[1]d::timestamptz - ($10::int || ' months')::interval
-	          ))
-	)`, nowParam)
+
+	      -- What the contributor said about themselves (ADR-0018), matched in
+	      -- SQL rather than after the fact so a hidden row never reaches a
+	      -- result count.
+	      --
+	      -- Every one of these is OPT-IN, so a stated minimum is NOT cleared by
+	      -- an unstated figure: the LEFT JOIN yields nulls and the comparison
+	      -- fails, which is the behaviour a hirer asking for five years means.
+	      -- A contributor missed this way is the one the profile prompt exists
+	      -- to reach.
+	      --
+	      -- No pay filter is here and none may be added (ADR-0018 §5).
+	      AND ($10::int IS NULL OR w.office_yoe >= $10::int)
+
+	      -- Open-source years, VERIFIED and dated from AUTHORSHIP (ADR-0019
+	      -- §7). first_pr_verified_at being null means a fetch we could not
+	      -- complete, and unknown never clears a checked minimum — otherwise
+	      -- the minimum is clearable with a link nobody could read.
+	      AND ($%[2]d::int IS NULL OR (
+	              w.first_pr_verified_at IS NOT NULL
+	              AND w.first_pr_authored_at IS NOT NULL
+	              AND w.first_pr_authored_at
+	                  <= $%[1]d::timestamptz - ($%[2]d::int || ' years')::interval))
+
+	      AND ($%[3]d::text[] IS NULL OR cardinality($%[3]d::text[]) = 0
+	           OR w.current_country = ANY($%[3]d::text[]))
+
+	      -- The shapes they ticked, ANY of them. Composed with availability
+	      -- exactly as ADR-0018 §4 requires: somebody is available for the
+	      -- shapes they enabled and for nothing else, and the availability
+	      -- gate above has already run.
+	      AND ($%[4]d::text[] IS NULL OR cardinality($%[4]d::text[]) = 0 OR (
+	              ('remote'     = ANY($%[4]d::text[]) AND w.open_to_remote)
+	           OR ('onsite'     = ANY($%[4]d::text[]) AND w.open_to_onsite)
+	           OR ('contract'   = ANY($%[4]d::text[]) AND w.open_to_contract)
+	           OR ('internship' = ANY($%[4]d::text[]) AND w.open_to_internships)))
+	)`, nowParam, ossParam, countryParam, shapeParam)
 }
 
-// visibleCTE applies the one gate that is a parameter.
-const visibleCTE = `visible AS (SELECT * FROM eligible WHERE active OR $8::boolean)`
+// visibleCTE applies the two gates that are parameters: the inactive toggle,
+// and the already-on-this-round exclusion.
+const visibleCTE = `visible AS (
+	SELECT * FROM eligible WHERE (active OR $8::boolean) AND NOT shortlisted)`
 
 // Search runs the ranked query.
 func (r *SearchRepository) Search(ctx context.Context, caller domain.HirerID, q domain.SearchQuery) (*domain.SearchResults, error) {
@@ -164,7 +226,7 @@ func (r *SearchRepository) Search(ctx context.Context, caller domain.HirerID, q 
 		availabilityFilter(q.Availability), // $7
 		includeInactive,                    // $8
 		nullIfEmpty(q.Query),               // $9
-		q.EvidenceWithinMonths,             // $10
+		q.MinOfficeYOE,                     // $10
 		perPage,                            // $11
 		(page - 1) * perPage,               // $12
 
@@ -187,12 +249,33 @@ func (r *SearchRepository) Search(ctx context.Context, caller domain.HirerID, q 
 	}
 	args = append(args, active, unversioned) // $14, $15
 
+	// The contributor's own account of themselves (ADR-0018). Appended LAST
+	// rather than slotted in beside the other filters: $14 and $15 are the
+	// rubric versions, and renumbering them would move two parameters that
+	// every comment in this file names by position.
+	args = append(args,
+		q.MinOSSYOE, // $16
+		q.Countries, // $17
+		q.OpenTo,    // $18
+
+		// The role whose existing candidates to exclude. Last, and nullable:
+		// most searches are not for a particular job.
+		roleArg(q.ForRole), // $19
+	)
+
 	query := `
-	WITH` + rankedPopulation(13, 14, 15) + `,
-	` + eligibleCTE(13) + `,
+	WITH` + fmt.Sprintf(alreadyShortlisted, 19) + `,
+	` + rankedPopulation(13, 14, 15) + `,
+	` + eligibleCTE(13, 16) + `,
 	` + visibleCTE + `
 	SELECT (SELECT count(*) FROM visible)                    AS total,
-	       (SELECT count(*) FROM eligible) - (SELECT count(*) FROM visible) AS inactive_hidden,
+	       -- Each count means EXACTLY ONE thing. Inactive counts only those
+	       -- hidden for being quiet, so it excludes the already-shortlisted
+	       -- rather than absorbing them — two reasons behind one number is a
+	       -- number a hirer cannot act on.
+	       (SELECT count(*) FROM eligible WHERE NOT shortlisted)
+	           - (SELECT count(*) FROM visible)               AS inactive_hidden,
+	       (SELECT count(*) FROM eligible WHERE shortlisted)  AS already_shortlisted,
 	       v.user_id, u.display_name, coalesce(gi.github_login, ''),
 	       v.active, v.availability_status, v.availability_expires_at, v.availability_updated_at,
 	       v.overall_score, v.generalist_score,
@@ -218,6 +301,7 @@ func (r *SearchRepository) Search(ctx context.Context, caller domain.HirerID, q 
 			updatedAt *time.Time
 		)
 		if err := rows.Scan(&results.Total, &results.InactiveHidden,
+			&results.AlreadyShortlisted,
 			&res.UserID, &res.DisplayName, &res.GitHubLogin,
 			&res.Active, &status, &expiresAt, &updatedAt,
 			&res.OverallScore, &res.GeneralistScore, &res.Rank); err != nil {
@@ -248,11 +332,12 @@ func (r *SearchRepository) Search(ctx context.Context, caller domain.HirerID, q 
 	// arrive. Recount rather than reporting zero, which would read as "nobody
 	// matched" when the truth is "nobody on THIS page".
 	if len(results.Results) == 0 {
-		total, hidden, err := r.counts(ctx, args, active, unversioned)
+		total, hidden, shortlisted, err := r.counts(ctx, args, active, unversioned)
 		if err != nil {
 			return nil, err
 		}
 		results.Total, results.InactiveHidden = total, hidden
+		results.AlreadyShortlisted = shortlisted
 	}
 
 	if err := r.attachResultSkills(ctx, results.Results, q.Skills); err != nil {
@@ -355,20 +440,39 @@ func resolveOrdering(q domain.SearchQuery) (domain.RankedBy, string) {
 
 // counts runs the same CTEs without paging, so an empty page still reports
 // how many matched and how many were hidden.
-// counts takes args[:10] — the filter parameters. The paging pair ($11, $12)
-// does not appear in this query, and passing them would be an arity error.
-func (r *SearchRepository) counts(ctx context.Context, args []any, active, unversioned string) (total, hidden int, err error) {
+//
+// It takes args[:10] — the filter parameters — then the clock, the two rubric
+// versions, and the profile filters. The paging pair ($11, $12) does not
+// appear in this query, and passing them would be an arity error.
+//
+// EVERY filter the page applies has to be applied here too. A count computed
+// from a narrower filter set would report a total the page cannot produce, and
+// a hirer would page towards results that do not exist — which is exactly what
+// happened when the profile filters were added and this slice was left alone.
+func (r *SearchRepository) counts(ctx context.Context, args []any, active, unversioned string) (total, hidden, shortlisted int, err error) {
+	// args[15:] is MinOSSYOE, Countries, OpenTo — the three appended after the
+	// rubric versions. They land at $14, $15, $16 here, which is what the
+	// renumbered CTEs below expect.
+	// args[15:18] is MinOSSYOE, Countries, OpenTo; args[18] is ForRole. They
+	// land at $14..$17 here, which is what the renumbered CTEs expect.
+	profile := args[15:]
+
 	err = r.db.pool.QueryRow(ctx, `
-	WITH`+rankedPopulation(11, 12, 13)+`,
-	`+eligibleCTE(11)+`,
-	visible AS (SELECT * FROM eligible WHERE active OR $8::boolean)
+	WITH`+fmt.Sprintf(alreadyShortlisted, 17)+`,
+	`+rankedPopulation(11, 12, 13)+`,
+	`+eligibleCTE(11, 14)+`,
+	visible AS (
+	    SELECT * FROM eligible WHERE (active OR $8::boolean) AND NOT shortlisted)
 	SELECT (SELECT count(*) FROM visible),
-	       (SELECT count(*) FROM eligible) - (SELECT count(*) FROM visible)`,
-		append(append([]any{}, args[:10]...), r.db.now(), active, unversioned)...).Scan(&total, &hidden)
+	       (SELECT count(*) FROM eligible WHERE NOT shortlisted)
+	           - (SELECT count(*) FROM visible),
+	       (SELECT count(*) FROM eligible WHERE shortlisted)`,
+		append(append(append([]any{}, args[:10]...), r.db.now(), active, unversioned),
+			profile...)...).Scan(&total, &hidden, &shortlisted)
 	if err != nil {
-		return 0, 0, translate(err, "counting search results")
+		return 0, 0, 0, translate(err, "counting search results")
 	}
-	return total, hidden, nil
+	return total, hidden, shortlisted, nil
 }
 
 func availabilityFilter(statuses []domain.AvailabilityStatus) []string {
@@ -793,4 +897,13 @@ func (r *SearchRepository) skillByID(ctx context.Context, id domain.SkillID) (*d
 		return nil, translate(err, fmt.Sprintf("skill %s", id))
 	}
 	return &s, nil
+}
+
+// roleArg passes a nullable role id without a driver-level nil interface.
+func roleArg(id *domain.RoleID) *string {
+	if id == nil {
+		return nil
+	}
+	v := string(*id)
+	return &v
 }

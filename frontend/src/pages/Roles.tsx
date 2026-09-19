@@ -13,6 +13,7 @@
 
 import { useState } from "react";
 import type { CloseReason, Engagement, Role, RoleDraft } from "../contract";
+import type { PillTone } from "../ui/primitives";
 import {
   useCloseRole,
   useCreateRole,
@@ -20,13 +21,16 @@ import {
   useOrgID,
   useOrgSettings,
   useReviseRole,
+  useRoleCandidates,
   useRoles,
 } from "../hooks/hirer";
 import * as format from "../logic/format";
+import { OpeningForm } from "../ui/OpeningForm";
 import {
   Banner,
   Button,
   Card,
+  Checkbox,
   Empty,
   Failure,
   Field,
@@ -34,6 +38,7 @@ import {
   Loading,
   PageHead,
   Pill,
+  Radio,
   SectionTitle,
 } from "../ui/primitives";
 
@@ -228,6 +233,8 @@ function RoleCard({
 }) {
   const openRole = useOpenRole(orgId);
   const [closing, setClosing] = useState(false);
+  const [advertising, setAdvertising] = useState(false);
+  const [showing, setShowing] = useState(false);
 
   const pay =
     role.engagement === "freelance"
@@ -238,13 +245,19 @@ function RoleCard({
     <Card>
       <div className="section__head">
         <h3 className="section__title">{role.title}</h3>
-        <Pill
-          tone={
-            role.status === "closed" ? "stale" : role.status === "draft" ? "secondary" : "primary"
-          }
-        >
-          {role.status}
-        </Pill>
+        <span className="od-row" style={{ ["--od-gap" as string]: "6px" }}>
+          {/* "Public" answers the question a hirer has first and could not
+              previously ask of the list at all: which of these can a
+              contributor actually see? */}
+          {role.advertised ? <Pill tone="primary">public</Pill> : null}
+          <Pill
+            tone={
+              role.status === "closed" ? "stale" : role.status === "draft" ? "secondary" : "primary"
+            }
+          >
+            {role.status}
+          </Pill>
+        </span>
       </div>
 
       <p className="small muted">
@@ -309,10 +322,36 @@ function RoleCard({
                 change means here, and everybody already contacted keeps reading
                 the one they were shown. */}
             <Button onClick={onRevise}>Publish a new version</Button>
+
+            {/* Advertising it. Alongside the other actions rather than below
+                them: a button on its own under a row of buttons reads as
+                belonging to whatever comes next, and this one was being
+                missed entirely. Only on an OPEN role — a draft is not a
+                commitment and a closed one is a withdrawn job. */}
+            <Button onClick={() => setAdvertising(!advertising)}>
+              {role.advertised
+                ? "Edit the public advert"
+                : advertising
+                  ? "Hide the advert form"
+                  : "Advertise it publicly"}
+            </Button>
+
             <Button onClick={() => setClosing(true)}>Close it</Button>
           </>
         ) : null}
+
+        {role.status !== "draft" ? (
+          <Button onClick={() => setShowing(!showing)}>
+            {showing ? "Hide who is on it" : "Who is on it"}
+          </Button>
+        ) : null}
       </div>
+
+      {advertising && role.status === "open" ? <OpeningForm orgId={orgId} role={role} /> : null}
+
+      {/* Who has already been approached for this job. Read before searching
+          again — and the search itself now stops offering them. */}
+      {role.status !== "draft" ? showing ? <Candidates orgId={orgId} role={role} /> : null : null}
 
       {closing ? (
         <CloseForm
@@ -325,6 +364,69 @@ function RoleCard({
           onCancel={() => setClosing(false)}
         />
       ) : null}
+    </Card>
+  );
+}
+
+/**
+ * What each state means, said as a sentence rather than as a database value.
+ *
+ * The empty one is the case worth spelling out: a candidate with no contact
+ * status has been STAGED — put on a round that has not been confirmed — so
+ * nothing has been sent and they do not know they were considered. "staged"
+ * on its own reads as jargon, and worse, it reads as though something already
+ * happened to them.
+ */
+const CANDIDATE_STATE: Record<string, { label: string; tone: PillTone }> = {
+  "": { label: "not contacted yet", tone: "secondary" },
+  pending: { label: "waiting for their answer", tone: "secondary" },
+  accepted: { label: "accepted", tone: "primary" },
+  declined: { label: "declined", tone: "stale" },
+  expired: { label: "never answered", tone: "stale" },
+};
+
+/**
+ * Everybody already on a round for this role.
+ *
+ * One row per PERSON: the same contributor staged on two rounds for one job
+ * has been approached once, and showing them twice would make six people read
+ * as nine approaches.
+ *
+ * No addresses. The hirer who needs one has it from the contact request
+ * itself, and a list read in bulk is the wrong place to hand them out.
+ */
+function Candidates({ orgId, role }: { orgId: string; role: Role }) {
+  const candidates = useRoleCandidates(orgId, role.id);
+  const list = candidates.data?.candidates ?? [];
+
+  return (
+    <Card>
+      <SectionTitle note="Searching again for this role will not offer these people back. Anyone not contacted yet can still be removed from their round — nothing has been sent.">
+        Already on this role
+      </SectionTitle>
+
+      {candidates.loading ? <Loading what="candidates" /> : null}
+      {candidates.error ? (
+        <Failure message={candidates.error.message} onRetry={candidates.reload} />
+      ) : null}
+
+      {!candidates.loading && list.length === 0 ? (
+        <Empty title="Nobody yet" icon="people">
+          Stage someone from search onto a round for this role and they will appear here.
+        </Empty>
+      ) : null}
+
+      {list.map((c) => (
+        <div className="od-row" key={c.user_id} style={{ ["--od-gap" as string]: "10px" }}>
+          <span className="od-field od-fill">
+            <span>{c.display_name}</span>
+            <span className="field__help">on {c.shortlist_name}</span>
+          </span>
+          <Pill tone={CANDIDATE_STATE[c.contact_status]?.tone ?? "secondary"}>
+            {CANDIDATE_STATE[c.contact_status]?.label ?? c.contact_status}
+          </Pill>
+        </div>
+      ))}
     </Card>
   );
 }
@@ -358,14 +460,16 @@ function CloseForm({
   onCancel: () => void;
 }) {
   const close = useCloseRole(orgId);
+  const candidates = useRoleCandidates(orgId, role.id);
   const [reason, setReason] = useState<CloseReason>("hired_via_platform");
   const [note, setNote] = useState("");
-  const [emails, setEmails] = useState("");
+  const [hired, setHired] = useState<string[]>([]);
 
-  const addresses = emails
-    .split(/[\n,]/)
-    .map((e) => e.trim())
-    .filter(Boolean);
+  // Only somebody who ACCEPTED can be recorded as a hire. A staged candidate
+  // has been told nothing, a notified one has not answered, and a declined one
+  // said no — recording any of them would be the company asserting something
+  // about a person who never agreed to talk to it.
+  const acceptable = (candidates.data?.candidates ?? []).filter((c) => c.accepted);
 
   return (
     <Card>
@@ -374,34 +478,45 @@ function CloseForm({
       </SectionTitle>
 
       {REASONS.map((r) => (
-        <label className="od-row" key={r.value} style={{ ["--od-gap" as string]: "10px" }}>
-          <input
-            type="radio"
-            name={`close-${role.id}`}
-            checked={reason === r.value}
-            onChange={() => setReason(r.value)}
-          />
-          <span className="od-field od-fill">
-            <span>{r.label}</span>
-            {r.help ? <span className="field__help">{r.help}</span> : null}
-          </span>
-        </label>
+        <Radio
+          key={r.value}
+          name={`close-${role.id}`}
+          label={r.label}
+          help={r.help || undefined}
+          checked={reason === r.value}
+          onChange={() => setReason(r.value)}
+        />
       ))}
 
       {reason === "hired_via_platform" ? (
-        <Field
-          label="Who did you hire?"
-          htmlFor={`hires-${role.id}`}
-          help="One address per line. It has to be somebody who accepted a contact request from you — we can only record a hire by somebody who agreed to talk to you. A role can fill several seats, so name everybody."
-        >
-          <textarea
-            className="input"
-            id={`hires-${role.id}`}
-            rows={3}
-            value={emails}
-            onChange={(event) => setEmails(event.target.value)}
-          />
-        </Field>
+        <>
+          <SectionTitle note="Only people who accepted a contact request for this role. A role can fill several seats, so tick everybody.">
+            Who did you hire?
+          </SectionTitle>
+
+          {candidates.loading ? <Loading what="candidates" /> : null}
+          {candidates.error ? <Failure message={candidates.error.message} /> : null}
+
+          {!candidates.loading && acceptable.length === 0 ? (
+            <Banner icon="warn">
+              Nobody has accepted a contact request for this role yet, so there is no one we can
+              record as hired through the platform. If you found someone another way, close it as
+              hired elsewhere.
+            </Banner>
+          ) : null}
+
+          {acceptable.map((c) => (
+            <Checkbox
+              key={c.user_id}
+              label={c.display_name}
+              help={`accepted · ${c.shortlist_name}`}
+              checked={hired.includes(c.user_id)}
+              onChange={(on) =>
+                setHired(on ? [...hired, c.user_id] : hired.filter((id) => id !== c.user_id))
+              }
+            />
+          ))}
+        </>
       ) : null}
 
       {reason === "other" ? (
@@ -423,11 +538,9 @@ function CloseForm({
           disabled={
             close.pending ||
             (reason === "other" && !note.trim()) ||
-            (reason === "hired_via_platform" && addresses.length === 0)
+            (reason === "hired_via_platform" && hired.length === 0)
           }
-          onClick={() =>
-            void close.run(role.id, reason, note, addresses).then((ok) => ok && onDone())
-          }
+          onClick={() => void close.run(role.id, reason, note, hired).then((ok) => ok && onDone())}
         >
           {close.pending ? "Closing…" : "Close the role"}
         </Button>
@@ -655,16 +768,11 @@ function RoleForm({
         Your process
       </SectionTitle>
 
-      <label className="od-row" style={{ ["--od-gap" as string]: "10px" }}>
-        <input
-          type="checkbox"
-          checked={form.requires_online_test === true}
-          onChange={(event) => set("requires_online_test", event.target.checked)}
-        />
-        <span className="od-field od-fill">
-          <span>There is an online test</span>
-        </span>
-      </label>
+      <Checkbox
+        label="There is an online test"
+        checked={form.requires_online_test === true}
+        onChange={(on) => set("requires_online_test", on)}
+      />
 
       <Field label="Most interview rounds" htmlFor="rounds">
         <input

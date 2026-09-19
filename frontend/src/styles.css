@@ -5,6 +5,7 @@
    ========================================================================== */
 
 @import "./spacing.css";
+@import "./type.css";
 
 /* ---------- fonts (localised, referenced relatively) ---------------------- */
 @font-face {
@@ -74,17 +75,11 @@
   --violet: #4b3f8f;
   --violet-wash: #efedf8;
 
-  /* type */
+  /* type: the families here, everything else in type.css — scale, weights,
+     line heights and the ROLES that pair a size with an ink. */
   --font-display: "Instrument Serif", "Iowan Old Style", Georgia, serif;
   --font-ui: "Plex Sans", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
-  --t-display: 40px;
-  --t-hero: 64px;
-  --t-h2: 20px;
-  --t-h3: 17px;
-  --t-body: 16px;
-  --t-small: 14px;
-  --t-eyebrow: 12px;
 
   /* spacing: see spacing.css — scale + categories, imported above */
 
@@ -123,7 +118,7 @@ body {
   background: var(--paper);
   color: var(--ink);
   font-family: var(--font-ui);
-  font-size: var(--t-body);
+  font-size: var(--t-xl);
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
@@ -202,7 +197,7 @@ img {
   letter-spacing: -0.01em;
 }
 .eyebrow {
-  font-size: var(--t-eyebrow);
+  font-size: var(--t-xs);
   font-weight: 600;
   letter-spacing: 0.09em;
   text-transform: uppercase;
@@ -217,7 +212,7 @@ img {
   color: var(--ink-3);
 }
 .small {
-  font-size: var(--t-small);
+  font-size: var(--t-md);
   line-height: 1.5;
 }
 
@@ -266,7 +261,7 @@ img {
   line-height: 1.2;
 }
 .brand-sub {
-  font-size: var(--t-eyebrow);
+  font-size: var(--t-xs);
   color: var(--ink-3);
   line-height: 1.2;
 }
@@ -284,7 +279,7 @@ img {
   border-radius: var(--r-ctl);
   color: var(--ink-2);
   text-decoration: none;
-  font-size: var(--t-small);
+  font-size: var(--t-md);
   font-weight: 500;
   transition:
     background var(--dur-fast) var(--ease-out),
@@ -310,7 +305,7 @@ img {
   min-width: 22px;
   text-align: center;
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--t-xs);
   font-weight: 500;
   color: var(--ink-3);
   background: var(--surface-3);
@@ -345,11 +340,11 @@ img {
   background: var(--surface-2);
 }
 .org-card__name {
-  font-size: var(--t-small);
+  font-size: var(--t-md);
   font-weight: 600;
 }
 .org-card__meta {
-  font-size: var(--t-eyebrow);
+  font-size: var(--t-xs);
   color: var(--teal);
   display: flex;
   align-items: center;
@@ -367,11 +362,11 @@ img {
   flex-wrap: nowrap;
 }
 .user-card__name {
-  font-size: var(--t-small);
+  font-size: var(--t-md);
   font-weight: 500;
 }
 .user-card__meta {
-  font-size: var(--t-eyebrow);
+  font-size: var(--t-xs);
   color: var(--ink-3);
 }
 
@@ -428,7 +423,7 @@ img {
 }
 .page-head__title {
   font-family: var(--font-display);
-  font-size: var(--t-display);
+  font-size: var(--t-6xl);
   line-height: 1.08;
   letter-spacing: -0.015em;
 }
@@ -453,7 +448,7 @@ img {
   padding: 0 var(--control-pad-x-lg);
   border-radius: var(--r-ctl);
   border: 1px solid transparent;
-  font-size: var(--t-small);
+  font-size: var(--t-md);
   font-weight: 600;
   line-height: 1;
   white-space: nowrap;
@@ -487,7 +482,7 @@ img {
 .btn--sm {
   min-height: 32px;
   padding: 0 var(--control-pad-x);
-  font-size: 13px;
+  font-size: var(--t-sm);
 }
 .btn[disabled] {
   opacity: 0.45;
@@ -516,7 +511,7 @@ img {
   gap: var(--stack-xs);
   padding: var(--inset-2xs) var(--inset-sm);
   border-radius: var(--r-pill);
-  font-size: 12.5px;
+  font-size: var(--t-sm);
   font-weight: 500;
   line-height: 1.45;
   background: var(--surface-3);
@@ -559,7 +554,7 @@ img {
   border-radius: var(--r-pill);
   border: 1px solid var(--line);
   background: var(--surface);
-  font-size: 12.5px;
+  font-size: var(--t-sm);
   font-weight: 500;
   white-space: nowrap;
 }
@@ -570,7 +565,7 @@ img {
 }
 .skill-pill__score {
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--t-xs);
   font-weight: 600;
   background: var(--surface);
   color: var(--ink);
@@ -590,7 +585,7 @@ img {
   display: grid;
   place-items: center;
   font-family: var(--font-mono);
-  font-size: 15px;
+  font-size: var(--t-lg);
   font-weight: 600;
   letter-spacing: 0.02em;
   color: #fff;
@@ -600,19 +595,19 @@ img {
 .avatar--sm {
   width: 32px;
   height: 32px;
-  font-size: 12px;
+  font-size: var(--t-xs);
 }
 .avatar--lg {
   width: 76px;
   height: 76px;
-  font-size: 25px;
+  font-size: var(--t-4xl);
 }
 .avatar--sq {
   border-radius: 9px;
 }
 .avatar--org {
   background: var(--ink);
-  font-size: 12px;
+  font-size: var(--t-xs);
 }
 .avatar[data-tint="0"] {
   background: #2e4a57;
@@ -693,7 +688,7 @@ img {
 }
 .pick__none {
   padding: var(--inset-xs) var(--inset-sm);
-  font-size: var(--t-small);
+  font-size: var(--t-md);
   color: var(--ink-3);
 }
 
@@ -713,7 +708,7 @@ img {
   border: 1px solid var(--line);
   border-radius: var(--r-pill);
   background: var(--surface-2);
-  font-size: var(--t-small);
+  font-size: var(--t-md);
 }
 .skillpick__drop {
   display: inline-grid;
@@ -799,11 +794,11 @@ img {
   gap: var(--inline-md);
 }
 .judged__name {
-  font-size: var(--t-h3);
+  font-size: var(--t-2xl);
   font-weight: 600;
 }
 .judged__count {
-  font-size: 13px;
+  font-size: var(--t-sm);
   color: var(--ink-3);
   margin-left: auto;
 }
@@ -850,7 +845,7 @@ img {
   margin-top: var(--stack-2xs);
 }
 .panel-title {
-  font-size: var(--t-h3);
+  font-size: var(--t-2xl);
   font-weight: 600;
   letter-spacing: -0.005em;
 }
@@ -866,15 +861,20 @@ img {
   display: grid;
   gap: var(--stack-xs);
 }
+/* A control's name and its explanation. Both come from type.css roles rather
+   than from numbers here, because the same two lines appear beside a text
+   input, a select, a checkbox and a radio — and they have to read identically
+   in all four. */
 .field__label {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--ink-2);
+  font-size: var(--text-label-size);
+  font-weight: var(--text-label-weight);
+  color: var(--text-label-ink);
 }
 .field__help {
-  font-size: 12.5px;
-  color: var(--ink-3);
-  line-height: 1.45;
+  font-size: var(--text-help-size);
+  font-weight: var(--text-help-weight);
+  color: var(--text-help-ink);
+  line-height: var(--lh-normal);
 }
 
 /* An action that reads as a link because it continues a sentence.
@@ -902,7 +902,7 @@ img {
   border: 1px solid var(--line);
   border-radius: var(--r-ctl);
   background: var(--surface);
-  font-size: var(--t-small);
+  font-size: var(--t-md);
   transition:
     border-color var(--dur-fast) var(--ease-out),
     box-shadow var(--dur-fast) var(--ease-out);
@@ -935,7 +935,12 @@ img {
   padding-left: 38px;
 }
 
-.checkline {
+/* ONE checkbox, everywhere (ui/primitives Checkbox).
+   The label is pinned to a type.css ROLE rather than left to inherit. Inheriting is
+   what produced the bug this replaced: the same control read at 14px inside a
+   filter panel and 16px inside a card, so two groups on one screen looked like
+   two different kinds of control. */
+.cbx {
   display: flex;
   align-items: flex-start;
   gap: var(--inline-md);
@@ -943,23 +948,112 @@ img {
   padding: var(--inset-2xs) 0;
   cursor: pointer;
 }
-.checkline input {
-  margin: var(--stack-2xs) 0 0;
-  accent-color: var(--cherry);
-  width: 16px;
-  height: 16px;
+/* THE CONTROL IS DRAWN HERE, not left to the browser.
+
+   `accent-color` only tints a checkbox that is already TICKED; an unticked one
+   still renders as the platform's default — on macOS Firefox a large plain
+   grey square, which is what looked foreign beside everything else. A control
+   that matched the theme only when checked was never going to look right,
+   because most of them are unchecked most of the time.
+
+   appearance:none hands us the box, and the rest is drawn from the same tokens
+   as .input: one border colour, one radius, one focus ring.
+
+   The tick is a background-image, NOT a ::after. Pseudo-elements on <input>
+   are a replaced-element edge case browsers disagree about; a background
+   always paints. The mark is white to sit on --cherry, so it is inlined here
+   rather than tokenised — a data URI cannot read a custom property. */
+.cbx__box {
+  appearance: none;
+  -webkit-appearance: none;
+
+  /* Sized to the label's cap height and nudged onto its first line. */
   flex: none;
+  width: 18px;
+  height: 18px;
+  margin: 1px 0 0;
+
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--surface) no-repeat center;
+  background-size: 0 0;
+  cursor: pointer;
+
+  transition:
+    border-color var(--dur-fast) var(--ease-out),
+    background-color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out);
 }
-.checkline__text {
+
+/* A radio is the same control with a round box. */
+.cbx__box[type="radio"] {
+  border-radius: 50%;
+}
+
+.cbx:hover .cbx__box:not(:disabled) {
+  border-color: var(--ink-3);
+}
+
+.cbx__box:checked {
+  background-color: var(--cherry);
+  border-color: var(--cherry);
+  background-size: 11px 11px;
+}
+.cbx__box[type="checkbox"]:checked {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23ffffff' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 8.5l3.5 3.5L13 4.5'/%3E%3C/svg%3E");
+}
+.cbx__box[type="radio"]:checked {
+  background-image: radial-gradient(circle, #ffffff 0 50%, transparent 52%);
+  background-size: 14px 14px;
+}
+
+/* :focus-visible, not :focus — a mouse click should not leave a ring behind. */
+.cbx__box:focus-visible {
+  outline: none;
+  border-color: var(--cherry);
+  box-shadow: 0 0 0 3px var(--cherry-wash);
+}
+
+.cbx__box:disabled {
+  cursor: not-allowed;
+  background-color: var(--line-2);
+  border-color: var(--line);
+}
+.cbx__box:disabled:checked {
+  background-color: var(--ink-3);
+  border-color: var(--ink-3);
+}
+
+.cbx__body {
+  display: grid;
+  gap: var(--stack-3xs);
   flex: 1 1 auto;
   min-width: 0;
-  font-size: var(--t-small);
 }
-.checkline__meta {
+/* THE SAME ROLE as .field__label. A checkbox's name is a control's name; it
+   was a step larger, a weight lighter and a different ink before, which is
+   what made a filter panel look like two kinds of control stacked together. */
+.cbx__label {
+  font-size: var(--text-label-size);
+  font-weight: var(--text-label-weight);
+  color: var(--text-label-ink);
+  line-height: var(--lh-normal);
+}
+/* The same role as .field__help, because it IS help text. */
+.cbx__help {
+  font-size: var(--text-help-size);
+  font-weight: var(--text-help-weight);
+  color: var(--text-help-ink);
+  line-height: var(--lh-normal);
+}
+.cbx__meta {
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--t-xs);
   color: var(--ink-3);
   flex: none;
+}
+.cbx__box:disabled ~ .cbx__body {
+  opacity: 0.55;
 }
 
 /* position: relative so the hidden checkbox below is anchored to THIS row.
@@ -1035,7 +1129,7 @@ img {
 }
 .range-value {
   font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: var(--t-sm);
   font-weight: 600;
 }
 
@@ -1050,7 +1144,7 @@ img {
   min-height: 32px;
   padding: 0 var(--inset-lg);
   border-radius: 6px;
-  font-size: 13px;
+  font-size: var(--t-sm);
   font-weight: 500;
   color: var(--ink-2);
   transition:
@@ -1123,8 +1217,9 @@ img {
   border-bottom: 0;
 }
 .fgroup__title {
-  font-size: 13px;
-  font-weight: 600;
+  font-size: var(--text-grouptitle-size);
+  font-weight: var(--text-grouptitle-weight);
+  color: var(--text-grouptitle-ink);
 }
 
 /* ---------- result rows -------------------------------------------------- */
@@ -1137,7 +1232,7 @@ img {
   margin-bottom: var(--stack-lg);
 }
 .results-count {
-  font-size: var(--t-small);
+  font-size: var(--t-md);
   color: var(--ink-2);
 }
 .results-count strong {
@@ -1149,7 +1244,7 @@ img {
   display: inline-flex;
   align-items: center;
   gap: var(--stack-xs);
-  font-size: 12.5px;
+  font-size: var(--t-sm);
   color: var(--ink-2);
   background: var(--surface-3);
   border-radius: var(--r-pill);
@@ -1157,7 +1252,7 @@ img {
 }
 .ranked-by code {
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--t-xs);
   color: var(--ink);
 }
 
@@ -1179,7 +1274,7 @@ img {
 .banner__body {
   flex: 1 1 auto;
   min-width: 0;
-  font-size: var(--t-small);
+  font-size: var(--t-md);
   color: #5e3f06;
 }
 .banner__body b {
@@ -1239,12 +1334,12 @@ img {
 }
 .rank__n {
   font-family: var(--font-mono);
-  font-size: 19px;
+  font-size: var(--t-3xl);
   font-weight: 600;
   letter-spacing: -0.02em;
 }
 .rank__label {
-  font-size: 11px;
+  font-size: var(--t-2xs);
   letter-spacing: 0.07em;
   text-transform: uppercase;
   color: var(--ink-3);
@@ -1262,7 +1357,7 @@ img {
   min-width: 0;
 }
 .row__name {
-  font-size: var(--t-h3);
+  font-size: var(--t-2xl);
   font-weight: 600;
   letter-spacing: -0.01em;
   text-decoration: none;
@@ -1273,14 +1368,14 @@ img {
 }
 .row__login {
   font-family: var(--font-mono);
-  font-size: 12.5px;
+  font-size: var(--t-sm);
   color: var(--ink-3);
 }
 .row__meta {
   display: flex;
   flex-wrap: wrap;
   gap: var(--inline-2xs) var(--inline-md);
-  font-size: 12.5px;
+  font-size: var(--t-sm);
   color: var(--ink-3);
 }
 .row__mid {
@@ -1291,7 +1386,7 @@ img {
   align-content: start;
 }
 .row__headline {
-  font-size: var(--t-small);
+  font-size: var(--t-md);
   color: var(--ink-2);
 }
 .row__skills {
@@ -1317,7 +1412,7 @@ img {
 }
 .stat__n {
   font-family: var(--font-mono);
-  font-size: 22px;
+  font-size: var(--t-4xl);
   font-weight: 600;
   line-height: 1.15;
   letter-spacing: -0.02em;
@@ -1327,7 +1422,7 @@ img {
   font-weight: 500;
 }
 .stat__label {
-  font-size: 11px;
+  font-size: var(--t-2xs);
   letter-spacing: 0.07em;
   text-transform: uppercase;
   color: var(--ink-3);
@@ -1354,7 +1449,7 @@ img {
   padding: 0 var(--inset-sm);
   border-radius: var(--r-ctl);
   font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: var(--t-sm);
   color: var(--ink-2);
   border: 1px solid transparent;
 }
@@ -1394,13 +1489,13 @@ img {
   height: 22px;
 }
 .empty__title {
-  font-size: var(--t-h3);
+  font-size: var(--t-2xl);
   font-weight: 600;
 }
 .empty__body {
   color: var(--ink-2);
   max-width: 46ch;
-  font-size: var(--t-small);
+  font-size: var(--t-md);
 }
 .empty__actions {
   display: flex;
@@ -1415,7 +1510,7 @@ img {
   display: flex;
   align-items: center;
   gap: var(--inline-xs);
-  font-size: 13px;
+  font-size: var(--t-sm);
   color: var(--ink-3);
   margin-bottom: var(--stack-lg);
 }
@@ -1442,13 +1537,13 @@ img {
 }
 .sc-name {
   font-family: var(--font-display);
-  font-size: 38px;
+  font-size: var(--t-6xl);
   line-height: 1.1;
   letter-spacing: -0.015em;
 }
 .sc-login {
   font-family: var(--font-mono);
-  font-size: var(--t-small);
+  font-size: var(--t-md);
   color: var(--ink-3);
 }
 .sc-bio {
@@ -1459,7 +1554,7 @@ img {
   display: flex;
   flex-wrap: wrap;
   gap: var(--inline-xs) var(--inline-lg);
-  font-size: 13px;
+  font-size: var(--t-sm);
   color: var(--ink-3);
 }
 .sc-actions {
@@ -1487,7 +1582,7 @@ img {
 }
 .hscore__n {
   font-family: var(--font-display);
-  font-size: var(--t-hero);
+  font-size: var(--t-7xl);
   line-height: 1;
   letter-spacing: -0.02em;
 }
@@ -1495,20 +1590,20 @@ img {
   color: var(--cherry-deep);
 }
 .hscore__label {
-  font-size: var(--t-eyebrow);
+  font-size: var(--t-xs);
   font-weight: 600;
   letter-spacing: 0.09em;
   text-transform: uppercase;
   color: var(--ink-3);
 }
 .hscore__note {
-  font-size: 12.5px;
+  font-size: var(--t-sm);
   color: var(--ink-3);
   line-height: 1.45;
 }
 .hscore__rank {
   font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: var(--t-sm);
   font-weight: 600;
   color: var(--ink-2);
 }
@@ -1526,11 +1621,11 @@ img {
 }
 .section__title {
   font-family: var(--font-display);
-  font-size: 26px;
+  font-size: var(--t-4xl);
   line-height: 1.2;
 }
 .section__note {
-  font-size: 13px;
+  font-size: var(--t-sm);
   color: var(--ink-3);
   max-width: 56ch;
 }
@@ -1614,7 +1709,7 @@ img {
   display: inline-flex;
   align-items: center;
   gap: var(--inline-2xs);
-  font-size: 12.5px;
+  font-size: var(--t-sm);
   color: var(--ink-3);
   text-decoration: none;
   white-space: nowrap;
@@ -1655,17 +1750,17 @@ img {
   border-left-color: var(--line-2);
 }
 .evrow__pr {
-  font-size: 12.5px;
+  font-size: var(--t-sm);
   color: var(--ink-2);
 }
 .evrow__meta {
-  font-size: 12px;
+  font-size: var(--t-xs);
   color: var(--ink-3);
 }
 .evrow__score {
   margin-left: auto;
   font-weight: 600;
-  font-size: 13px;
+  font-size: var(--t-sm);
   color: var(--teal);
 }
 .standing__item--secondary {
@@ -1673,11 +1768,11 @@ img {
   border-style: dashed;
 }
 .standing__name {
-  font-size: var(--t-h3);
+  font-size: var(--t-2xl);
   font-weight: 600;
 }
 .standing__meta {
-  font-size: 13px;
+  font-size: var(--t-sm);
   color: var(--ink-3);
 }
 .standing__right {
@@ -1720,12 +1815,12 @@ img {
   text-align: left;
 }
 .ev__title {
-  font-size: var(--t-small);
+  font-size: var(--t-md);
   font-weight: 600;
 }
 .ev__repo {
   font-family: var(--font-mono);
-  font-size: 12.5px;
+  font-size: var(--t-sm);
   color: var(--ink-3);
 }
 .ev__right {
@@ -1736,7 +1831,7 @@ img {
 }
 .ev__score {
   font-family: var(--font-mono);
-  font-size: 18px;
+  font-size: var(--t-2xl);
   font-weight: 600;
   letter-spacing: -0.02em;
 }
@@ -1775,7 +1870,7 @@ img {
   grid-template-columns: minmax(0, 1fr) auto;
   gap: var(--stack-sm) var(--inline-lg);
   align-items: center;
-  font-size: 13px;
+  font-size: var(--t-sm);
 }
 
 /* The score as a ring: how full it is IS the number printed inside it.
@@ -1799,7 +1894,7 @@ img {
 }
 .dial__n {
   position: relative;
-  font-size: 13px;
+  font-size: var(--t-sm);
   font-weight: 600;
   color: var(--ink);
 }
@@ -1813,23 +1908,23 @@ img {
    13px regular against a 14px remark — the prose was louder than its heading. */
 .dim__label {
   font-weight: 600;
-  font-size: var(--t-small);
+  font-size: var(--t-md);
   color: var(--ink);
 }
 /* Scoped to .dim: a standalone .rationale (a dispute, a suggestion) has no
    label above it and keeps its own size. */
 .dim .rationale {
-  font-size: 13px;
+  font-size: var(--t-sm);
 }
 .dim__weight {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--t-2xs);
   color: var(--ink-3);
 }
 
 .formula {
   font-family: var(--font-mono);
-  font-size: 12.5px;
+  font-size: var(--t-sm);
   line-height: 1.7;
   color: var(--ink-2);
   background: var(--surface-2);
@@ -1842,7 +1937,7 @@ img {
   color: var(--ink);
 }
 .rationale {
-  font-size: var(--t-small);
+  font-size: var(--t-md);
   color: var(--ink-2);
   border-left: 2px solid var(--line);
   padding-left: var(--inset-lg);
@@ -1859,7 +1954,7 @@ img {
   align-items: baseline;
   gap: var(--inline-xs);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--t-xs);
   color: var(--ink-2);
   background: var(--surface-3);
   border-radius: 5px;
@@ -1885,7 +1980,7 @@ img {
   border-bottom: 1px solid var(--line-2);
 }
 .board th {
-  font-size: var(--t-eyebrow);
+  font-size: var(--t-xs);
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -1948,12 +2043,12 @@ img {
   gap: var(--inline-lg);
 }
 .sl-card__name {
-  font-size: var(--t-h3);
+  font-size: var(--t-2xl);
   font-weight: 600;
   letter-spacing: -0.005em;
 }
 .sl-card__desc {
-  font-size: 13px;
+  font-size: var(--t-sm);
   color: var(--ink-2);
 }
 .sl-card__foot {
@@ -1961,7 +2056,7 @@ img {
   align-items: center;
   justify-content: space-between;
   gap: var(--inline-lg);
-  font-size: 13px;
+  font-size: var(--t-sm);
   color: var(--ink-3);
 }
 .sl-card__faces {
@@ -1970,7 +2065,7 @@ img {
 .sl-card__faces .avatar {
   width: 26px;
   height: 26px;
-  font-size: 10px;
+  font-size: var(--t-3xs);
   border: 2px solid var(--surface);
 }
 .sl-card__faces .avatar + .avatar {
@@ -2008,7 +2103,7 @@ img {
 }
 .entry__name {
   font-weight: 600;
-  font-size: var(--t-small);
+  font-size: var(--t-md);
   text-decoration: none;
 }
 .entry__name:hover {
@@ -2016,7 +2111,7 @@ img {
   text-underline-offset: 3px;
 }
 .entry__meta {
-  font-size: 12.5px;
+  font-size: var(--t-sm);
   color: var(--ink-3);
 }
 .entry__status {
@@ -2029,7 +2124,7 @@ img {
   display: grid;
   grid-template-columns: auto 1fr;
   gap: var(--stack-sm) var(--stack-xl);
-  font-size: var(--t-small);
+  font-size: var(--t-md);
   align-items: baseline;
 }
 .kv dt {
@@ -2053,11 +2148,11 @@ img {
   align-items: center;
   gap: var(--inline-sm);
   font-weight: 600;
-  font-size: var(--t-small);
+  font-size: var(--t-md);
   color: var(--amber);
 }
 .notice__body {
-  font-size: 13px;
+  font-size: var(--t-sm);
   color: #5e3f06;
   line-height: 1.55;
 }
@@ -2105,7 +2200,7 @@ img {
 }
 .modal__title {
   font-family: var(--font-display);
-  font-size: 27px;
+  font-size: var(--t-5xl);
   line-height: 1.2;
 }
 .modal__foot {
@@ -2135,10 +2230,10 @@ img {
 
 .pick__name {
   font-weight: 600;
-  font-size: var(--t-small);
+  font-size: var(--t-md);
 }
 .pick__meta {
-  font-size: 12.5px;
+  font-size: var(--t-sm);
   color: var(--ink-3);
 }
 
@@ -2161,7 +2256,7 @@ img {
   background: var(--ink);
   color: #fff;
   box-shadow: var(--shadow-2);
-  font-size: var(--t-small);
+  font-size: var(--t-md);
   animation: rise var(--dur-slow) var(--ease-out);
 }
 .toast .ico {
@@ -2335,12 +2430,12 @@ img {
   color: var(--ink-3);
 }
 .flow__pr-title {
-  font-size: 12px;
+  font-size: var(--t-xs);
   color: var(--ink-2);
 }
 .flow__pr-tick {
   font-weight: 600;
-  font-size: 12px;
+  font-size: var(--t-xs);
   color: var(--teal);
 }
 
@@ -2354,7 +2449,7 @@ img {
 }
 .flow__cap {
   margin: 0 0 var(--stack-lg);
-  font-size: var(--t-eyebrow);
+  font-size: var(--t-xs);
   color: var(--ink-3);
 }
 .flow__dims {
@@ -2371,7 +2466,7 @@ img {
   gap: var(--stack-sm);
 }
 .flow__dim-name {
-  font-size: 11px;
+  font-size: var(--t-2xs);
   color: var(--ink-3);
 }
 .flow__track {
@@ -2404,7 +2499,7 @@ img {
   display: inline-block;
   padding: var(--inset-2xs) var(--inset-md);
   border-radius: var(--r-pill);
-  font-size: var(--t-eyebrow);
+  font-size: var(--t-xs);
   font-weight: 600;
   background: var(--amber-wash);
   color: var(--amber);
@@ -2446,7 +2541,7 @@ img {
 }
 .flow__pip-note {
   margin: 0;
-  font-size: 11px;
+  font-size: var(--t-2xs);
   color: var(--ink-3);
 }
 .flow__nums {
@@ -2475,7 +2570,7 @@ img {
 }
 .flow__num-cap {
   display: block;
-  font-size: 11px;
+  font-size: var(--t-2xs);
   color: var(--ink-3);
 }
 
@@ -2492,7 +2587,7 @@ img {
   border-radius: var(--r-ctl);
   border: 1px solid var(--line);
   background: var(--surface-3);
-  font-size: 12px;
+  font-size: var(--t-xs);
   color: var(--ink-3);
   opacity: 0.4;
   transform: translateY(3px);
@@ -2521,7 +2616,7 @@ img {
   color: var(--ink);
 }
 .hire__pool-cap {
-  font-size: 11px;
+  font-size: var(--t-2xs);
   color: var(--ink-3);
 }
 
@@ -2575,7 +2670,7 @@ img {
 }
 .hire__gap-note {
   margin: var(--stack-sm) 0 0;
-  font-size: 11px;
+  font-size: var(--t-2xs);
   color: var(--ink-3);
 }
 
@@ -2628,7 +2723,7 @@ img {
   background: var(--surface-3);
 }
 .hire__answer {
-  font-size: 11px;
+  font-size: var(--t-2xs);
   color: var(--ink-3);
 }
 .hire__req.is-accepted .hire__answer {
@@ -2654,7 +2749,7 @@ img {
   color: var(--teal);
 }
 .hire__released-cap {
-  font-size: 11px;
+  font-size: var(--t-2xs);
   color: var(--ink-3);
 }
 
@@ -2681,7 +2776,7 @@ img {
 }
 .rule__title {
   margin: var(--stack-3xs) 0 var(--stack-xs);
-  font-size: 13px;
+  font-size: var(--t-sm);
   color: var(--ink);
 }
 .rule__meta {
@@ -2704,7 +2799,7 @@ img {
   gap: var(--stack-sm);
 }
 .rule__name {
-  font-size: 12px;
+  font-size: var(--t-xs);
   color: var(--ink-2);
 }
 .rule__weight {
@@ -2779,14 +2874,14 @@ img {
   justify-self: start;
   padding: var(--inset-2xs) var(--inset-md);
   border-radius: var(--r-pill);
-  font-size: var(--t-eyebrow);
+  font-size: var(--t-xs);
   font-weight: 600;
   background: var(--amber-wash);
   color: var(--amber);
   border: 1px solid var(--amber);
 }
 .rule__note {
-  font-size: 11px;
+  font-size: var(--t-2xs);
   color: var(--ink-3);
   margin: 0;
 }
@@ -2928,14 +3023,14 @@ img {
     display: none;
   }
   .sc-name {
-    font-size: 30px;
+    font-size: var(--t-5xl);
   }
   .btn--sm {
     min-height: 40px;
   }
-  .checkline {
+  .cbx {
+    /* A comfortable touch target on a phone. */
     min-height: 44px;
-    align-items: center;
   }
   .pager__pages button {
     min-width: 44px;
@@ -2992,7 +3087,7 @@ img {
 .lp-nav__links a {
   color: var(--ink-2);
   text-decoration: none;
-  font-size: var(--t-small);
+  font-size: var(--t-md);
   padding: var(--inset-xs) 0;
   border-bottom: 2px solid transparent;
   transition: color var(--dur-fast) var(--ease-out);
@@ -3029,13 +3124,13 @@ img {
 }
 
 .lp-title {
-  font-size: var(--t-hero);
+  font-size: var(--t-7xl);
   line-height: 1.04;
   margin: 0;
 }
 .lp-lede {
   color: var(--ink-2);
-  font-size: 18px;
+  font-size: var(--t-2xl);
   line-height: 1.55;
   max-width: 62ch;
 }
