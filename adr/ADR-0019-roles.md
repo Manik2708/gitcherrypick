@@ -81,9 +81,8 @@ are verified) · **Source:** `flow-deisgn/hirer-flow.png`
 | PUT    | `/orgs/{orgID}/settings`          | **owner only**, always                               |
 | GET    | `/me/roles`                       | contributor                                          |
 
-`/me/roles` is open roles filtered by the contributor's own profile: eligible countries
-include theirs, minimums met, engagement matches a shape they ticked, and compensation not
-below what they asked for — the filter ADR-0018 §5 promised, applied where only they see it.
+`/me/roles` was open roles filtered by the contributor's own profile. It is **retired** by
+ADR-0020 and its filters moved onto `GET /openings` — see amendment 1.
 
 ### When the pull-request fetch fails
 
@@ -139,3 +138,49 @@ NOT NULL` in RFC-0005, and `first_pr_authored_at` / `latest_pr_authored_at` /
   This makes the open question about independent hirers more visible, not less.
 
 ## Open questions
+
+## Amendments
+
+| Date       | Change                                                                         |
+| ---------- | ------------------------------------------------------------------------------ |
+| 2026-09-19 | **Amendment 1** — `/me/roles` retired, superseded by ADR-0020                  |
+| 2026-09-19 | **Amendment 2** — a role lists its candidates; hires are picked from that list |
+
+### 1. A contributor sees published openings, not every matching role
+
+`GET /me/roles` showed a contributor every **open** role matching their profile, whether or
+not the company had chosen to advertise it. ADR-0020 then made publishing an explicit act —
+and the two cannot both be true. If every matching role is already visible, publishing means
+nothing, and a company that deliberately kept a role private would find it had not.
+
+So the endpoint is retired and `GET /openings` is the single contributor-facing list. It
+gained the filters `/me/roles` held, which ADR-0020 had not originally specified:
+
+- the **shapes of work** they ticked, with freelance keyed on `availability_status` because
+  there is no flag for it (ADR-0018 §2);
+- what they **expect to be paid** — the one place that figure is used, keeping roles below
+  it out of their way and travelling no further (ADR-0018 §5).
+
+Without that second one the retirement would have quietly dropped a promise ADR-0018 made.
+
+The country filter and the minimums were already in ADR-0020's read, so they are unchanged.
+
+### 2. A role knows who is on it, and a hire is picked rather than typed
+
+Two changes that are really one.
+
+**`GET /org-roles/{orgID}/roles/{roleID}/candidates`** lists everybody on a round for the
+role — one row per **person**, not per entry, because somebody staged on two rounds for one
+job has been approached once. It carries no addresses: the hirer who needs one has it from
+the contact request, and a list read in bulk is the wrong place to hand them out.
+
+**Closing now takes `hired` — ids off that list — instead of `hired_emails`.** Decision 15
+is unchanged in substance and strengthened in form. The rule was that an address must have
+been released by an accepted contact request, which also existed to stop the endpoint being
+an oracle for whether an address had an account here. Picking from a list the organisation
+already holds removes the question entirely: there is no address to guess.
+
+The check is now **acceptance**, so the code is `hire_not_accepted` rather than
+`hire_email_not_released`. Staged, notified-but-unanswered and declined all fail, and they
+fail **identically** — distinguishing them would report a contributor's answer to whoever
+asked about somebody else's hiring.

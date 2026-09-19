@@ -26,7 +26,7 @@
    `notified_at IS NULL`.
 10. **Secondary skills appear on a scorecard**, unranked. Standing gates searchability, not
     disclosure.
-11. **`evidence_within_months` has no default.** An unset filter filters nothing.
+11. ~~**`evidence_within_months` has no default.**~~ **Removed** — see amendment 2.
 12. **`per_page` is capped at 50, default 20.**
 13. **`inactive_for_days` is an exact count**, never bucketed.
 14. **A `q=` name search surfaces inactive contributors** regardless of
@@ -74,17 +74,22 @@ POST   /admin/skill-requests/{id}/decide
 
 ### Search parameters
 
-| Parameter                | Type    | Notes                                     |
-| ------------------------ | ------- | ----------------------------------------- |
-| `skills`                 | csv     | AND — `HAVING count(distinct skill_id)=n` |
-| `min_skill_score`        | number  | 0–100                                     |
-| `min_overall_score`      | number  | 0–100                                     |
-| `min_generalist_score`   | number  | **No upper bound**                        |
-| `availability`           | csv     |                                           |
-| `include_inactive`       | boolean | Default false; implied by `q=`            |
-| `evidence_within_months` | integer | No default                                |
-| `q`                      | string  |                                           |
-| `page`, `per_page`       | integer | max 50, default 20                        |
+| Parameter              | Type    | Notes                                     |
+| ---------------------- | ------- | ----------------------------------------- |
+| `skills`               | csv     | AND — `HAVING count(distinct skill_id)=n` |
+| `min_skill_score`      | number  | 0–100                                     |
+| `min_overall_score`    | number  | 0–100                                     |
+| `min_generalist_score` | number  | **No upper bound**                        |
+| `availability`         | csv     |                                           |
+| `include_inactive`     | boolean | Default false; implied by `q=`            |
+| `q`                    | string  |                                           |
+| `min_office_yoe`       | integer | Self-reported; unstated does not clear it |
+| `min_oss_yoe`          | integer | **Verified**; unknown never clears it     |
+| `countries`            | csv     | alpha-2, OR                               |
+| `open_to`              | csv     | remote/onsite/contract/internship, OR     |
+| `page`, `per_page`     | integer | max 50, default 20                        |
+
+There is **no compensation filter**, and there must never be one (ADR-0018 §5).
 
 An unknown key is **422**, never ignored.
 
@@ -180,6 +185,57 @@ independently of `notified_at`.
 
 ## Amendments
 
-| Date       | Change                 |
-| ---------- | ---------------------- |
-| 2026-08-15 | Accepted from RFC-0008 |
+| Date       | Change                                                                         |
+| ---------- | ------------------------------------------------------------------------------ |
+| 2026-08-15 | Accepted from RFC-0008                                                         |
+| 2026-09-19 | **Amendment 2** — `evidence_within_months` removed; four profile filters added |
+| 2026-09-19 | **Amendment 3** — `for_role` excludes who is already on a round                |
+
+### 2. Evidence recency out, the contributor's own account in
+
+`evidence_within_months` is **removed**. It asked how old somebody's code was, which is
+already priced into the scores it sits beside — and it was the only filter in the set that
+penalised a contributor for someone else's merge queue: a pull request that waited nine
+months in review made its author look stale.
+
+In its place, search can now ask what a contributor SAID about themselves (ADR-0018) rather
+than only what their evidence shows. `min_office_yoe`, `min_oss_yoe`, `countries` and
+`open_to`.
+
+Every one is **opt-in**, so an unstated value does not clear a stated minimum. A filter that
+matched people with no figure would be a filter that does nothing, and a hirer asking for
+five years meant five years. The cost falls on contributors who have not filled the form in,
+and their remedy already exists: the profile prompt ADR-0018 added for exactly this.
+
+One asymmetry, and it is deliberate. `min_office_yoe` is self-reported either way, so an
+unstated figure merely fails a comparison. `min_oss_yoe` is **verified** — dated from when a
+first pull request was authored (ADR-0019 §7) — and unknown never clears it, because the
+whole value of a checked number is that an unreadable link cannot clear it.
+
+A stale `evidence_within_months` is **422**, not ignored. A client still sending it is told
+its search did not mean what it thought, which is the same rule every other unknown key
+already followed.
+
+### 3. `for_role` — stop offering the people you already staged
+
+A hirer working one job searches the same pool repeatedly, and every pass returns the people
+they have already put on a round. `for_role=<uuid>` excludes them.
+
+It is a **gate in SQL**, in the `eligible` CTE beside `AssertNotSelf`, for the reason this
+ADR already gives: applied above the query it would break every count and every page.
+`shortlisted` is carried as a column rather than filtered there, so the page and the count
+of who was dropped come off one pass rather than a second materialisation of the population.
+
+**The count is reported**, as `already_shortlisted`, and is **absent** rather than zero when
+the filter was not asked for — nought and not-asked are different answers. It is separate
+from `inactive_hidden`: two reasons behind one number is a number a hirer cannot act on.
+
+**It must name one of the caller's own roles**, refused as `role_not_found` otherwise — and
+refused identically for an id that does not exist, so a guess cannot confirm a real company's
+role. Not because another organisation's shortlist could be read through it; because
+`already_shortlisted` would say how many people matching this query that organisation has
+already approached.
+
+Measured before it was written, at 1,000 contributors and 500 shortlists: **17.0 ms → 21.4 ms
+median, of which the exclusion set is 0.84 ms**. It resolves through `idx_shortlists_role` and
+scales with how heavily one job has been worked, not with the population.

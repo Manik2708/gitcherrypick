@@ -1,0 +1,124 @@
+-- ---------------------------------------------------------------------------
+-- RFC-0020 — Public openings
+--
+-- Delta only. Everything not mentioned here stays as earlier RFCs defined it.
+--
+-- Nothing is edited at origin: an opening is a new thing SITTING ON a role,
+-- not a change to one. That matters because an open role is immutable
+-- (ADR-0019 §13) — publishing it, unpublishing it and changing what it asks
+-- for all have to be possible without rewriting the role underneath.
+-- ---------------------------------------------------------------------------
+
+
+-- ---------------------------------------------------------------------------
+-- 1. An opening: a role, made public, with a bar on it.
+--
+-- Every role until now was PRIVATE. A hirer searched, shortlisted, and the
+-- contributor heard about the job only when a contact request arrived. An
+-- opening inverts that one direction: it lets a contributor find the job.
+--
+-- It does NOT invert consent. There is no apply button here and no way for a
+-- contributor to make themselves known by reading one — a company still
+-- approaches, and the address is still released only on acceptance
+-- (ADR-0005 §9). What changes is that somebody can now see what exists.
+-- ---------------------------------------------------------------------------
+CREATE TABLE role_openings (
+    id      uuid PRIMARY KEY,
+
+    -- ONE opening per role. Two would be two public descriptions of one job,
+    -- each with its own bar, and nothing able to say which a contributor is
+    -- looking at.
+    role_id uuid NOT NULL UNIQUE REFERENCES roles(id) ON DELETE CASCADE,
+
+    -- --- the bar --------------------------------------------------------
+    --
+    -- All optional, and NULL means no bar rather than a bar of zero. A role
+    -- open to anybody and a role that has decided to accept the lowest score
+    -- on the platform are different invitations.
+    --
+    -- A STATED BAR IS NOT CLEARED BY AN ABSENT SCORE. A contributor with no
+    -- overall score has not been judged yet; showing them a role that asks for
+    -- 60 would be promising a match that does not exist, and the fix is for
+    -- them to submit a claim rather than for the platform to look the other
+    -- way.
+    min_overall_score    numeric(5, 2),
+
+    -- Unbounded, unlike overall (ADR-0007): breadth has no ceiling, so there
+    -- is no 0-100 check to write here.
+    min_generalist_score numeric(6, 2),
+
+    -- Years contributing, VERIFIED and dated from authorship (ADR-0019 §7).
+    --
+    -- Its own column rather than a read of roles.min_oss_yoe, because the two
+    -- answer different questions: the role's is what the company will consider
+    -- when IT approaches somebody, and this is what it will say in public.
+    -- They are usually the same number and the form pre-fills one from the
+    -- other; they are allowed to differ, because an open role cannot be edited
+    -- and a public bar has to be changeable without revising the job.
+    min_oss_yoe          smallint,
+
+    -- --- publication ----------------------------------------------------
+    --
+    -- Stamped rather than implied by the row existing, so an opening can be
+    -- drafted, withdrawn and re-published without losing when it first went
+    -- out — which is the only record of how long something has been advertised.
+    published_at  timestamptz,
+    published_by  uuid REFERENCES hirer_accounts(id),
+
+    -- Withdrawn, not deleted. A contributor who saw it yesterday and is
+    -- wondering where it went is better served by a row that says so.
+    withdrawn_at  timestamptz,
+
+    created_by    uuid NOT NULL REFERENCES hirer_accounts(id),
+    created_at    timestamptz NOT NULL DEFAULT now(),
+    updated_at    timestamptz NOT NULL DEFAULT now(),
+
+    CONSTRAINT ck_opening_overall CHECK (
+        min_overall_score IS NULL
+        OR (min_overall_score >= 0 AND min_overall_score <= 100)),
+    CONSTRAINT ck_opening_generalist CHECK (
+        min_generalist_score IS NULL OR min_generalist_score >= 0),
+    CONSTRAINT ck_opening_oss_yoe CHECK (
+        min_oss_yoe IS NULL OR (min_oss_yoe >= 0 AND min_oss_yoe <= 80)),
+
+    -- Published and withdrawn together is a state nobody can read.
+    CONSTRAINT ck_opening_published CHECK (
+        (published_by IS NULL) = (published_at IS NULL)),
+    CONSTRAINT ck_opening_withdrawn CHECK (
+        withdrawn_at IS NULL OR published_at IS NOT NULL)
+);
+
+-- The contributor's read: what is live right now.
+CREATE INDEX idx_openings_live ON role_openings (published_at)
+    WHERE published_at IS NOT NULL AND withdrawn_at IS NULL;
+
+
+-- ---------------------------------------------------------------------------
+-- 2. The per-skill bar.
+--
+-- A table rather than columns, because a role wanting Go AND Kubernetes at
+-- different scores is the ordinary case and a pair of columns could hold one.
+--
+-- Matched against PRIMARY standing only, exactly as search is (ADR-0005): five
+-- distinct merged pull requests is what makes a skill rankable, and a bar met
+-- by a secondary skill would be a bar met by evidence the platform will not
+-- rank.
+-- ---------------------------------------------------------------------------
+CREATE TABLE role_opening_skills (
+    opening_id uuid NOT NULL REFERENCES role_openings(id) ON DELETE CASCADE,
+    skill_id   uuid NOT NULL REFERENCES skills(id) ON DELETE RESTRICT,
+
+    -- NOT NULL: a skill listed with no score is just a skill, and this table
+    -- exists to say how good at it somebody has to be. A role that only wants
+    -- the skill names it with a score of 0.
+    min_score  numeric(5, 2) NOT NULL,
+
+    PRIMARY KEY (opening_id, skill_id),
+    CONSTRAINT ck_opening_skill_score CHECK (min_score >= 0 AND min_score <= 100)
+);
+
+CREATE INDEX idx_opening_skills_skill ON role_opening_skills (skill_id);
+
+CREATE TRIGGER trg_role_openings_updated_at
+    BEFORE UPDATE ON role_openings
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
