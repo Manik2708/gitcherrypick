@@ -1,0 +1,449 @@
+{
+  "name": "an advert reaches only the people who clear its bar",
+  "description": "ADR-0020. Every role until now was PRIVATE: a hirer searched, shortlisted, and a contributor heard about the job only when a contact request arrived. An opening is a role a company has chosen to publish, with a bar on it — and it inverts discovery in one direction and no other. There is no apply route in this fixture because there is no apply route at all: reading an opening sends nothing, and a company cannot learn that anybody looked.\n\nThe assertions that matter are all the same rule seen from different sides: A STATED BAR IS NOT CLEARED BY AN ABSENT SCORE. These figures are evidence the platform produced, so somebody with no overall score has not been judged rather than scored low — showing them a role asking for 60 would promise a match that does not exist, and the remedy is a claim rather than a filter that looks away.\n\nThe COUNT is the other half. A contributor sees only what they clear, so an empty list on its own cannot say whether nobody is hiring or whether they qualify for nothing. `missed` answers that and nothing more: it itemises no shortfall and exposes no company's bar.",
+  "seed": ["principals", "catalogue", "repositories", "scored_population"],
+  "steps": [
+    {
+      "_step": "Alice says what she would take. An advert reaches only people whose stated shapes admit it (ADR-0018 §4), so without this she matches nothing however good her scores are.",
+      "as": "alice",
+      "request": {
+        "method": "PUT",
+        "path": "/me/profile",
+        "body": {
+          "open_to_remote": true,
+          "open_to_internships": false,
+          "open_to_onsite": false,
+          "open_to_contract": false,
+          "current_country": "GB",
+          "office_yoe": 6,
+          "first_pr_url": "",
+          "latest_pr_url": ""
+        }
+      },
+      "expect": {
+        "status": 200
+      }
+    },
+    {
+      "_step": "Nothing is published yet, so nothing is open to her — and nothing is missed either. Both zeros matter: `missed` counts live adverts she fails, and there are none.",
+      "as": "alice",
+      "request": {
+        "method": "GET",
+        "path": "/openings"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "openings": [],
+          "matched": 0,
+          "missed": 0
+        }
+      }
+    },
+    {
+      "_step": "A hirer writes a role and opens it. Still private: an open role is not an advertised one.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles",
+        "body": {
+          "title": "Platform engineer",
+          "description": "Go, on the deploy path.",
+          "engagement": "full_time",
+          "location": "remote",
+          "currency": "GBP",
+          "yearly_ctc": 9000000,
+          "yearly_base": 7500000,
+          "eligible_countries": ["GB"],
+          "max_interview_rounds": 2
+        }
+      },
+      "capture": {
+        "role": "$.id"
+      },
+      "expect": {
+        "status": 201,
+        "body": {
+          "id": "<uuid>",
+          "organization_id": "01920000-0000-7000-8000-00000000b001",
+          "status": "draft",
+          "title": "Platform engineer",
+          "description": "Go, on the deploy path.",
+          "engagement": "full_time",
+          "location": "remote",
+          "address_id": null,
+          "currency": "GBP",
+          "yearly_ctc": 9000000,
+          "yearly_base": 7500000,
+          "hourly_rate": null,
+          "expected_hours": null,
+          "eligible_countries": ["GB"],
+          "min_office_yoe": null,
+          "min_oss_yoe": null,
+          "requires_online_test": null,
+          "max_interview_rounds": 2,
+          "avg_days_to_offer": null,
+          "questions": [],
+          "opened_at": null,
+          "close_requested_at": null,
+          "closed_at": null,
+          "close_reason": null,
+          "hires": [],
+          "advertised": false,
+          "supersedes": null,
+          "created_at": "<timestamp>",
+          "updated_at": "<timestamp>"
+        }
+      }
+    },
+    {
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles/{{role}}/open"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "id": "<uuid>",
+          "organization_id": "01920000-0000-7000-8000-00000000b001",
+          "status": "open",
+          "title": "Platform engineer",
+          "description": "Go, on the deploy path.",
+          "engagement": "full_time",
+          "location": "remote",
+          "address_id": null,
+          "currency": "GBP",
+          "yearly_ctc": 9000000,
+          "yearly_base": 7500000,
+          "hourly_rate": null,
+          "expected_hours": null,
+          "eligible_countries": ["GB"],
+          "min_office_yoe": null,
+          "min_oss_yoe": null,
+          "requires_online_test": null,
+          "max_interview_rounds": 2,
+          "avg_days_to_offer": null,
+          "questions": [],
+          "opened_at": "<timestamp>",
+          "close_requested_at": null,
+          "closed_at": null,
+          "close_reason": null,
+          "hires": [],
+          "advertised": false,
+          "supersedes": null,
+          "created_at": "<timestamp>",
+          "updated_at": "<timestamp>"
+        }
+      }
+    },
+    {
+      "_step": "An open role still reaches nobody. THIS is what publishing means — without it, the advert surface would be every role a company ever opened.",
+      "as": "alice",
+      "request": {
+        "method": "GET",
+        "path": "/openings"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "openings": [],
+          "matched": 0,
+          "missed": 0
+        }
+      }
+    },
+    {
+      "_step": "A bar nobody could clear: 99 overall, when the highest score in the seeded population is 71.5.",
+      "as": "hank",
+      "request": {
+        "method": "PUT",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles/{{role}}/opening",
+        "body": {
+          "min_overall_score": 99,
+          "min_generalist_score": null,
+          "min_oss_yoe": null,
+          "skills": []
+        }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "id": "<uuid>",
+          "role_id": "<uuid>",
+          "min_overall_score": 99,
+          "min_generalist_score": null,
+          "min_oss_yoe": null,
+          "skills": [],
+          "live": false,
+          "published_at": null,
+          "withdrawn_at": null
+        }
+      }
+    },
+    {
+      "_step": "Saving the bar does not publish it. Two acts, because publishing is the commitment and an organisation may want a different person making it.",
+      "as": "alice",
+      "request": {
+        "method": "GET",
+        "path": "/openings"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "openings": [],
+          "matched": 0,
+          "missed": 0
+        }
+      }
+    },
+    {
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles/{{role}}/opening/publish"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "id": "<uuid>",
+          "role_id": "<uuid>",
+          "min_overall_score": 99,
+          "min_generalist_score": null,
+          "min_oss_yoe": null,
+          "skills": [],
+          "live": true,
+          "published_at": "<timestamp>",
+          "withdrawn_at": null
+        }
+      }
+    },
+    {
+      "_step": "NOW IT IS LIVE AND SHE STILL DOES NOT SEE IT — her 64.2 does not clear 99. But `missed` is 1, which is the whole point of the count: her empty list stops meaning 'nobody is hiring'.",
+      "as": "alice",
+      "request": {
+        "method": "GET",
+        "path": "/openings"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "openings": [],
+          "matched": 0,
+          "missed": 1
+        }
+      }
+    },
+    {
+      "_step": "Lower the bar to something she clears.",
+      "as": "hank",
+      "request": {
+        "method": "PUT",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles/{{role}}/opening",
+        "body": {
+          "min_overall_score": 60,
+          "min_generalist_score": null,
+          "min_oss_yoe": null,
+          "skills": [
+            {
+              "slug": "go",
+              "min_score": 60
+            }
+          ]
+        }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "id": "<uuid>",
+          "role_id": "<uuid>",
+          "min_overall_score": 60,
+          "min_generalist_score": null,
+          "min_oss_yoe": null,
+          "skills": [
+            {
+              "slug": "go",
+              "skill_id": "<uuid>",
+              "name": "Go",
+              "min_score": 60
+            }
+          ],
+          "live": true,
+          "published_at": "<timestamp>",
+          "withdrawn_at": null
+        }
+      }
+    },
+    {
+      "_step": "She clears both, and sees the job AND what it asked for — she has already met it, so the bar discloses nothing she could not infer, and a role that states what it wanted is more legible than one that simply appeared.",
+      "as": "alice",
+      "request": {
+        "method": "GET",
+        "path": "/openings"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "matched": 1,
+          "missed": 0,
+          "openings": [
+            {
+              "id": "<uuid>",
+              "organization": "Acme Corp",
+              "role": {
+                "id": "<uuid>",
+                "title": "Platform engineer",
+                "description": "Go, on the deploy path.",
+                "engagement": "full_time",
+                "location": "remote",
+                "currency": "GBP",
+                "yearly_ctc": 9000000,
+                "yearly_base": 7500000,
+                "hourly_rate": null,
+                "expected_hours": null,
+                "eligible_countries": ["GB"],
+                "requires_online_test": null,
+                "max_interview_rounds": 2,
+                "avg_days_to_offer": null,
+                "questions": []
+              },
+              "bar": {
+                "min_overall_score": 60,
+                "min_generalist_score": null,
+                "min_oss_yoe": null,
+                "skills": [
+                  {
+                    "slug": "go",
+                    "skill_id": "<uuid>",
+                    "name": "Go",
+                    "min_score": 60
+                  }
+                ]
+              },
+              "posted_at": "<timestamp>"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "_step": "DAVE'S GO IS THE HIGHEST ON THE PLATFORM AND IS SECONDARY. Five distinct merged pull requests is what makes a skill rankable, and a bar cleared by a secondary skill would be cleared by evidence the platform declines to rank (ADR-0005). He also never filled his profile in, so he would fail anyway — which is itself the rule that an untouched profile surfaces nobody.",
+      "as": "dave",
+      "request": {
+        "method": "GET",
+        "path": "/openings"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "openings": [],
+          "matched": 0,
+          "missed": 1
+        }
+      }
+    },
+    {
+      "_step": "A bar naming a skill that is not in the catalogue is refused rather than dropped. A bar quietly missing the skill it was written around would advertise the role to people who do not have it, and nothing in the response would say so.",
+      "as": "hank",
+      "request": {
+        "method": "PUT",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles/{{role}}/opening",
+        "body": {
+          "min_overall_score": null,
+          "min_generalist_score": null,
+          "min_oss_yoe": null,
+          "skills": [
+            {
+              "slug": "cobol-on-cogs",
+              "min_score": 10
+            }
+          ]
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "unknown_skill"
+        }
+      }
+    },
+    {
+      "_step": "An overall score above 100 is refused: no score can reach it, so it is a typo rather than a bar.",
+      "as": "hank",
+      "request": {
+        "method": "PUT",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles/{{role}}/opening",
+        "body": {
+          "min_overall_score": 140,
+          "min_generalist_score": null,
+          "min_oss_yoe": null,
+          "skills": []
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "invalid_opening"
+        }
+      }
+    },
+    {
+      "_step": "Withdrawing takes it down. It is a stamp and not a delete — a contributor who saw it yesterday is better served by a row that says where it went — and a withdrawn advert is not a MISS either, because it is no longer live.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles/{{role}}/opening/withdraw"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "id": "<uuid>",
+          "role_id": "<uuid>",
+          "min_overall_score": 60,
+          "min_generalist_score": null,
+          "min_oss_yoe": null,
+          "skills": [
+            {
+              "slug": "go",
+              "skill_id": "<uuid>",
+              "name": "Go",
+              "min_score": 60
+            }
+          ],
+          "live": false,
+          "published_at": "<timestamp>",
+          "withdrawn_at": "<timestamp>"
+        }
+      }
+    },
+    {
+      "as": "alice",
+      "request": {
+        "method": "GET",
+        "path": "/openings"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "openings": [],
+          "matched": 0,
+          "missed": 0
+        }
+      }
+    },
+    {
+      "_step": "A HIRER CANNOT READ THE CATALOGUE. It is a contributor's surface: the whole of it is 'what is open to ME', and a hirer has no me to filter by.",
+      "as": "hank",
+      "request": {
+        "method": "GET",
+        "path": "/openings"
+      },
+      "expect": {
+        "status": 403,
+        "body": {
+          "error": "contributor_required"
+        }
+      }
+    }
+  ]
+}

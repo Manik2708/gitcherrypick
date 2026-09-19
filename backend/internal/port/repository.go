@@ -590,6 +590,12 @@ type RoleRepository interface {
 	// Matching returns open roles this contributor could be approached for.
 	Matching(ctx context.Context, m RoleMatch) ([]domain.Role, error)
 
+	// Candidates lists everybody on a round for this role.
+	//
+	// One row per PERSON, not per entry: somebody staged on two rounds for
+	// one job has been approached once as far as a hirer is concerned.
+	Candidates(ctx context.Context, id domain.RoleID) ([]domain.RoleCandidate, error)
+
 	// HiresOf reports who a role was filled with.
 	HiresOf(ctx context.Context, id domain.RoleID) ([]domain.RoleHire, error)
 }
@@ -607,6 +613,10 @@ type RoleClosure struct {
 	// Hires is one entry per person, and must be non-empty exactly when Reason
 	// is CloseHiredViaPlatform. A role may fill several seats: "two backend
 	// engineers" is one posting and two people.
+	//
+	// Every one must be a candidate on this role who ACCEPTED (ADR-0019 §15).
+	// Staged, unanswered and declined all fail: a company may record hiring
+	// somebody who agreed to talk to it and nobody else.
 	Hires []domain.UserID
 }
 
@@ -640,6 +650,58 @@ type RoleMatch struct {
 
 	Limit  int
 	Offset int
+}
+
+// OpeningRepository owns published adverts (ADR-0020).
+type OpeningRepository interface {
+	// ByRole reads the opening on a role, or ErrNotFound when it has none.
+	ByRole(ctx context.Context, id domain.RoleID) (*domain.Opening, error)
+
+	// Save creates or replaces the BAR. It never publishes: drafting the
+	// numbers and committing them in public are separate acts, under the
+	// organisation's authority setting (ADR-0020 §9).
+	Save(ctx context.Context, tx Tx, o *domain.Opening) (*domain.Opening, error)
+
+	// Publish stamps it live. Withdraw stamps it down without deleting it —
+	// a contributor who saw it yesterday is better served by a row that says
+	// where it went.
+	Publish(ctx context.Context, tx Tx, id domain.RoleID, by domain.HirerID, at time.Time) (*domain.Opening, error)
+	Withdraw(ctx context.Context, tx Tx, id domain.RoleID, at time.Time) (*domain.Opening, error)
+
+	// Matching is THE contributor's read: the live openings this person
+	// clears, and how many they do not.
+	//
+	// Both numbers come from ONE call because two queries could disagree
+	// about a row that changed between them — and the count is the whole of
+	// what a contributor is told about the rest, so it must not be able to
+	// contradict the list it sits under (ADR-0020 §6).
+	Matching(ctx context.Context, m OpeningMatch) (*OpeningResults, error)
+}
+
+// OpeningMatch is a contributor's side of the advert query.
+//
+// Everything here is read from what the platform ESTABLISHED about them —
+// scores it computed, years it verified — rather than from anything they
+// typed, except the country. That is why an absent value fails a stated bar:
+// the figures are evidence, and an absent one is not a small figure.
+type OpeningMatch struct {
+	UserID domain.UserID
+
+	Limit  int
+	Offset int
+}
+
+// OpeningResults is what the contributor's read answers.
+type OpeningResults struct {
+	// Openings they clear, newest role first.
+	Openings []domain.Opening
+
+	// Matched is the total they clear; Missed is the number of live openings
+	// they do not. Missed is a BARE COUNT and nothing more: it stops an empty
+	// list lying about why it is empty, without itemising anybody's shortfall
+	// or exposing a company's bar (ADR-0020 §6).
+	Matched int
+	Missed  int
 }
 
 // OrgSettingsRepository owns an organisation's policy, as opposed to its

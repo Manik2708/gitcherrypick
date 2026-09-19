@@ -379,6 +379,23 @@ func mustCreateShortlist(ctx context.Context, t *testing.T, db *postgres.DB, hir
 	return s
 }
 
+// mustCreateShortlistFor opens a second round on an EXISTING role, which is
+// what "one job worked over several rounds" looks like.
+func mustCreateShortlistFor(ctx context.Context, t *testing.T, db *postgres.DB, hirer *domain.Hirer, role domain.RoleID, name string) *domain.Shortlist {
+	t.Helper()
+	s, err := db.Shortlists().Create(ctx, &domain.Shortlist{
+		OrganizationID:      hirer.OrganizationID,
+		RoleID:              role,
+		Name:                name,
+		TentativeResultDate: time.Now().AddDate(0, 1, 0),
+		CreatedBy:           domain.RefTo(hirer),
+	})
+	if err != nil {
+		t.Fatalf("creating shortlist %q: %v", name, err)
+	}
+	return s
+}
+
 func mustAddEntry(ctx context.Context, t *testing.T, db *postgres.DB, id domain.ShortlistID, user domain.UserID, by *domain.Hirer) *domain.ShortlistEntry {
 	t.Helper()
 	e, err := db.Shortlists().AddEntry(ctx, &domain.ShortlistEntry{

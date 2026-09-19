@@ -37,7 +37,11 @@ const roleColumns = `
 	r.created_by, r.opened_by, r.opened_at,
 	r.close_requested_by, r.close_requested_at,
 	r.closed_at, r.closed_by, r.close_reason, coalesce(r.close_note, ''),
-	r.supersedes_id, r.created_at, r.updated_at`
+	r.supersedes_id, r.created_at, r.updated_at,
+	EXISTS (SELECT 1 FROM role_openings o
+	         WHERE o.role_id = r.id
+	           AND o.published_at IS NOT NULL
+	           AND o.withdrawn_at IS NULL)`
 
 // scanRole reads one row. The country list and the questions are separate
 // reads, because a join against two child tables would multiply the role row
@@ -67,7 +71,7 @@ func scanRole(row interface{ Scan(...any) error }) (*domain.Role, error) {
 		&createdBy, &openedBy, &out.OpenedAt,
 		&closeReqBy, &out.CloseRequestedAt,
 		&out.ClosedAt, &closedBy, &reason, &out.CloseNote,
-		&supersedes, &out.CreatedAt, &out.UpdatedAt)
+		&supersedes, &out.CreatedAt, &out.UpdatedAt, &out.Advertised)
 	if err != nil {
 		return nil, err
 	}
@@ -659,4 +663,54 @@ func (r *OrgSettingsRepository) Save(ctx context.Context, t port.Tx, s *domain.O
 		string(s.OrgID), string(s.RoleCreateAuthority),
 		string(s.RoleUpdateAuthority), string(s.RoleCloseAuthority))
 	return translate(err, fmt.Sprintf("saving settings for organization %s", s.OrgID))
+}
+
+// Candidates lists everybody on a round for this role.
+//
+// DISTINCT ON the person, not the entry: the same contributor staged on two
+// rounds for one job has been approached once as far as a hirer is concerned,
+// and showing them twice would make a list of six people read as a list of
+// nine approaches.
+//
+// The earliest entry wins the tie, because that is the one that reached them —
+// and its contact request is the one that carries their answer.
+func (r *RoleRepository) Candidates(ctx context.Context, id domain.RoleID) ([]domain.RoleCandidate, error) {
+	rows, err := r.db.pool.Query(ctx, `
+		SELECT DISTINCT ON (e.user_id)
+		       e.user_id, u.display_name, coalesce(gi.github_login, ''),
+		       s.id, s.name,
+		       coalesce(cr.status::text, ''), e.notified_at
+		  FROM shortlist_entries e
+		  JOIN shortlists s ON s.id = e.shortlist_id
+		  JOIN users u ON u.id = e.user_id
+		  LEFT JOIN user_github_identities gi ON gi.user_id = e.user_id
+		  -- The request raised for this person ON THIS ROUND, which is where
+		  -- their answer lives. A left join because a staged entry has none.
+		  LEFT JOIN contact_requests cr
+		         ON cr.shortlist_id = e.shortlist_id AND cr.user_id = e.user_id
+		 WHERE s.role_id = $1
+		 ORDER BY e.user_id, e.added_at`, string(id))
+	if err != nil {
+		return nil, translate(err, fmt.Sprintf("listing candidates for role %s", id))
+	}
+	defer rows.Close()
+
+	out := []domain.RoleCandidate{}
+	for rows.Next() {
+		var (
+			c                 domain.RoleCandidate
+			user, shortlistID string
+			status            string
+		)
+		if err := rows.Scan(&user, &c.DisplayName, &c.GitHubLogin,
+			&shortlistID, &c.ShortlistName, &status, &c.NotifiedAt); err != nil {
+			return nil, translate(err, "scanning a candidate")
+		}
+		c.UserID = domain.UserID(user)
+		c.ShortlistID = domain.ShortlistID(shortlistID)
+		c.ContactStatus = domain.ContactRequestStatus(status)
+		c.Accepted = c.ContactStatus == domain.ContactAccepted
+		out = append(out, c)
+	}
+	return out, translate(rows.Err(), "listing candidates")
 }

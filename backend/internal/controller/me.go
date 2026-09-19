@@ -21,8 +21,10 @@ type MeController struct {
 	reeval    port.ReevaluationService
 	profiles  port.ProfileService
 
-	// roles backs GET /me/roles — the contributor's view of what is open to
-	// them, and the one place their compensation expectation is used.
+	// roles is held for nothing right now: GET /me/roles was retired by
+	// ADR-0020, which made a published opening the only role a contributor
+	// sees. Kept on the struct so the wiring does not churn when the next
+	// contributor-facing role read arrives.
 	roles port.RoleService
 }
 
@@ -61,10 +63,6 @@ func (c *MeController) Routes() (string, http.Handler) {
 	r.Get("/compensation", c.compensation)
 	r.Put("/compensation", c.saveCompensation)
 
-	// What is open to this person (ADR-0019). Under /me rather than a public
-	// roles list, because the filter reads their profile — including the pay
-	// they expect, which is why the result can only be theirs.
-	r.Get("/roles", myRoles(c.roles))
 	r.Get("/skills", c.mySkills)
 	r.Get("/rank", c.myRank)
 	r.Get("/verification", c.myVerification)

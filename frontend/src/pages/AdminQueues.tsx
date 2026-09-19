@@ -25,6 +25,7 @@ import {
   Banner,
   Button,
   Card,
+  Checkbox,
   Empty,
   Failure,
   Field,
@@ -214,14 +215,11 @@ function VerificationQueue() {
                 />
               </Field>
 
-              <label className="checkline">
-                <input
-                  type="checkbox"
-                  checked={payment[r.id] ?? false}
-                  onChange={(e) => setPayment({ ...payment, [r.id]: e.target.checked })}
-                />
-                <span className="checkline__text">Payment capability established</span>
-              </label>
+              <Checkbox
+                label="Payment capability established"
+                checked={payment[r.id] ?? false}
+                onChange={(on) => setPayment({ ...payment, [r.id]: on })}
+              />
             </div>
 
             <div className="row__right">
@@ -489,16 +487,11 @@ function SweepControl() {
         />
       </Field>
 
-      <label className="checkline">
-        <input
-          type="checkbox"
-          checked={acknowledged}
-          onChange={(e) => setAcknowledged(e.target.checked)}
-        />
-        <span className="checkline__text">
-          I understand every score leaves search until it is re-judged
-        </span>
-      </label>
+      <Checkbox
+        label="I understand every score leaves search until it is re-judged"
+        checked={acknowledged}
+        onChange={setAcknowledged}
+      />
 
       <Button
         variant="danger"

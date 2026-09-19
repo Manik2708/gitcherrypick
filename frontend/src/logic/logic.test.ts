@@ -13,6 +13,8 @@ import {
   slotsFromEvidence,
 } from "./claims";
 import * as format from "./format";
+import { applyRole, filtersFromRole } from "./roleFilters";
+import type { Role } from "../contract";
 
 const NOW = new Date("2026-08-12T09:00:00Z");
 
@@ -120,5 +122,109 @@ describe("dimensions", () => {
 
   it("labels conversation_quality the way the product does", () => {
     expect(dimensionLabel("conversation_quality")).toBe("Conversation");
+  });
+});
+
+/* --- filling the search from a role (frontend-only convenience) ----------- */
+
+const ROLE: Role = {
+  id: "r1",
+  organization_id: "o1",
+  status: "open",
+  title: "Senior platform engineer",
+  description: "",
+  engagement: "full_time",
+  location: "remote",
+  address_id: null,
+  currency: "GBP",
+  yearly_ctc: 11500000,
+  yearly_base: 9500000,
+  hourly_rate: null,
+  expected_hours: null,
+  eligible_countries: ["GB", "DE"],
+  min_office_yoe: 5,
+  min_oss_yoe: 3,
+  requires_online_test: false,
+  max_interview_rounds: 3,
+  avg_days_to_offer: 12,
+  questions: [],
+  opened_at: "2026-09-16T00:00:00Z",
+  close_requested_at: null,
+  closed_at: null,
+  close_reason: null,
+  hires: [],
+  advertised: false,
+  supersedes: null,
+  created_at: "2026-09-16T00:00:00Z",
+  updated_at: "2026-09-16T00:00:00Z",
+};
+
+describe("a role fills the search in", () => {
+  it("carries across what a role actually states", () => {
+    expect(filtersFromRole(ROLE)).toEqual({
+      countries: ["GB", "DE"],
+      minOfficeYoe: 5,
+      minOssYoe: 3,
+      openTo: ["remote"],
+      availability: undefined,
+      // And the exclusion: searching again for a job you have been working
+      // should not keep offering the people already on a round for it.
+      forRole: "r1",
+    });
+  });
+
+  it("maps an engagement to as FEW shapes as possible", () => {
+    // open_to is OR-ed by the server, so naming more shapes widens the search.
+    // A contract role that also asked for "remote" would return everybody open
+    // to a permanent remote job.
+    expect(filtersFromRole({ ...ROLE, engagement: "contract" }).openTo).toEqual(["contract"]);
+    expect(filtersFromRole({ ...ROLE, engagement: "internship" }).openTo).toEqual(["internship"]);
+    expect(filtersFromRole({ ...ROLE, location: "address" }).openTo).toEqual(["onsite"]);
+  });
+
+  it("narrows AVAILABILITY for freelance rather than inventing a flag", () => {
+    // There is no open_to_freelance flag: availability_status already carries
+    // freelance twice over, and two controls meaning one thing can disagree.
+    const freelance = filtersFromRole({ ...ROLE, engagement: "freelance" });
+    expect(freelance.openTo).toBeUndefined();
+    expect(freelance.availability).toEqual(["looking_for_freelance", "open_to_freelance"]);
+  });
+
+  it("treats no eligible countries as no filter, not as nowhere", () => {
+    expect(filtersFromRole({ ...ROLE, eligible_countries: [] }).countries).toBeUndefined();
+  });
+
+  it("CLEARS what a previous role set", () => {
+    // The failure worth avoiding: a minimum left behind from an earlier role
+    // silently narrows a search the hirer believes they have just repointed.
+    const after = applyRole(
+      { minOfficeYoe: 9, minOssYoe: 9, countries: ["IN"], openTo: ["contract"] },
+      { ...ROLE, min_office_yoe: null, min_oss_yoe: null, eligible_countries: [] },
+    );
+    expect(after.minOfficeYoe).toBeUndefined();
+    expect(after.minOssYoe).toBeUndefined();
+    expect(after.countries).toBeUndefined();
+    expect(after.openTo).toEqual(["remote"]);
+  });
+
+  it("leaves alone everything a role cannot answer", () => {
+    // A role says nothing about which skills somebody wants. Wiping a skill
+    // list because a role was picked from a dropdown is the opposite of a
+    // convenience.
+    const after = applyRole({ skills: ["go", "kubernetes"], q: "ada", minSkillScore: 70 }, ROLE);
+    expect(after.skills).toEqual(["go", "kubernetes"]);
+    expect(after.q).toBe("ada");
+    expect(after.minSkillScore).toBe(70);
+  });
+
+  it("returns to the first page, because the population just changed", () => {
+    expect(applyRole({ page: 4 }, ROLE).page).toBe(1);
+  });
+
+  it("points the exclusion at the role it was filled from", () => {
+    // Applying a SECOND role must repoint it, not leave the first one
+    // quietly excluding people from a search about a different job.
+    const after = applyRole({ forRole: "an-older-role" }, ROLE);
+    expect(after.forRole).toBe("r1");
   });
 });

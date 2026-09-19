@@ -29,6 +29,7 @@ import { SavedSearchesPage } from "./pages/SavedSearches";
 import { ScorecardPage } from "./pages/Scorecard";
 import { SearchPage } from "./pages/Search";
 import { ShortlistDetailPage } from "./pages/ShortlistDetail";
+import { OpeningsPage } from "./pages/Openings";
 import { RolesPage } from "./pages/Roles";
 import { ShortlistsPage } from "./pages/Shortlists";
 import { SignInPage } from "./pages/SignIn";
@@ -104,6 +105,9 @@ function Sidebar() {
             </NavItem>
             <NavItem to="/disputes" icon="warn">
               Disputes
+            </NavItem>
+            <NavItem to="/openings" icon="bookmark">
+              Open to you
             </NavItem>
             <NavItem to="/being-found" icon="search">
               Being found
@@ -305,6 +309,14 @@ export function App() {
                 element={
                   <RequireSession>
                     <LeaderboardPage />
+                  </RequireSession>
+                }
+              />
+              <Route
+                path="/openings"
+                element={
+                  <RequireSession>
+                    <OpeningsPage />
                   </RequireSession>
                 }
               />

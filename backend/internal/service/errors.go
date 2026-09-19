@@ -208,6 +208,12 @@ const (
 	// private, or never there.
 	CodePRUnreachable = "pull_request_unreachable"
 
+	// CodeInvalidOpening is a public bar that cannot be met or cannot be read.
+	CodeInvalidOpening = "invalid_opening"
+
+	// CodeOpeningNotFound is a role nobody has advertised.
+	CodeOpeningNotFound = "opening_not_found"
+
 	// CodeInvalidRole is a role whose fields do not describe an opening.
 	CodeInvalidRole = "invalid_role"
 
@@ -222,12 +228,14 @@ const (
 	// commit it, under the organisation's authority setting (ADR-0019 §11).
 	CodeOwnerApprovalRequired = "owner_approval_required"
 
-	// CodeHireNotReleased is an email the organisation was never given.
+	// CodeHireNotAccepted is somebody who never accepted a contact request
+	// for this role.
 	//
-	// A company can only report hiring somebody who agreed to talk to it. The
-	// rule also stops this being an oracle for testing whether an address has
-	// an account here (ADR-0019 §15).
-	CodeHireNotReleased        = "hire_email_not_released"
+	// A company can only report hiring somebody who agreed to talk to it
+	// (ADR-0019 §15). Staged, notified-but-unanswered and declined all fail,
+	// and they fail IDENTICALLY — telling them apart would report a
+	// contributor's answer to whoever asked about somebody else's hiring.
+	CodeHireNotAccepted        = "hire_not_accepted"
 	CodeInvalidEvidence        = "invalid_evidence"
 	CodeInvalidShortlist       = "invalid_shortlist"
 	CodeInvalidQuery           = "invalid_query"

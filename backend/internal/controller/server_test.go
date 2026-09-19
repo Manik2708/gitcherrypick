@@ -83,16 +83,38 @@ func TestRedemptionUnexpectedFailure(t *testing.T) {
 	require.Equal(t, http.StatusInternalServerError, got.Status)
 }
 
-func TestEvidenceWithinMonthsIsParsed(t *testing.T) {
+// The profile filters, parsed (ADR-0018, ADR-0019). Country codes and shape
+// names are FOLDED, because both are closed vocabularies two systems have to
+// agree on — "gb" and "GB" cannot be two countries.
+func TestProfileFiltersAreParsed(t *testing.T) {
 	h := newHarness(t)
 	h.signIn("hank-token", hirerPrincipal(true))
 	h.discovery.EXPECT().Search(mock.Anything, mock.Anything,
 		mock.MatchedBy(func(q domain.SearchQuery) bool {
-			return q.EvidenceWithinMonths != nil && *q.EvidenceWithinMonths == 18
+			return q.MinOfficeYOE != nil && *q.MinOfficeYOE == 5 &&
+				q.MinOSSYOE != nil && *q.MinOSSYOE == 3 &&
+				len(q.Countries) == 2 && q.Countries[0] == "GB" && q.Countries[1] == "DE" &&
+				len(q.OpenTo) == 2 && q.OpenTo[0] == "remote" && q.OpenTo[1] == "contract"
 		})).Return(&domain.SearchResults{}, nil)
 
-	require.Equal(t, http.StatusOK,
-		h.do(t, http.MethodGet, "/search?evidence_within_months=18", "hank-token", "").Status)
+	require.Equal(t, http.StatusOK, h.do(t, http.MethodGet,
+		"/search?min_office_yoe=5&min_oss_yoe=3&countries=gb,%20De&open_to=Remote,contract",
+		"hank-token", "").Status)
+}
+
+// There is no pay filter, and there must never be one: a hirer able to filter
+// on what somebody expects would learn an upper bound across a few searches,
+// and an expectation would stop being a floor and become a ceiling
+// (ADR-0018 §5). An unknown key is refused rather than ignored.
+func TestThereIsNoCompensationFilter(t *testing.T) {
+	h := newHarness(t)
+	h.signIn("hank-token", hirerPrincipal(true))
+
+	for _, key := range []string{"max_yearly", "max_hourly", "compensation", "yearly_amount"} {
+		got := h.do(t, http.MethodGet, "/search?"+key+"=50000", "hank-token", "")
+		require.Equal(t, http.StatusUnprocessableEntity, got.Status, key)
+		require.Equal(t, service.CodeUnknownFilter, got.errorCode(t), key)
+	}
 }
 
 func TestUnparseableNumericFiltersAreDroppedNotRejected(t *testing.T) {
@@ -102,11 +124,11 @@ func TestUnparseableNumericFiltersAreDroppedNotRejected(t *testing.T) {
 	h.signIn("hank-token", hirerPrincipal(true))
 	h.discovery.EXPECT().Search(mock.Anything, mock.Anything,
 		mock.MatchedBy(func(q domain.SearchQuery) bool {
-			return q.MinSkillScore == nil && q.EvidenceWithinMonths == nil
+			return q.MinSkillScore == nil && q.MinOfficeYOE == nil
 		})).Return(&domain.SearchResults{}, nil)
 
 	require.Equal(t, http.StatusOK, h.do(t, http.MethodGet,
-		"/search?min_skill_score=high&evidence_within_months=lots", "hank-token", "").Status)
+		"/search?min_skill_score=high&min_office_yoe=lots", "hank-token", "").Status)
 }
 
 func TestRegisterHirerRejectsAMalformedBody(t *testing.T) {

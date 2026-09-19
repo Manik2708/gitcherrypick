@@ -39,6 +39,86 @@ func (_m *RoleService) EXPECT() *RoleService_Expecter {
 	return &RoleService_Expecter{mock: &_m.Mock}
 }
 
+// Candidates provides a mock function for the type RoleService
+func (_mock *RoleService) Candidates(ctx context.Context, p domain.Principal, org domain.OrganizationID, id domain.RoleID) ([]domain.RoleCandidate, error) {
+	ret := _mock.Called(ctx, p, org, id)
+
+	if len(ret) == 0 {
+		panic("no return value specified for Candidates")
+	}
+
+	var r0 []domain.RoleCandidate
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.Principal, domain.OrganizationID, domain.RoleID) ([]domain.RoleCandidate, error)); ok {
+		return returnFunc(ctx, p, org, id)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.Principal, domain.OrganizationID, domain.RoleID) []domain.RoleCandidate); ok {
+		r0 = returnFunc(ctx, p, org, id)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]domain.RoleCandidate)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, domain.Principal, domain.OrganizationID, domain.RoleID) error); ok {
+		r1 = returnFunc(ctx, p, org, id)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// RoleService_Candidates_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Candidates'
+type RoleService_Candidates_Call struct {
+	*mock.Call
+}
+
+// Candidates is a helper method to define mock.On call
+//   - ctx context.Context
+//   - p domain.Principal
+//   - org domain.OrganizationID
+//   - id domain.RoleID
+func (_e *RoleService_Expecter) Candidates(ctx interface{}, p interface{}, org interface{}, id interface{}) *RoleService_Candidates_Call {
+	return &RoleService_Candidates_Call{Call: _e.mock.On("Candidates", ctx, p, org, id)}
+}
+
+func (_c *RoleService_Candidates_Call) Run(run func(ctx context.Context, p domain.Principal, org domain.OrganizationID, id domain.RoleID)) *RoleService_Candidates_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 domain.Principal
+		if args[1] != nil {
+			arg1 = args[1].(domain.Principal)
+		}
+		var arg2 domain.OrganizationID
+		if args[2] != nil {
+			arg2 = args[2].(domain.OrganizationID)
+		}
+		var arg3 domain.RoleID
+		if args[3] != nil {
+			arg3 = args[3].(domain.RoleID)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *RoleService_Candidates_Call) Return(roleCandidates []domain.RoleCandidate, err error) *RoleService_Candidates_Call {
+	_c.Call.Return(roleCandidates, err)
+	return _c
+}
+
+func (_c *RoleService_Candidates_Call) RunAndReturn(run func(ctx context.Context, p domain.Principal, org domain.OrganizationID, id domain.RoleID) ([]domain.RoleCandidate, error)) *RoleService_Candidates_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Close provides a mock function for the type RoleService
 func (_mock *RoleService) Close(ctx context.Context, p domain.Principal, org domain.OrganizationID, id domain.RoleID, in port.CloseRequest) (*domain.Role, error) {
 	ret := _mock.Called(ctx, p, org, id, in)
@@ -285,86 +365,6 @@ func (_c *RoleService_List_Call) RunAndReturn(run func(ctx context.Context, p do
 	return _c
 }
 
-// Matching provides a mock function for the type RoleService
-func (_mock *RoleService) Matching(ctx context.Context, id domain.UserID, limit int, offset int) ([]domain.Role, error) {
-	ret := _mock.Called(ctx, id, limit, offset)
-
-	if len(ret) == 0 {
-		panic("no return value specified for Matching")
-	}
-
-	var r0 []domain.Role
-	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.UserID, int, int) ([]domain.Role, error)); ok {
-		return returnFunc(ctx, id, limit, offset)
-	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.UserID, int, int) []domain.Role); ok {
-		r0 = returnFunc(ctx, id, limit, offset)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]domain.Role)
-		}
-	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, domain.UserID, int, int) error); ok {
-		r1 = returnFunc(ctx, id, limit, offset)
-	} else {
-		r1 = ret.Error(1)
-	}
-	return r0, r1
-}
-
-// RoleService_Matching_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Matching'
-type RoleService_Matching_Call struct {
-	*mock.Call
-}
-
-// Matching is a helper method to define mock.On call
-//   - ctx context.Context
-//   - id domain.UserID
-//   - limit int
-//   - offset int
-func (_e *RoleService_Expecter) Matching(ctx interface{}, id interface{}, limit interface{}, offset interface{}) *RoleService_Matching_Call {
-	return &RoleService_Matching_Call{Call: _e.mock.On("Matching", ctx, id, limit, offset)}
-}
-
-func (_c *RoleService_Matching_Call) Run(run func(ctx context.Context, id domain.UserID, limit int, offset int)) *RoleService_Matching_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 context.Context
-		if args[0] != nil {
-			arg0 = args[0].(context.Context)
-		}
-		var arg1 domain.UserID
-		if args[1] != nil {
-			arg1 = args[1].(domain.UserID)
-		}
-		var arg2 int
-		if args[2] != nil {
-			arg2 = args[2].(int)
-		}
-		var arg3 int
-		if args[3] != nil {
-			arg3 = args[3].(int)
-		}
-		run(
-			arg0,
-			arg1,
-			arg2,
-			arg3,
-		)
-	})
-	return _c
-}
-
-func (_c *RoleService_Matching_Call) Return(roles []domain.Role, err error) *RoleService_Matching_Call {
-	_c.Call.Return(roles, err)
-	return _c
-}
-
-func (_c *RoleService_Matching_Call) RunAndReturn(run func(ctx context.Context, id domain.UserID, limit int, offset int) ([]domain.Role, error)) *RoleService_Matching_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
 // Open provides a mock function for the type RoleService
 func (_mock *RoleService) Open(ctx context.Context, p domain.Principal, org domain.OrganizationID, id domain.RoleID) (*domain.Role, error) {
 	ret := _mock.Called(ctx, p, org, id)
@@ -441,6 +441,246 @@ func (_c *RoleService_Open_Call) Return(role *domain.Role, err error) *RoleServi
 }
 
 func (_c *RoleService_Open_Call) RunAndReturn(run func(ctx context.Context, p domain.Principal, org domain.OrganizationID, id domain.RoleID) (*domain.Role, error)) *RoleService_Open_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// Opening provides a mock function for the type RoleService
+func (_mock *RoleService) Opening(ctx context.Context, p domain.Principal, org domain.OrganizationID, id domain.RoleID) (*domain.Opening, error) {
+	ret := _mock.Called(ctx, p, org, id)
+
+	if len(ret) == 0 {
+		panic("no return value specified for Opening")
+	}
+
+	var r0 *domain.Opening
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.Principal, domain.OrganizationID, domain.RoleID) (*domain.Opening, error)); ok {
+		return returnFunc(ctx, p, org, id)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.Principal, domain.OrganizationID, domain.RoleID) *domain.Opening); ok {
+		r0 = returnFunc(ctx, p, org, id)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*domain.Opening)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, domain.Principal, domain.OrganizationID, domain.RoleID) error); ok {
+		r1 = returnFunc(ctx, p, org, id)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// RoleService_Opening_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Opening'
+type RoleService_Opening_Call struct {
+	*mock.Call
+}
+
+// Opening is a helper method to define mock.On call
+//   - ctx context.Context
+//   - p domain.Principal
+//   - org domain.OrganizationID
+//   - id domain.RoleID
+func (_e *RoleService_Expecter) Opening(ctx interface{}, p interface{}, org interface{}, id interface{}) *RoleService_Opening_Call {
+	return &RoleService_Opening_Call{Call: _e.mock.On("Opening", ctx, p, org, id)}
+}
+
+func (_c *RoleService_Opening_Call) Run(run func(ctx context.Context, p domain.Principal, org domain.OrganizationID, id domain.RoleID)) *RoleService_Opening_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 domain.Principal
+		if args[1] != nil {
+			arg1 = args[1].(domain.Principal)
+		}
+		var arg2 domain.OrganizationID
+		if args[2] != nil {
+			arg2 = args[2].(domain.OrganizationID)
+		}
+		var arg3 domain.RoleID
+		if args[3] != nil {
+			arg3 = args[3].(domain.RoleID)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *RoleService_Opening_Call) Return(opening *domain.Opening, err error) *RoleService_Opening_Call {
+	_c.Call.Return(opening, err)
+	return _c
+}
+
+func (_c *RoleService_Opening_Call) RunAndReturn(run func(ctx context.Context, p domain.Principal, org domain.OrganizationID, id domain.RoleID) (*domain.Opening, error)) *RoleService_Opening_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// Openings provides a mock function for the type RoleService
+func (_mock *RoleService) Openings(ctx context.Context, id domain.UserID, limit int, offset int) (*port.OpeningResults, error) {
+	ret := _mock.Called(ctx, id, limit, offset)
+
+	if len(ret) == 0 {
+		panic("no return value specified for Openings")
+	}
+
+	var r0 *port.OpeningResults
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.UserID, int, int) (*port.OpeningResults, error)); ok {
+		return returnFunc(ctx, id, limit, offset)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.UserID, int, int) *port.OpeningResults); ok {
+		r0 = returnFunc(ctx, id, limit, offset)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*port.OpeningResults)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, domain.UserID, int, int) error); ok {
+		r1 = returnFunc(ctx, id, limit, offset)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// RoleService_Openings_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Openings'
+type RoleService_Openings_Call struct {
+	*mock.Call
+}
+
+// Openings is a helper method to define mock.On call
+//   - ctx context.Context
+//   - id domain.UserID
+//   - limit int
+//   - offset int
+func (_e *RoleService_Expecter) Openings(ctx interface{}, id interface{}, limit interface{}, offset interface{}) *RoleService_Openings_Call {
+	return &RoleService_Openings_Call{Call: _e.mock.On("Openings", ctx, id, limit, offset)}
+}
+
+func (_c *RoleService_Openings_Call) Run(run func(ctx context.Context, id domain.UserID, limit int, offset int)) *RoleService_Openings_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 domain.UserID
+		if args[1] != nil {
+			arg1 = args[1].(domain.UserID)
+		}
+		var arg2 int
+		if args[2] != nil {
+			arg2 = args[2].(int)
+		}
+		var arg3 int
+		if args[3] != nil {
+			arg3 = args[3].(int)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *RoleService_Openings_Call) Return(openingResults *port.OpeningResults, err error) *RoleService_Openings_Call {
+	_c.Call.Return(openingResults, err)
+	return _c
+}
+
+func (_c *RoleService_Openings_Call) RunAndReturn(run func(ctx context.Context, id domain.UserID, limit int, offset int) (*port.OpeningResults, error)) *RoleService_Openings_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// PublishOpening provides a mock function for the type RoleService
+func (_mock *RoleService) PublishOpening(ctx context.Context, p domain.Principal, org domain.OrganizationID, id domain.RoleID) (*domain.Opening, error) {
+	ret := _mock.Called(ctx, p, org, id)
+
+	if len(ret) == 0 {
+		panic("no return value specified for PublishOpening")
+	}
+
+	var r0 *domain.Opening
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.Principal, domain.OrganizationID, domain.RoleID) (*domain.Opening, error)); ok {
+		return returnFunc(ctx, p, org, id)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.Principal, domain.OrganizationID, domain.RoleID) *domain.Opening); ok {
+		r0 = returnFunc(ctx, p, org, id)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*domain.Opening)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, domain.Principal, domain.OrganizationID, domain.RoleID) error); ok {
+		r1 = returnFunc(ctx, p, org, id)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// RoleService_PublishOpening_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'PublishOpening'
+type RoleService_PublishOpening_Call struct {
+	*mock.Call
+}
+
+// PublishOpening is a helper method to define mock.On call
+//   - ctx context.Context
+//   - p domain.Principal
+//   - org domain.OrganizationID
+//   - id domain.RoleID
+func (_e *RoleService_Expecter) PublishOpening(ctx interface{}, p interface{}, org interface{}, id interface{}) *RoleService_PublishOpening_Call {
+	return &RoleService_PublishOpening_Call{Call: _e.mock.On("PublishOpening", ctx, p, org, id)}
+}
+
+func (_c *RoleService_PublishOpening_Call) Run(run func(ctx context.Context, p domain.Principal, org domain.OrganizationID, id domain.RoleID)) *RoleService_PublishOpening_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 domain.Principal
+		if args[1] != nil {
+			arg1 = args[1].(domain.Principal)
+		}
+		var arg2 domain.OrganizationID
+		if args[2] != nil {
+			arg2 = args[2].(domain.OrganizationID)
+		}
+		var arg3 domain.RoleID
+		if args[3] != nil {
+			arg3 = args[3].(domain.RoleID)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *RoleService_PublishOpening_Call) Return(opening *domain.Opening, err error) *RoleService_PublishOpening_Call {
+	_c.Call.Return(opening, err)
+	return _c
+}
+
+func (_c *RoleService_PublishOpening_Call) RunAndReturn(run func(ctx context.Context, p domain.Principal, org domain.OrganizationID, id domain.RoleID) (*domain.Opening, error)) *RoleService_PublishOpening_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -607,6 +847,92 @@ func (_c *RoleService_Role_Call) Return(role *domain.Role, err error) *RoleServi
 }
 
 func (_c *RoleService_Role_Call) RunAndReturn(run func(ctx context.Context, p domain.Principal, org domain.OrganizationID, id domain.RoleID) (*domain.Role, error)) *RoleService_Role_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// SaveOpening provides a mock function for the type RoleService
+func (_mock *RoleService) SaveOpening(ctx context.Context, p domain.Principal, org domain.OrganizationID, id domain.RoleID, in domain.Opening) (*domain.Opening, error) {
+	ret := _mock.Called(ctx, p, org, id, in)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SaveOpening")
+	}
+
+	var r0 *domain.Opening
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.Principal, domain.OrganizationID, domain.RoleID, domain.Opening) (*domain.Opening, error)); ok {
+		return returnFunc(ctx, p, org, id, in)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.Principal, domain.OrganizationID, domain.RoleID, domain.Opening) *domain.Opening); ok {
+		r0 = returnFunc(ctx, p, org, id, in)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*domain.Opening)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, domain.Principal, domain.OrganizationID, domain.RoleID, domain.Opening) error); ok {
+		r1 = returnFunc(ctx, p, org, id, in)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// RoleService_SaveOpening_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SaveOpening'
+type RoleService_SaveOpening_Call struct {
+	*mock.Call
+}
+
+// SaveOpening is a helper method to define mock.On call
+//   - ctx context.Context
+//   - p domain.Principal
+//   - org domain.OrganizationID
+//   - id domain.RoleID
+//   - in domain.Opening
+func (_e *RoleService_Expecter) SaveOpening(ctx interface{}, p interface{}, org interface{}, id interface{}, in interface{}) *RoleService_SaveOpening_Call {
+	return &RoleService_SaveOpening_Call{Call: _e.mock.On("SaveOpening", ctx, p, org, id, in)}
+}
+
+func (_c *RoleService_SaveOpening_Call) Run(run func(ctx context.Context, p domain.Principal, org domain.OrganizationID, id domain.RoleID, in domain.Opening)) *RoleService_SaveOpening_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 domain.Principal
+		if args[1] != nil {
+			arg1 = args[1].(domain.Principal)
+		}
+		var arg2 domain.OrganizationID
+		if args[2] != nil {
+			arg2 = args[2].(domain.OrganizationID)
+		}
+		var arg3 domain.RoleID
+		if args[3] != nil {
+			arg3 = args[3].(domain.RoleID)
+		}
+		var arg4 domain.Opening
+		if args[4] != nil {
+			arg4 = args[4].(domain.Opening)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+			arg4,
+		)
+	})
+	return _c
+}
+
+func (_c *RoleService_SaveOpening_Call) Return(opening *domain.Opening, err error) *RoleService_SaveOpening_Call {
+	_c.Call.Return(opening, err)
+	return _c
+}
+
+func (_c *RoleService_SaveOpening_Call) RunAndReturn(run func(ctx context.Context, p domain.Principal, org domain.OrganizationID, id domain.RoleID, in domain.Opening) (*domain.Opening, error)) *RoleService_SaveOpening_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -847,6 +1173,86 @@ func (_c *RoleService_Update_Call) Return(role *domain.Role, err error) *RoleSer
 }
 
 func (_c *RoleService_Update_Call) RunAndReturn(run func(ctx context.Context, p domain.Principal, org domain.OrganizationID, id domain.RoleID, in domain.Role) (*domain.Role, error)) *RoleService_Update_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// WithdrawOpening provides a mock function for the type RoleService
+func (_mock *RoleService) WithdrawOpening(ctx context.Context, p domain.Principal, org domain.OrganizationID, id domain.RoleID) (*domain.Opening, error) {
+	ret := _mock.Called(ctx, p, org, id)
+
+	if len(ret) == 0 {
+		panic("no return value specified for WithdrawOpening")
+	}
+
+	var r0 *domain.Opening
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.Principal, domain.OrganizationID, domain.RoleID) (*domain.Opening, error)); ok {
+		return returnFunc(ctx, p, org, id)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.Principal, domain.OrganizationID, domain.RoleID) *domain.Opening); ok {
+		r0 = returnFunc(ctx, p, org, id)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*domain.Opening)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, domain.Principal, domain.OrganizationID, domain.RoleID) error); ok {
+		r1 = returnFunc(ctx, p, org, id)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// RoleService_WithdrawOpening_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'WithdrawOpening'
+type RoleService_WithdrawOpening_Call struct {
+	*mock.Call
+}
+
+// WithdrawOpening is a helper method to define mock.On call
+//   - ctx context.Context
+//   - p domain.Principal
+//   - org domain.OrganizationID
+//   - id domain.RoleID
+func (_e *RoleService_Expecter) WithdrawOpening(ctx interface{}, p interface{}, org interface{}, id interface{}) *RoleService_WithdrawOpening_Call {
+	return &RoleService_WithdrawOpening_Call{Call: _e.mock.On("WithdrawOpening", ctx, p, org, id)}
+}
+
+func (_c *RoleService_WithdrawOpening_Call) Run(run func(ctx context.Context, p domain.Principal, org domain.OrganizationID, id domain.RoleID)) *RoleService_WithdrawOpening_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 domain.Principal
+		if args[1] != nil {
+			arg1 = args[1].(domain.Principal)
+		}
+		var arg2 domain.OrganizationID
+		if args[2] != nil {
+			arg2 = args[2].(domain.OrganizationID)
+		}
+		var arg3 domain.RoleID
+		if args[3] != nil {
+			arg3 = args[3].(domain.RoleID)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *RoleService_WithdrawOpening_Call) Return(opening *domain.Opening, err error) *RoleService_WithdrawOpening_Call {
+	_c.Call.Return(opening, err)
+	return _c
+}
+
+func (_c *RoleService_WithdrawOpening_Call) RunAndReturn(run func(ctx context.Context, p domain.Principal, org domain.OrganizationID, id domain.RoleID) (*domain.Opening, error)) *RoleService_WithdrawOpening_Call {
 	_c.Call.Return(run)
 	return _c
 }

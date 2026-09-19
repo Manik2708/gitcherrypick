@@ -22,19 +22,24 @@ import {
   describe,
   isEmpty,
   pageCount,
+  useOrgID,
+  useRoles,
   useSaveSearch,
   useSearch,
   useShortlists,
   useStageEntry,
 } from "../hooks/hirer";
 import type { SearchFilters } from "../hooks/hirer";
+import { applyRole } from "../logic/roleFilters";
 import * as format from "../logic/format";
+import { CountryList } from "../ui/countries";
 import { SkillPicker } from "../ui/SkillPicker";
 import {
   Avatar,
   Banner,
   Button,
   Card,
+  Checkbox,
   Empty,
   Failure,
   Field,
@@ -51,11 +56,14 @@ const AVAILABILITY_CHOICES = [
   ["open_to_freelance", "Open to freelance work"],
 ] as const;
 
-const RECENCY_CHOICES = [
-  ["", "Any age — no filter"],
-  ["6", "Newest PR within 6 months"],
-  ["12", "Newest PR within 12 months"],
-  ["24", "Newest PR within 24 months"],
+// What a contributor said they would take (ADR-0018 §2). Independent, because
+// somebody open to a remote contract and an onsite permanent role is stating
+// two things and a single choice would make them pick.
+const SHAPE_CHOICES = [
+  ["remote", "Remote"],
+  ["onsite", "Onsite"],
+  ["contract", "Contract"],
+  ["internship", "Internship"],
 ] as const;
 
 /** The gate codes that mean "this account", not "this query". */
@@ -177,6 +185,23 @@ export function SearchPage() {
   const [searched, setSearched] = useState(true);
   const [saveName, setSaveName] = useState("");
 
+  // The organisation's open roles, offered as a starting point for the filters
+  // below. Drafts and closed roles are not offered: a draft is not a
+  // commitment and a closed one is a withdrawn opening, so neither is a job
+  // anybody should be searched for.
+  const org = useOrgID();
+  const roles = useRoles(org.id, "open");
+  const openRoles = roles.data?.roles ?? [];
+
+  // The role the filters were filled from. Held so the picker SHOWS it: a
+  // select that reset itself to "Choose a role…" the moment you chose one
+  // looked like the click had failed.
+  //
+  // It is a note, not a binding. The hirer edits freely afterwards and nothing
+  // re-applies, which is why the line below says so rather than leaving them
+  // to wonder whether the role is still driving the panel.
+  const [fromRole, setFromRole] = useState("");
+
   const results = useSearch(applied, searched);
   const save = useSaveSearch();
 
@@ -196,6 +221,7 @@ export function SearchPage() {
 
   function reset() {
     setDraft({ perPage: 20 });
+    setFromRole("");
     apply({ perPage: 20 });
   }
 
@@ -253,6 +279,63 @@ export function SearchPage() {
           </div>
 
           <div className="filters__body">
+            {/* START FROM A ROLE. A hirer who has written one has already
+                answered most of this panel — where they can employ somebody,
+                what experience they need, what shape of work it is — and
+                re-typing it is duplicated work that also drifts: the search
+                quietly stops matching the job it is for.
+
+                It fills the fields and then lets go. Nothing here re-applies
+                afterwards and nothing remembers the role, because filters that
+                snapped back to it would be worse than typing them out. */}
+            {openRoles.length > 0 ? (
+              <div className="fgroup">
+                <Field
+                  label="Start from a role"
+                  htmlFor="from_role"
+                  help="Fills in the countries, the minimums and the shape of work, and stops offering people already on a round for it. Change anything you like afterwards."
+                >
+                  <select
+                    className="input"
+                    id="from_role"
+                    value={fromRole}
+                    onChange={(event) => {
+                      const id = event.target.value;
+                      setFromRole(id);
+                      const role = openRoles.find((r) => r.id === id);
+                      if (role) setDraft(applyRole(draft, role));
+                    }}
+                  >
+                    <option value="">Choose a role…</option>
+                    {openRoles.map((role) => (
+                      <option key={role.id} value={role.id}>
+                        {role.title}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+
+                {/* Re-picking the same option fires no change event, so a
+                    hirer who filled from a role, edited the filters and wanted
+                    to start over had no way back to it. This is that way. */}
+                {fromRole ? (
+                  <p className="field__help">
+                    The filters below came from this role and are yours to change.{" "}
+                    <button
+                      type="button"
+                      className="linklike"
+                      onClick={() => {
+                        const role = openRoles.find((r) => r.id === fromRole);
+                        if (role) setDraft(applyRole(draft, role));
+                      }}
+                    >
+                      Fill them in again
+                    </button>
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+
             <div className="fgroup">
               <Field
                 label="Find someone by name"
@@ -317,16 +400,14 @@ export function SearchPage() {
             <div className="fgroup">
               <div className="fgroup__title">Availability</div>
               {AVAILABILITY_CHOICES.map(([value, label]) => (
-                <label className="checkline" key={value}>
-                  <input
-                    type="checkbox"
-                    checked={draft.availability?.includes(value) ?? false}
-                    onChange={() =>
-                      setDraft({ ...draft, availability: toggle(draft.availability, value) })
-                    }
-                  />
-                  <span className="checkline__text">{label}</span>
-                </label>
+                <Checkbox
+                  key={value}
+                  label={label}
+                  checked={draft.availability?.includes(value) ?? false}
+                  onChange={() =>
+                    setDraft({ ...draft, availability: toggle(draft.availability, value) })
+                  }
+                />
               ))}
               <label className="switchline">
                 <span className="switchline__text">
@@ -355,32 +436,91 @@ export function SearchPage() {
               </p>
             </div>
 
+            {/* What they SAID, as opposed to what they built (ADR-0018).
+                Everything here is opt-in, so setting one of these also drops
+                everybody who has not filled their profile in — which the help
+                text says, because a hirer watching a result count halve
+                deserves to know why. */}
             <div className="fgroup">
               <Field
-                label="Evidence recency"
-                htmlFor="evidence"
-                help="How old their code is — unrelated to how recently they said they were open."
+                label="Years in a job, at least"
+                htmlFor="office_yoe"
+                help="Their own figure, not something we checked. Leaving it blank asks nothing; setting it also drops anybody who has not said."
               >
-                <select
-                  className="select"
-                  id="evidence"
-                  value={draft.evidenceWithinMonths ?? ""}
+                <input
+                  className="input"
+                  id="office_yoe"
+                  type="number"
+                  min={0}
+                  max={80}
+                  value={draft.minOfficeYoe ?? ""}
                   onChange={(event) =>
                     setDraft({
                       ...draft,
-                      evidenceWithinMonths: event.target.value
-                        ? Number(event.target.value)
-                        : undefined,
+                      minOfficeYoe: event.target.value ? Number(event.target.value) : undefined,
                     })
                   }
-                >
-                  {RECENCY_CHOICES.map(([value, label]) => (
-                    <option key={value} value={value}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
+                />
               </Field>
+            </div>
+
+            <div className="fgroup">
+              <Field
+                label="Years in open source, at least"
+                htmlFor="oss_yoe"
+                help="We check this one: it is dated from when their first pull request was written, not from when somebody got round to merging it. Anybody we could not verify is left out rather than let through."
+              >
+                <input
+                  className="input"
+                  id="oss_yoe"
+                  type="number"
+                  min={0}
+                  max={80}
+                  value={draft.minOssYoe ?? ""}
+                  onChange={(event) =>
+                    setDraft({
+                      ...draft,
+                      minOssYoe: event.target.value ? Number(event.target.value) : undefined,
+                    })
+                  }
+                />
+              </Field>
+            </div>
+
+            {/* The same list the contributor picked from (ADR-0018 §9). It
+                has to be: a code typed here is compared against one stored
+                there, and two vocabularies would match nothing while looking
+                like an empty market. */}
+            <div className="fgroup">
+              <CountryList
+                id="countries"
+                label="Where they are"
+                help="Any of them matches. Leave empty for anywhere."
+                values={draft.countries ?? []}
+                onChange={(countries) => setDraft({ ...draft, countries })}
+              />
+            </div>
+
+            <div className="fgroup">
+              <p className="eyebrow">What they would take</p>
+              <p className="field__help">
+                Any of these matches. Somebody is available for the shapes they ticked and for
+                nothing else, so this composes with availability rather than replacing it.
+              </p>
+              {SHAPE_CHOICES.map(([value, label]) => (
+                <Checkbox
+                  key={value}
+                  label={label}
+                  checked={(draft.openTo ?? []).includes(value)}
+                  onChange={(on) => {
+                    const current = draft.openTo ?? [];
+                    setDraft({
+                      ...draft,
+                      openTo: on ? [...current, value] : current.filter((s) => s !== value),
+                    });
+                  }}
+                />
+              ))}
             </div>
 
             <div className="fgroup">
@@ -430,6 +570,21 @@ export function SearchPage() {
           {results.loading ? <Loading what="results" /> : null}
           {results.error && !gated(results.error.code) ? (
             <Failure message={results.error.message} onRetry={results.reload} />
+          ) : null}
+
+          {/* Said plainly rather than left to be noticed. A list that shrank
+              with no account of why makes a hirer doubt the filter instead of
+              reading the result — the same reason the lapsed-availability
+              banner below exists. */}
+          {data?.already_shortlisted ? (
+            <Banner>
+              <b>
+                {data.already_shortlisted}{" "}
+                {data.already_shortlisted === 1 ? "person is" : "people are"} not shown because they
+                are already on a round for this role.
+              </b>{" "}
+              They keep their place in the global ranking, so the numbers below skip theirs.
+            </Banner>
           ) : null}
 
           {data && data.inactive_hidden > 0 ? (

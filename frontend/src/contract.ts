@@ -84,6 +84,14 @@ export interface SearchResult {
 export interface SearchResponse {
   total: number;
   inactive_hidden: number;
+
+  /**
+   * How many matches were dropped for being on a round for `for_role`
+   * already. ABSENT when that filter was not asked for — a zero would read as
+   * "nobody" rather than "not asked".
+   */
+  already_shortlisted?: number;
+
   ranked_by: string;
   page: number;
   per_page: number;
@@ -503,6 +511,9 @@ export interface Role {
 
   hires: Array<{ user_id: string; recorded_at: string }>;
 
+  /** Whether a contributor can currently see this role (ADR-0020). */
+  advertised: boolean;
+
   /** The role this one replaced. An open role is immutable, so a change is a new row. */
   supersedes: string | null;
 
@@ -775,4 +786,80 @@ export interface CountriesResponse {
   countries: Country[];
   /** True when the provider could not be reached — let the person type a code. */
   degraded: boolean;
+}
+
+/* --- public openings (ADR-0020) -------------------------------------------- */
+
+/**
+ * One skill and the score it asks for.
+ *
+ * Named by SLUG, because the catalogue is slug-keyed everywhere a human
+ * touches it — search, claims, the leaderboard. The id comes back on a read
+ * and is ignored on a write.
+ */
+export interface OpeningSkill {
+  slug: string;
+  skill_id?: string;
+  name?: string;
+  min_score: number;
+}
+
+/**
+ * The bar on a published role.
+ *
+ * Null means NO bar, not a bar of zero — a role open to anybody and one that
+ * has decided to accept the lowest score on the platform are different
+ * invitations. An absent score on the contributor's side clears nothing.
+ */
+export interface OpeningBar {
+  min_overall_score: number | null;
+  min_generalist_score: number | null;
+  min_oss_yoe: number | null;
+  skills: OpeningSkill[];
+}
+
+/** An advert, as the hirer who wrote it sees it. */
+export interface Opening extends OpeningBar {
+  id: string;
+  role_id: string;
+  /** Published and not withdrawn, reported rather than derived from two dates. */
+  live: boolean;
+  published_at: string | null;
+  withdrawn_at: string | null;
+}
+
+/**
+ * An advert, as the contributor reading it sees it.
+ *
+ * No apply route exists and none will: reading one sends nothing to the
+ * company — no application, no interest, no view count (ADR-0020 §8).
+ */
+export interface ContributorOpening {
+  id: string;
+  organization: string;
+  role: ContactRole | null;
+  bar: OpeningBar;
+  /** The ROLE'S opened_at. A company that advertised late is not fresher. */
+  posted_at: string | null;
+}
+
+export interface OpeningsResponse {
+  openings: ContributorOpening[];
+  matched: number;
+  /** A bare count of live openings this contributor does not clear. */
+  missed: number;
+}
+
+/** Somebody already on a round for a role (ADR-0019 amendment 2). */
+export interface RoleCandidate {
+  user_id: string;
+  display_name: string;
+  github_login?: string;
+  shortlist_id: string;
+  shortlist_name: string;
+  /** Empty while still staged — told nothing, and removable. */
+  contact_status: string;
+  notified_at: string | null;
+  /** The only state a hire may be recorded from. */
+  accepted: boolean;
 }

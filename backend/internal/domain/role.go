@@ -228,6 +228,12 @@ type Role struct {
 	// Hires is one entry per person, because a role can fill several seats.
 	Hires []RoleHire
 
+	// Advertised is whether a LIVE public opening sits on this role
+	// (ADR-0020). Carried on the role because a hirer looking at a list of
+	// them has no other way to tell which ones a contributor can see, and
+	// "is this public" is the first thing they will want to know.
+	Advertised bool
+
 	// SupersededBy / Supersedes chain a role to its revision. An open role is
 	// immutable: a change writes a new row and closes this one, so a
 	// contributor contacted last week still reads the role they were shown.
@@ -395,4 +401,110 @@ func ParsePRURL(raw string) (owner, name string, number int, err error) {
 		return "", "", 0, fmt.Errorf("%q has no pr number: %w", raw, err)
 	}
 	return match[1], match[2], number, nil
+}
+
+// OpeningID identifies one published advert.
+type OpeningID string
+
+// Opening is a role a company has made public, with a bar on it (ADR-0020).
+//
+// It sits ON a role rather than inside one because an open role is immutable
+// (ADR-0019 §13): a bar living on the role could not be raised without
+// superseding the job underneath and closing it under everybody already
+// contacted.
+//
+// READING ONE SENDS NOTHING. There is no application, no interest, no view
+// count — the consent model runs one way, and an opening only changes what a
+// contributor can SEE (ADR-0020 §8).
+type Opening struct {
+	ID     OpeningID
+	RoleID RoleID
+
+	// The bar. Nil means no bar rather than a bar of zero: a role open to
+	// anybody and one that has decided to accept the lowest score on the
+	// platform are different invitations.
+	//
+	// A STATED BAR IS NOT CLEARED BY AN ABSENT SCORE. Somebody who has never
+	// submitted a claim has no overall score, and showing them a role asking
+	// for 60 would promise a match that does not exist.
+	MinOverallScore    *float64
+	MinGeneralistScore *float64
+
+	// Years contributing, verified and dated from authorship (ADR-0019 §7).
+	//
+	// Its own field rather than a read of the role's, because the role's is
+	// what the company considers when IT approaches and this is what it says
+	// in public — and an open role cannot be edited, so a public bar has to be
+	// changeable without revising the job.
+	MinOSSYOE *int
+
+	// Skills is the per-skill bar, matched at PRIMARY standing only, as search
+	// is (ADR-0005). A bar cleared by a secondary skill would be cleared by
+	// evidence the platform declines to rank.
+	Skills []OpeningSkill
+
+	PublishedAt *time.Time
+	PublishedBy *HirerID
+	WithdrawnAt *time.Time
+
+	CreatedBy HirerID
+	CreatedAt time.Time
+	UpdatedAt time.Time
+
+	// Role travels with it on the contributor's read. Nil on a hirer's, where
+	// the caller already holds the role.
+	Role *Role
+
+	// OrganizationName is what a contributor sees instead of an id.
+	OrganizationName string
+}
+
+// Live reports whether this opening is currently advertised.
+//
+// Published and not withdrawn. Whether its ROLE is still open is a separate
+// check the query makes, because an opening cannot see the role from here.
+func (o *Opening) Live() bool {
+	return o != nil && o.PublishedAt != nil && o.WithdrawnAt == nil
+}
+
+// OpeningSkill is one skill and the score a contributor needs in it.
+type OpeningSkill struct {
+	SkillID SkillID
+
+	// Slug and Name are resolved for display. A bar naming a uuid is a bar
+	// nobody can read.
+	Slug string
+	Name string
+
+	// MinScore is required rather than optional: a skill listed with no score
+	// is just a skill, and this exists to say how good at it somebody has to
+	// be. A role that only wants the skill names it with zero.
+	MinScore float64
+}
+
+// RoleCandidate is somebody who has been put on a round for this role.
+//
+// The list a hirer reads to answer "who have I already approached for this
+// job", and the list a closure picks its hires out of. One row per PERSON
+// rather than per entry: the same contributor staged on two rounds for one
+// role is one candidate who has been approached, not two.
+type RoleCandidate struct {
+	UserID      UserID
+	DisplayName string
+	GitHubLogin string
+
+	// The round they are on. The first one, where somebody appears on
+	// several — which is the one that reached them.
+	ShortlistID   ShortlistID
+	ShortlistName string
+
+	// ContactStatus is empty while an entry is still STAGED. A staged entry
+	// has told nobody anything and is removable; everything else has.
+	ContactStatus ContactRequestStatus
+	NotifiedAt    *time.Time
+
+	// Accepted is the only state from which somebody may be recorded as a
+	// hire (ADR-0019 §15): they agreed to talk, and their address was
+	// released. Staged, notified-but-unanswered and declined all fail it.
+	Accepted bool
 }

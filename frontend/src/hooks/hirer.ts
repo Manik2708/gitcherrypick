@@ -9,7 +9,10 @@ import type {
   CloseReason,
   ConfirmResult,
   LeaderboardResponse,
+  Opening,
+  OpeningBar,
   OrgSettings,
+  RoleCandidate,
   Role,
   RoleDraft,
   SavedSearch,
@@ -29,7 +32,31 @@ export interface SearchFilters {
   minSkillScore?: number;
   minOverallScore?: number;
   minGeneralistScore?: number;
-  evidenceWithinMonths?: number;
+
+  /**
+   * What a contributor said about themselves (ADR-0018), as opposed to what
+   * their evidence shows.
+   *
+   * Every one is opt-in, so an unstated value does NOT clear a stated minimum.
+   * And there is deliberately no pay filter: a hirer able to filter on what
+   * somebody expects would learn an upper bound across a few searches, and an
+   * expectation would stop being a floor and become a ceiling (ADR-0018 §5).
+   */
+  minOfficeYoe?: number;
+  minOssYoe?: number;
+  countries?: string[];
+  openTo?: string[];
+
+  /**
+   * Exclude everybody already on a round for this job.
+   *
+   * The only filter here about the HIRER'S own history rather than about the
+   * contributor. It must name one of their own roles; the server refuses any
+   * other, because the count of who was excluded would otherwise say how many
+   * people matching this query a competitor has already approached.
+   */
+  forRole?: string;
+
   includeInactive?: boolean;
   page?: number;
   perPage?: number;
@@ -44,7 +71,11 @@ export function toQuery(f: SearchFilters): string {
   if (f.minSkillScore) q.set("min_skill_score", String(f.minSkillScore));
   if (f.minOverallScore) q.set("min_overall_score", String(f.minOverallScore));
   if (f.minGeneralistScore) q.set("min_generalist_score", String(f.minGeneralistScore));
-  if (f.evidenceWithinMonths) q.set("evidence_within_months", String(f.evidenceWithinMonths));
+  if (f.minOfficeYoe) q.set("min_office_yoe", String(f.minOfficeYoe));
+  if (f.minOssYoe) q.set("min_oss_yoe", String(f.minOssYoe));
+  if (f.countries?.length) q.set("countries", f.countries.join(","));
+  if (f.openTo?.length) q.set("open_to", f.openTo.join(","));
+  if (f.forRole) q.set("for_role", f.forRole);
   if (f.includeInactive) q.set("include_inactive", "true");
   if (f.page && f.page > 1) q.set("page", String(f.page));
   if (f.perPage) q.set("per_page", String(f.perPage));
@@ -196,7 +227,11 @@ function rawFilters(f: SearchFilters): Record<string, unknown> {
   if (f.minSkillScore) out.min_skill_score = f.minSkillScore;
   if (f.minOverallScore) out.min_overall_score = f.minOverallScore;
   if (f.minGeneralistScore) out.min_generalist_score = f.minGeneralistScore;
-  if (f.evidenceWithinMonths) out.evidence_within_months = f.evidenceWithinMonths;
+  if (f.minOfficeYoe) out.min_office_yoe = f.minOfficeYoe;
+  if (f.minOssYoe) out.min_oss_yoe = f.minOssYoe;
+  if (f.countries?.length) out.countries = f.countries.join(",");
+  if (f.openTo?.length) out.open_to = f.openTo.join(",");
+  if (f.forRole) out.for_role = f.forRole;
   if (f.includeInactive) out.include_inactive = true;
   return out;
 }
@@ -215,7 +250,11 @@ export function fromSaved(filters: Record<string, unknown>): SearchFilters {
     minSkillScore: num("min_skill_score"),
     minOverallScore: num("min_overall_score"),
     minGeneralistScore: num("min_generalist_score"),
-    evidenceWithinMonths: num("evidence_within_months"),
+    minOfficeYoe: num("min_office_yoe"),
+    minOssYoe: num("min_oss_yoe"),
+    countries: csv("countries"),
+    openTo: csv("open_to"),
+    forRole: str("for_role"),
     includeInactive: filters.include_inactive === true,
   };
 }
@@ -228,7 +267,11 @@ export function describe(f: SearchFilters): string {
   if (f.minSkillScore) bits.push(`skill ≥ ${f.minSkillScore}`);
   if (f.minOverallScore) bits.push(`overall ≥ ${f.minOverallScore}`);
   if (f.minGeneralistScore) bits.push(`generalist ≥ ${f.minGeneralistScore}`);
-  if (f.evidenceWithinMonths) bits.push(`evidence within ${f.evidenceWithinMonths}mo`);
+  if (f.minOfficeYoe) bits.push(`${f.minOfficeYoe}y in a job`);
+  if (f.minOssYoe) bits.push(`${f.minOssYoe}y open source`);
+  if (f.countries?.length) bits.push(f.countries.join(" / "));
+  if (f.openTo?.length) bits.push(f.openTo.join(" / "));
+  if (f.forRole) bits.push("not yet on this round");
   if (f.availability?.length) bits.push(f.availability.join(" / "));
   if (f.includeInactive) bits.push("including quiet");
   return bits.length ? bits.join(" · ") : "everyone";
@@ -326,12 +369,8 @@ export function useOpenRole(orgId: string) {
  */
 export function useCloseRole(orgId: string) {
   const client = useClient();
-  return useAction((id: string, reason: CloseReason, note: string, hiredEmails: string[]) =>
-    client.post<Role>(endpoints.roles.close(orgId, id), {
-      reason,
-      note,
-      hired_emails: hiredEmails,
-    }),
+  return useAction((id: string, reason: CloseReason, note: string, hired: string[]) =>
+    client.post<Role>(endpoints.roles.close(orgId, id), { reason, note, hired }),
   );
 }
 
@@ -354,4 +393,50 @@ export function useSaveOrgSettings(orgId: string) {
       settings as unknown as Record<string, unknown>,
     ),
   );
+}
+
+/* --- public openings (ADR-0020) -------------------------------------------- */
+
+/** Everybody already on a round for this role. */
+export function useRoleCandidates(orgId: string | undefined, roleId: string | undefined) {
+  const client = useClient();
+  return useAsync<{ candidates: RoleCandidate[] }>(
+    (signal) =>
+      client.get<{ candidates: RoleCandidate[] }>(
+        endpoints.roles.candidates(orgId ?? "", roleId ?? ""),
+        signal,
+      ),
+    [client, orgId, roleId],
+    Boolean(orgId && roleId),
+  );
+}
+
+export function useOpening(orgId: string | undefined, roleId: string | undefined) {
+  const client = useClient();
+  return useAsync<Opening>(
+    (signal) => client.get<Opening>(endpoints.roles.opening(orgId ?? "", roleId ?? ""), signal),
+    [client, orgId, roleId],
+    Boolean(orgId && roleId),
+  );
+}
+
+/** Writes the bar. Does NOT publish — that is a separate, owner-level act. */
+export function useSaveOpening(orgId: string, roleId: string) {
+  const client = useClient();
+  return useAction((bar: OpeningBar) =>
+    client.put<Opening>(
+      endpoints.roles.opening(orgId, roleId),
+      bar as unknown as Record<string, unknown>,
+    ),
+  );
+}
+
+export function usePublishOpening(orgId: string, roleId: string) {
+  const client = useClient();
+  return useAction(() => client.post<Opening>(endpoints.roles.publishOpening(orgId, roleId)));
+}
+
+export function useWithdrawOpening(orgId: string, roleId: string) {
+  const client = useClient();
+  return useAction(() => client.post<Opening>(endpoints.roles.withdrawOpening(orgId, roleId)));
 }

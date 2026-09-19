@@ -532,16 +532,31 @@ type RoleService interface {
 	List(ctx context.Context, p domain.Principal, org domain.OrganizationID, status *domain.RoleStatus) ([]domain.Role, error)
 	Role(ctx context.Context, p domain.Principal, org domain.OrganizationID, id domain.RoleID) (*domain.Role, error)
 
+	// Candidates is everybody already on a round for this role — the list a
+	// hirer reads before searching again, and the list a closure picks its
+	// hires from.
+	Candidates(ctx context.Context, p domain.Principal, org domain.OrganizationID, id domain.RoleID) ([]domain.RoleCandidate, error)
+
+	// --- public openings (ADR-0020) ---------------------------------------
+
+	// Opening reads the advert on a role, or ErrNotFound when it has none.
+	Opening(ctx context.Context, p domain.Principal, org domain.OrganizationID, id domain.RoleID) (*domain.Opening, error)
+
+	// SaveOpening writes the BAR. It does not publish.
+	SaveOpening(ctx context.Context, p domain.Principal, org domain.OrganizationID, id domain.RoleID, in domain.Opening) (*domain.Opening, error)
+
+	// PublishOpening makes it visible to contributors. Only an OPEN role may
+	// have one: a draft is not a commitment and a closed role is a withdrawn
+	// job, so neither is something anybody should be reading about.
+	PublishOpening(ctx context.Context, p domain.Principal, org domain.OrganizationID, id domain.RoleID) (*domain.Opening, error)
+	WithdrawOpening(ctx context.Context, p domain.Principal, org domain.OrganizationID, id domain.RoleID) (*domain.Opening, error)
+
+	// Openings is the CONTRIBUTOR'S read: what they clear, and a count of what
+	// they do not. Reading it sends nothing to anybody (ADR-0020 §8).
+	Openings(ctx context.Context, id domain.UserID, limit, offset int) (*OpeningResults, error)
+
 	Settings(ctx context.Context, p domain.Principal, org domain.OrganizationID) (*domain.OrgSettings, error)
 	SaveSettings(ctx context.Context, p domain.Principal, org domain.OrganizationID, in domain.OrgSettings) (*domain.OrgSettings, error)
-
-	// Matching is the CONTRIBUTOR'S view, and the one place their compensation
-	// expectation is used — to keep roles paying less than they asked for out
-	// of their way, and no further (ADR-0018 §5).
-	//
-	// A domain.UserID rather than a principal, matching every other
-	// contributor-facing service.
-	Matching(ctx context.Context, id domain.UserID, limit, offset int) ([]domain.Role, error)
 }
 
 // CloseRequest is what a hirer says when they close a role.
@@ -556,9 +571,15 @@ type CloseRequest struct {
 	// Note is required when Reason is CloseOther.
 	Note string
 
-	// HiredEmails is non-empty exactly when Reason is CloseHiredViaPlatform. A
-	// role may fill several seats.
-	HiredEmails []string
+	// Hired is non-empty exactly when Reason is CloseHiredViaPlatform, and
+	// every id must be a candidate on THIS role who accepted.
+	//
+	// Ids picked off the role's own candidate list, not addresses typed in.
+	// A hirer knows who they hired, and making them retype an email was both
+	// worse to use and — until the released-address rule was added — a way to
+	// test whether an arbitrary address had an account here. Choosing from a
+	// list they already hold removes the question entirely.
+	Hired []domain.UserID
 }
 
 // ProfileVerifier re-establishes pull request dates that could not be read the

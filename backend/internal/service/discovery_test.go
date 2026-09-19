@@ -301,7 +301,7 @@ func newDiscoveryFixture(t *testing.T) *discoveryFixture {
 		saved:  mocks.NewSavedSearchRepository(t),
 		access: mocks.NewAccessService(t),
 	}
-	f.svc = service.NewDiscoveryService(f.search, f.skills, f.saved, f.access, "v1")
+	f.svc = service.NewDiscoveryService(f.search, f.skills, mocks.NewRoleRepository(t), f.saved, f.access, "v1")
 	return f
 }
 

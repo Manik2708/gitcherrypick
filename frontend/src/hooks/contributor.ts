@@ -4,14 +4,13 @@ import { endpoints } from "../api/endpoints";
 import type {
   CompensationExpectation,
   ContributorProfile,
-  CountriesResponse,
   WorkPreferences,
   Claim,
   ClaimSummary,
   ContactRequest,
-  ContactRole,
   Demotion,
   MyRank,
+  OpeningsResponse,
   MySkills,
   ReevaluationStatus,
   ShareLink,
@@ -206,27 +205,21 @@ export function useSaveCompensation() {
   );
 }
 
-/** The country picker. Public, and it fails open — see `degraded`. */
-export function useCountries() {
-  const client = useClient();
-  return useAsync<CountriesResponse>(
-    (signal) => client.get<CountriesResponse>(endpoints.public.countries(), signal),
-    [client],
-  );
-}
-
 /**
- * The roles open to this contributor (ADR-0019 §Endpoints).
+ * The published roles open to this contributor (ADR-0020).
  *
- * The filter runs on the server, against their own profile: countries, the
- * minimums, the shapes of work they ticked, and the pay they said they expect.
- * That last one travels in exactly one direction — it keeps roles paying less
- * than they asked for out of their way, and is never shown to a hirer.
+ * Only the ones they clear, plus a bare count of the ones they do not. The
+ * count exists because an empty list on its own lies about why it is empty —
+ * nobody hiring, or nothing they qualify for — and it names no shortfall and
+ * exposes no company's bar.
+ *
+ * Reading this sends nothing to anybody. There is no apply call to pair it
+ * with, deliberately.
  */
-export function useMyRoles() {
+export function useOpenings() {
   const client = useClient();
-  return useAsync<{ roles: ContactRole[] }>(
-    (signal) => client.get<{ roles: ContactRole[] }>(endpoints.me.roles(), signal),
+  return useAsync<OpeningsResponse>(
+    (signal) => client.get<OpeningsResponse>(endpoints.openings.list(), signal),
     [client],
   );
 }

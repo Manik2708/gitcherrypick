@@ -192,7 +192,7 @@ func build(ctx context.Context, cfg *config) (*application, error) {
 	)
 	skills := service.NewSkillService(db.Skills(), db.Users(), db.Reevaluations(),
 		db.Claims(), db.Evaluations(), now, cfg.rubricVersion)
-	discovery := service.NewDiscoveryService(db.Search(), db.Skills(), db.SavedSearches(), access, cfg.rubricVersion)
+	discovery := service.NewDiscoveryService(db.Search(), db.Skills(), db.Roles(), db.SavedSearches(), access, cfg.rubricVersion)
 	shortlists := service.NewShortlistService(
 		db.Shortlists(), db.Roles(), db.Contacts(), db.Users(), db.Hirers(),
 		notifier, access, db, now,
@@ -206,7 +206,7 @@ func build(ctx context.Context, cfg *config) (*application, error) {
 	)
 	profiles := service.NewProfileService(db.Profiles(), db.Users(), places, githubClient, db, now)
 	roles := service.NewRoleService(
-		db.Roles(), db.OrgSettings(), db.Contacts(), db.Profiles(), db.Users(),
+		db.Roles(), db.Openings(), db.Skills(), db.OrgSettings(), db.Contacts(), db.Profiles(), db.Users(),
 		db.Organizations(), db, now,
 	)
 	reeval := service.NewReevaluationService(db.Reevaluations(), db.Claims(), now)
@@ -227,6 +227,7 @@ func build(ctx context.Context, cfg *config) (*application, error) {
 		controller.NewShortlistController(shortlists),
 		controller.NewOrganizationController(orgs),
 		controller.NewRoleController(roles),
+		controller.NewOpeningsController(roles),
 		controller.NewAdminController(admin, evaluation, onboarding, now),
 		controller.NewPublicController(auth),
 		controller.NewOrganizationsController(redemption, onboarding),
