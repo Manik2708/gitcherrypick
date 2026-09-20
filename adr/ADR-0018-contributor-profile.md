@@ -47,6 +47,7 @@
 | `GET`  | `/me/compensation`  | the contributor | their own expectations                  |
 | `PUT`  | `/me/compensation`  | the contributor | replace them                            |
 | `GET`  | `/places/countries` | anyone          | the country picker                      |
+| `GET`  | `/money/currencies` | anyone          | the currency picker                     |
 
 `PUT` and not `PATCH`: a profile form submits every field it shows, so a full replace says
 what happened. Two pairs and not one, so a client updating work preferences never sends a
@@ -138,3 +139,28 @@ was somebody invisible to every role with no way to suspect it.
 stated anything. It is deliberately not the same as `matchable: false`, which is a
 legitimate state for somebody who is not looking, and not the same as every flag being
 false, which is a real answer. Nobody should be nagged about a decision they made.
+
+### 3. The currency list comes from the third party too
+
+Decision 9 put COUNTRIES behind `port.PlaceService` because a country code is a closed
+vocabulary two systems must agree on. Decision 8 requires an ISO 4217 currency on every
+amount — and then left it as a text box on two forms.
+
+The argument for the country picker applies unchanged. An amount is only ever compared
+against another amount **in the same code**: a role's salary against a contributor's
+expectation, in search and in the public-opening gate, both of which skip the comparison
+when the codes differ. So a hirer who typed `usd`, `US$` or `dollars` wrote a salary that
+is compared against nothing and was told nothing about it, because the shape check passes
+and the match silently does not. That is the failure mode a picker removes at the point it
+happens, rather than a validator refusing a form afterwards.
+
+`port.MoneyService` is a **separate interface** from `PlaceService`, not a second method on
+it: a currency is not a place, and a live vendor for one is not a live vendor for the
+other. They are served by the same stand-in today and configured by two flags
+(`--places-api-url`, `--money-api-url`), so choosing a country provider later is not
+accidentally a decision about salaries.
+
+`GET /money/currencies` is public and **fails open** exactly as the country picker does:
+200 with an empty list and `degraded: true` when the provider is down, the service still
+validating the shape of a code and not its membership. A hirer writing a role at 2am does
+not care whose uptime the picker depends on.

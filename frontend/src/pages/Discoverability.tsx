@@ -18,17 +18,20 @@ const ENGAGEMENT_LABELS: Record<Engagement, string> = {
 import {
   useMintShareLink,
   useMyContactRequests,
+  useMyProfile,
   useRespondToContact,
   useRevokeShareLink,
   useSetAvailability,
 } from "../hooks/contributor";
 import { useWhoAmI } from "../hooks/session";
 import { ProfileForm } from "../ui/ProfileForm";
+import { ReadinessPanel } from "../ui/Readiness";
 import * as format from "../logic/format";
 import {
   Banner,
   Button,
   Card,
+  Checkbox,
   Empty,
   Failure,
   Icon,
@@ -37,12 +40,13 @@ import {
   Pill,
 } from "../ui/primitives";
 
-const CHOICES = [
-  ["looking_for_job", "Looking for a job"],
-  ["looking_for_freelance", "Looking for freelance work"],
-  ["open_to_freelance", "Open to freelance work"],
-  ["not_looking", "Not looking"],
-] as const;
+// One switch (ADR-0021). There were four buttons, three of which said "yes"
+// and differed only in what KIND of work somebody wanted — which is the
+// question the preferences below already ask, and ask better.
+//
+// LOOKING MEANS OPEN TO ANYTHING. Turning it on is the whole of making
+// yourself reachable; nothing further has to be ticked, which is the trap the
+// old design had.
 
 /** The job, as the person being approached sees it. */
 function RoleSummary({ role }: { role: ContactRole }) {
@@ -85,6 +89,12 @@ function RoleSummary({ role }: { role: ContactRole }) {
 export function DiscoverabilityPage() {
   const me = useWhoAmI();
   const set = useSetAvailability();
+
+  // The page owns a copy of the profile for the readiness panel, and hands
+  // the form a way to say it changed. Without that the panel goes stale the
+  // moment somebody fixes a field — still telling them to state a country
+  // they just stated, which is worse than not showing it at all.
+  const profile = useMyProfile();
   const requests = useMyContactRequests();
   const respond = useRespondToContact();
   const mint = useMintShareLink();
@@ -104,6 +114,10 @@ export function DiscoverabilityPage() {
         title="Being found"
         lede="Whether a hirer can see you, what you are looking for, who has asked, and the one link you can publish."
       />
+
+      {/* FIRST, because it is the question the page is about. Everything
+          below is a field; this is the answer they came for. */}
+      <ReadinessPanel readiness={profile.data?.readiness} />
 
       <Card>
         <div className="section__head">
@@ -128,37 +142,37 @@ export function DiscoverabilityPage() {
         )}
 
         <p className="field__help">
-          Saying nothing keeps you out of search entirely — a new contributor is invisible until
-          they choose to be visible. Any answer lasts fifteen days and then lapses, which hides you
-          by default without unranking you.
+          Turning this on opens you to everything — remote, contract, freelance, an internship. What
+          you would prefer is below, and it only shapes what you are shown; it never stops a company
+          reaching you. Saying nothing keeps you out of search entirely, and any answer lapses after
+          fifteen days, which hides you by default without touching your scores.
         </p>
-
-        <Banner icon="warn">
-          <b>Not looking</b> is different: it is an opt-out. It removes you from search and from the
-          ranked population, and no hirer toggle reveals you. Your scores are untouched.
-        </Banner>
 
         {set.error ? <Failure message={set.error.message} /> : null}
 
-        <div className="od-cluster">
-          {CHOICES.map(([value, label]) => (
-            <Button
-              key={value}
-              variant={current === value ? "primary" : "ghost"}
-              size="sm"
-              disabled={set.pending}
-              onClick={() => {
-                setChosen(value);
-                void set.run(value).then(() => me.reload());
-              }}
-            >
-              {label}
-            </Button>
-          ))}
-        </div>
+        <Checkbox
+          label="Looking for opportunities"
+          help="Hirers can find you, for any kind of role."
+          checked={current === "looking"}
+          disabled={set.pending}
+          onChange={(on) => {
+            const next = on ? "looking" : "not_looking";
+            setChosen(next);
+            void set.run(next).then(() => {
+              me.reload();
+              profile.reload();
+            });
+          }}
+        />
+
+        <Banner icon="warn">
+          Turning it off is an <b>opt-out</b>, not just silence. It removes you from search and from
+          the ranked population, and no hirer toggle reveals you. Your scores are untouched, and
+          turning it back on restores everything.
+        </Banner>
       </Card>
 
-      <ProfileForm />
+      <ProfileForm onSaved={() => profile.reload()} />
 
       <Card>
         <div className="section__head">

@@ -60,6 +60,13 @@ type config struct {
 	// adapter, and nothing above them.
 	placesAPIURL string
 
+	// moneyAPIURL is the currency-list provider (ADR-0018 amendment 3).
+	//
+	// Its own flag rather than a path derived from placesAPIURL: they point at
+	// one stand-in today, but a currency vendor and a country vendor are two
+	// choices, and deriving one from the other would make them one.
+	moneyAPIURL string
+
 	// appURL is where a person lands when they click a link in a mail.
 	//
 	// The API's own origin is not it: the verification link opens a form, and
@@ -116,6 +123,8 @@ func (c *config) bind(cmd *cobra.Command) {
 		"GitCherryPick <no-reply@gitcherrypick.dev>", "envelope sender")
 	f.StringVar(&c.placesAPIURL, "places-api-url", "",
 		"country-list provider; the third-party stand-in in development")
+	f.StringVar(&c.moneyAPIURL, "money-api-url", "",
+		"currency-list provider; the third-party stand-in in development")
 	f.StringVar(&c.appURL, "app-url", "",
 		"origin of the web client, used to build the links in notification emails")
 

@@ -166,7 +166,6 @@ describe("a role fills the search in", () => {
       minOfficeYoe: 5,
       minOssYoe: 3,
       openTo: ["remote"],
-      availability: undefined,
       // And the exclusion: searching again for a job you have been working
       // should not keep offering the people already on a round for it.
       forRole: "r1",
@@ -182,12 +181,11 @@ describe("a role fills the search in", () => {
     expect(filtersFromRole({ ...ROLE, location: "address" }).openTo).toEqual(["onsite"]);
   });
 
-  it("narrows AVAILABILITY for freelance rather than inventing a flag", () => {
-    // There is no open_to_freelance flag: availability_status already carries
-    // freelance twice over, and two controls meaning one thing can disagree.
-    const freelance = filtersFromRole({ ...ROLE, engagement: "freelance" });
-    expect(freelance.openTo).toBeUndefined();
-    expect(freelance.availability).toEqual(["looking_for_freelance", "open_to_freelance"]);
+  it("maps freelance to a preference like every other engagement", () => {
+    // It used to narrow availability instead, because there was no flag —
+    // which made freelance the one shape expressed differently from the other
+    // four, and put the same exception in three separate places (ADR-0021 §5).
+    expect(filtersFromRole({ ...ROLE, engagement: "freelance" }).openTo).toEqual(["freelance"]);
   });
 
   it("treats no eligible countries as no filter, not as nowhere", () => {

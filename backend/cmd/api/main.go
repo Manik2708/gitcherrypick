@@ -21,6 +21,7 @@ import (
 	"github.com/Manik2708/gitcherrypick/backend/internal/adapter/crypto"
 	"github.com/Manik2708/gitcherrypick/backend/internal/adapter/github"
 	"github.com/Manik2708/gitcherrypick/backend/internal/adapter/google"
+	"github.com/Manik2708/gitcherrypick/backend/internal/adapter/money"
 	"github.com/Manik2708/gitcherrypick/backend/internal/adapter/places"
 	"github.com/Manik2708/gitcherrypick/backend/internal/adapter/resend"
 	"github.com/Manik2708/gitcherrypick/backend/internal/controller"
@@ -144,6 +145,7 @@ func build(ctx context.Context, cfg *config) (*application, error) {
 		ClientSecret: cfg.googleSecret, RedirectURI: cfg.googleRedirectURI,
 	})
 	places := places.New(places.Config{BaseURL: cfg.placesAPIURL})
+	money := money.New(money.Config{BaseURL: cfg.moneyAPIURL})
 	notifier := resend.New(resend.Config{
 		BaseURL: cfg.resendAPIURL, APIKey: cfg.resendAPIKey, From: cfg.resendFrom,
 		Renderer: resend.NewDefaultRenderer(cfg.appURL),
@@ -232,6 +234,7 @@ func build(ctx context.Context, cfg *config) (*application, error) {
 		controller.NewPublicController(auth),
 		controller.NewOrganizationsController(redemption, onboarding),
 		controller.NewPlacesController(places),
+		controller.NewMoneyController(money),
 
 		// Mounted last: it claims "/" and chi resolves the more specific
 		// prefixes above it first.

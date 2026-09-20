@@ -1,0 +1,72 @@
+-- ---------------------------------------------------------------------------
+-- RFC-0021 — One availability switch
+--
+-- Delta only. Everything not mentioned here stays as earlier RFCs defined it.
+--
+-- TWO EDITS AT ORIGIN, listed here for the record and made in the files that
+-- own them (no ALTER — nothing is deployed and rfc/*.schema applied in order
+-- IS the schema):
+--
+--   1. RFC-0002 · availability_status loses three of its four values.
+--   2. RFC-0018 · user_work_preferences gains open_to_freelance.
+--
+-- The two are one change seen from both ends. Freelance stops being a state of
+-- LOOKING and becomes a shape of WORK, which is where every other kind of
+-- engagement already lives.
+-- ---------------------------------------------------------------------------
+
+
+-- ---------------------------------------------------------------------------
+-- 1 · availability_status, at origin in RFC-0002
+--
+--     CREATE TYPE availability_status AS ENUM ('not_looking', 'looking');
+--
+-- It had four values: not_looking, looking_for_job, looking_for_freelance and
+-- open_to_freelance. Three of them said the same thing — "yes" — and differed
+-- only in what KIND of work the person wanted, which the OpenTo* flags already
+-- answer and answer better, because those compose and an enum makes somebody
+-- choose.
+--
+-- The cost of the four was not the extra values, it was the overlap: a
+-- contributor could tick 'contract' and set 'looking_for_freelance', and
+-- nothing could say which of the two the platform should believe. ADR-0018 §2
+-- refused an open_to_freelance FLAG for exactly that reason — two controls
+-- meaning one thing can disagree. Removing the duplication from the STATUS
+-- instead resolves it the other way round, and better: what work somebody
+-- wants is now said in one place, in the vocabulary the roles already use.
+--
+-- WHAT DOES NOT CHANGE, and is the reason this stays an enum rather than
+-- becoming a boolean:
+--
+--   * 'not_looking' is an OPT-OUT that no toggle reveals (ADR-0008 §1a). It
+--     has to be distinguishable from a row that simply lapsed, and from no row
+--     at all — three states, one column;
+--   * expires_at stays, and so does the 15-day window (ADR-0010 §5). It is
+--     what stops the pool filling with people who stopped looking a year ago,
+--     and nothing about collapsing the values touches it.
+
+
+-- ---------------------------------------------------------------------------
+-- 2 · user_work_preferences.open_to_freelance, at origin in RFC-0018
+--
+--     open_to_freelance boolean NOT NULL DEFAULT false,
+--
+-- The fifth shape, alongside remote, onsite, contract and internship. Default
+-- false like the others: a profile nobody filled in surfaces nobody, and
+-- opting somebody into freelance work by inaction would put them in front of
+-- hirers they never agreed to hear from.
+--
+-- ADR-0018 §2 explicitly refused this flag. The reason it gave was sound and
+-- is now spent: availability_status carried freelance twice over, so a flag
+-- would have been a third place to say it. Availability no longer says it at
+-- all, so the flag is the only place — which is what the rule was protecting.
+
+
+-- ---------------------------------------------------------------------------
+-- 3 · Nothing else.
+--
+-- No table is created here. A schema file that adds nothing is unusual enough
+-- to say why: this RFC is two edits at origin and a large amount of meaning,
+-- and putting the columns anywhere but the tables that own them would split
+-- one contributor's profile across two files for no reason.
+-- ---------------------------------------------------------------------------

@@ -509,6 +509,20 @@
           "updated_at": "<timestamp>"
         }
       }
+    },
+    {
+      "_step": "A CLOSED ROLE IS FINAL. Refused at the API rather than merely left out of the client, because a hirer is WARNED about this before they close anything — and a rule somebody is warned about has to be true afterwards. Everybody contacted was told the role closed, and a job that un-closes makes that a lie.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles/{{revision}}/open"
+      },
+      "expect": {
+        "status": 409,
+        "body": {
+          "error": "role_is_open"
+        }
+      }
     }
   ]
 }

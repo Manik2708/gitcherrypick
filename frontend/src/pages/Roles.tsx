@@ -12,7 +12,15 @@
 //   - closing asks WHY, and hiring through the platform asks WHO.
 
 import { useState } from "react";
-import type { CloseReason, Engagement, Role, RoleDraft } from "../contract";
+import { Link } from "react-router-dom";
+import type {
+  CloseReason,
+  Engagement,
+  Role,
+  RoleCandidate,
+  RoleDraft,
+  RoleStatus,
+} from "../contract";
 import type { PillTone } from "../ui/primitives";
 import {
   useCloseRole,
@@ -25,6 +33,8 @@ import {
   useRoles,
 } from "../hooks/hirer";
 import * as format from "../logic/format";
+import { CountryList } from "../ui/countries";
+import { CurrencyPicker } from "../ui/currencies";
 import { OpeningForm } from "../ui/OpeningForm";
 import {
   Banner,
@@ -48,6 +58,43 @@ const ENGAGEMENTS: Array<{ value: Engagement; label: string }> = [
   { value: "internship", label: "Internship" },
   { value: "freelance", label: "Freelance" },
 ];
+
+const TABS: Array<[RoleStatus, string]> = [
+  ["open", "Open"],
+  ["draft", "Drafts"],
+  ["closed", "Closed"],
+];
+
+/**
+ * Candidates whose name, GitHub login or round contains every word typed.
+ *
+ * The same every-word rule as the role search above, and for the same reason:
+ * somebody types what they remember, not a field verbatim.
+ */
+function matchingCandidates(people: RoleCandidate[], query: string): RoleCandidate[] {
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return people;
+  return people.filter((c) => {
+    const haystack = `${c.display_name} ${c.github_login ?? ""} ${c.shortlist_name}`.toLowerCase();
+    return words.every((word) => haystack.includes(word));
+  });
+}
+
+/**
+ * Roles whose title or description contains every word typed.
+ *
+ * Every word rather than the whole phrase, so "senior go" finds "Senior
+ * platform engineer — Go and Kubernetes". A hirer types what they remember
+ * about a role, not its title verbatim.
+ */
+function matching(roles: Role[], query: string): Role[] {
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return roles;
+  return roles.filter((role) => {
+    const haystack = `${role.title} ${role.description}`.toLowerCase();
+    return words.every((word) => haystack.includes(word));
+  });
+}
 
 const BLANK: RoleDraft = {
   title: "",
@@ -110,7 +157,19 @@ export function RolesPage() {
   const settings = useOrgSettings(org.id);
 
   const [composing, setComposing] = useState(false);
-  const [revising, setRevising] = useState<Role | null>(null);
+
+  // Which statuses to show. A SET rather than one tab: a hirer comparing what
+  // they have open against what they drafted wants both at once, and being
+  // made to flick between them is the thing a filter should spare them.
+  //
+  // Open alone to begin with, because it is the only status anybody acts on.
+  const [statuses, setStatuses] = useState<Set<RoleStatus>>(new Set(["open"]));
+
+  // Searched over the roles ALREADY FETCHED rather than by asking the server.
+  // An organisation has tens of roles, not thousands, and the page holds all
+  // of them — a round trip per keystroke would buy nothing and lose the
+  // instant feedback that makes a search box worth having.
+  const [query, setQuery] = useState("");
 
   if (org.loading || (roles.loading && !roles.data)) {
     return (
@@ -133,9 +192,12 @@ export function RolesPage() {
   }
 
   const all = roles.data?.roles ?? [];
-  const open = all.filter((r) => r.status === "open");
-  const drafts = all.filter((r) => r.status === "draft");
-  const closed = all.filter((r) => r.status === "closed");
+
+  // No status ticked means NO FILTER, not an empty list. A control that can be
+  // switched into showing nothing at all is one a hirer will switch into by
+  // accident and read as the page being broken.
+  const inScope = statuses.size === 0 ? all : all.filter((r) => statuses.has(r.status));
+  const shown = matching(inScope, query);
 
   // Stated as the RULE rather than guessed at the reader: the sign-in response
   // carries no org role — that shape is pinned by the approved fixtures — so a
@@ -164,28 +226,21 @@ export function RolesPage() {
         </Banner>
       ) : null}
 
-      {composing || revising ? (
+      {/* Only WRITING a role takes the page. Revising one is a panel on the
+          role it revises, like advertising and closing it — the form is about
+          that role, so it belongs under it rather than on a screen of its own
+          that hides every other role. */}
+      {composing ? (
         <RoleForm
           orgId={org.id}
-          revising={revising}
+          revising={null}
           onDone={() => {
             setComposing(false);
-            setRevising(null);
             roles.reload();
           }}
-          onCancel={() => {
-            setComposing(false);
-            setRevising(null);
-          }}
+          onCancel={() => setComposing(false)}
         />
-      ) : (
-        <Card>
-          <Button variant="primary" onClick={() => setComposing(true)}>
-            <Icon name="plus" size="sm" />
-            Write a role
-          </Button>
-        </Card>
-      )}
+      ) : null}
 
       {all.length === 0 ? (
         <Empty title="No roles yet" icon="bookmark">
@@ -194,28 +249,101 @@ export function RolesPage() {
         </Empty>
       ) : null}
 
-      {(
-        [
-          ["Open", open],
-          ["Draft — nobody has seen these", drafts],
-          ["Closed", closed],
-        ] as Array<[string, Role[]]>
-      ).map(([title, list]) =>
-        list.length > 0 ? (
-          <div key={title}>
-            <SectionTitle>{title}</SectionTitle>
-            {list.map((role) => (
-              <RoleCard
-                key={role.id}
-                orgId={org.id as string}
-                role={role}
-                onChanged={() => roles.reload()}
-                onRevise={() => setRevising(role)}
-              />
-            ))}
+      {/* One status at a time, rather than three stacked lists. A company with
+          a dozen roles had every draft and every closed one between them and
+          the open role they came to look at — the thing they want is almost
+          always open, and everything else is history. */}
+      {/* One bar: the view on the left, the action on the right. The create
+          button used to sit in a card of its own above the lists, which put a
+          whole row between a hirer and the roles they came to read. */}
+      {!composing ? (
+        <Card>
+          <div className="od-row" style={{ justifyContent: "space-between" }}>
+            {all.length > 0 ? (
+              // od-fill so the group takes the row's leftover width, and the
+              // search box inside it takes what the toggles do not. The
+              // toggles are a fixed size; the box is the part that should
+              // grow, because a role title is longer than "Drafts".
+              <div className="od-row od-fill">
+                {/* aria-PRESSED, not aria-selected: these are toggles now, and
+                    several can be on at once. The stylesheet already matched
+                    both, so the look is unchanged. */}
+                {/* flex:none so the SEARCH BOX absorbs every change in width.
+                    Without it the toggles shrink first on a narrow window and
+                    "Drafts" starts wrapping, which is the one part of this row
+                    that must stay legible. */}
+                <div className="segmented" style={{ flex: "none" }}>
+                  {TABS.map(([key, label]) => (
+                    <button
+                      key={key}
+                      type="button"
+                      aria-pressed={statuses.has(key)}
+                      onClick={() => {
+                        const next = new Set(statuses);
+                        if (next.has(key)) {
+                          next.delete(key);
+                        } else {
+                          next.add(key);
+                        }
+                        setStatuses(next);
+                      }}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="search-input od-fill">
+                  <Icon name="search" size="sm" />
+                  <input
+                    className="input"
+                    type="search"
+                    autoComplete="off"
+                    aria-label="Search roles"
+                    placeholder="Search roles"
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                  />
+                </div>
+              </div>
+            ) : (
+              // Nothing to switch between, but the row still has two ends —
+              // without a spacer the button would drift left and land
+              // somewhere different from where it sits the rest of the time.
+              <span />
+            )}
+
+            <Button variant="primary" onClick={() => setComposing(true)}>
+              <Icon name="plus" size="sm" />
+              Write a role
+            </Button>
           </div>
-        ) : null,
-      )}
+        </Card>
+      ) : null}
+
+      {/* WRITING A ROLE REPLACES THE LIST. The form used to appear above it
+          with every role still stacked underneath, so switching to it looked
+          like nothing had happened until you scrolled — and the thing you had
+          moved on from was still on screen. */}
+      {!composing && shown.length === 0 && all.length > 0 ? (
+        <Empty
+          title={query.trim() ? `Nothing matches “${query.trim()}”` : "Nothing in that view"}
+          icon="bookmark"
+        >
+          {query.trim()
+            ? "Titles and descriptions are searched. Check the statuses you have ticked — a match in a closed role will not show while only Open is on."
+            : "Tick another status above to widen what you are looking at."}
+        </Empty>
+      ) : null}
+
+      {(composing ? [] : shown).map((role) => (
+        <RoleCard
+          key={role.id}
+          orgId={org.id as string}
+          role={role}
+          onChanged={() => roles.reload()}
+        />
+      ))}
     </div>
   );
 }
@@ -224,17 +352,22 @@ function RoleCard({
   orgId,
   role,
   onChanged,
-  onRevise,
 }: {
   orgId: string;
   role: Role;
   onChanged: () => void;
-  onRevise: () => void;
 }) {
   const openRole = useOpenRole(orgId);
-  const [closing, setClosing] = useState(false);
-  const [advertising, setAdvertising] = useState(false);
-  const [showing, setShowing] = useState(false);
+  // ONE panel at a time. These were four independent toggles, so opening the
+  // advert form and then the closing form left both on screen stacked — and
+  // the one you had moved on from was still there, below the fold, still
+  // holding whatever you had typed into it.
+  //
+  // A single value makes switching mean what it looks like: the last thing
+  // you asked for is the thing you see.
+  const [panel, setPanel] = useState<"candidates" | "advertise" | "close" | "revise" | null>(null);
+  type Panel = Exclude<typeof panel, null>;
+  const show = (which: Panel) => setPanel((current) => (current === which ? null : which));
 
   const pay =
     role.engagement === "freelance"
@@ -306,6 +439,8 @@ function RoleCard({
       {openRole.error ? <Failure message={openRole.error.message} /> : null}
 
       <div className="od-row">
+        {/* Only a DRAFT opens. A closed role is final — see the warning on
+            the closing form. */}
         {role.status === "draft" ? (
           <Button
             variant="primary"
@@ -321,47 +456,63 @@ function RoleCard({
             {/* An open role is never edited. Publishing a new version is what
                 change means here, and everybody already contacted keeps reading
                 the one they were shown. */}
-            <Button onClick={onRevise}>Publish a new version</Button>
+            <Button aria-pressed={panel === "revise"} onClick={() => show("revise")}>
+              Publish a new version
+            </Button>
 
             {/* Advertising it. Alongside the other actions rather than below
                 them: a button on its own under a row of buttons reads as
                 belonging to whatever comes next, and this one was being
                 missed entirely. Only on an OPEN role — a draft is not a
                 commitment and a closed one is a withdrawn job. */}
-            <Button onClick={() => setAdvertising(!advertising)}>
-              {role.advertised
-                ? "Edit the public advert"
-                : advertising
-                  ? "Hide the advert form"
-                  : "Advertise it publicly"}
+            <Button aria-pressed={panel === "advertise"} onClick={() => show("advertise")}>
+              {role.advertised ? "Edit the public advert" : "Advertise it publicly"}
             </Button>
 
-            <Button onClick={() => setClosing(true)}>Close it</Button>
+            <Button aria-pressed={panel === "close"} onClick={() => show("close")}>
+              Close it
+            </Button>
           </>
         ) : null}
 
         {role.status !== "draft" ? (
-          <Button onClick={() => setShowing(!showing)}>
-            {showing ? "Hide who is on it" : "Who is on it"}
+          <Button aria-pressed={panel === "candidates"} onClick={() => show("candidates")}>
+            Who is on it
           </Button>
         ) : null}
       </div>
 
-      {advertising && role.status === "open" ? <OpeningForm orgId={orgId} role={role} /> : null}
+      {panel === "revise" && role.status === "open" ? (
+        <RoleForm
+          orgId={orgId}
+          revising={role}
+          onDone={() => {
+            setPanel(null);
+            onChanged();
+          }}
+          onCancel={() => setPanel(null)}
+        />
+      ) : null}
+
+      {panel === "advertise" && role.status === "open" ? (
+        <OpeningForm orgId={orgId} role={role} />
+      ) : null}
 
       {/* Who has already been approached for this job. Read before searching
           again — and the search itself now stops offering them. */}
-      {role.status !== "draft" ? showing ? <Candidates orgId={orgId} role={role} /> : null : null}
+      {panel === "candidates" && role.status !== "draft" ? (
+        <Candidates orgId={orgId} role={role} />
+      ) : null}
 
-      {closing ? (
+      {panel === "close" ? (
         <CloseForm
           orgId={orgId}
           role={role}
           onDone={() => {
-            setClosing(false);
+            setPanel(null);
             onChanged();
           }}
-          onCancel={() => setClosing(false)}
+          onCancel={() => setPanel(null)}
         />
       ) : null}
     </Card>
@@ -397,7 +548,15 @@ const CANDIDATE_STATE: Record<string, { label: string; tone: PillTone }> = {
  */
 function Candidates({ orgId, role }: { orgId: string; role: Role }) {
   const candidates = useRoleCandidates(orgId, role.id);
-  const list = candidates.data?.candidates ?? [];
+  const [query, setQuery] = useState("");
+
+  const all = candidates.data?.candidates ?? [];
+
+  // Scoped to THIS ROLE, which is the whole point: a hirer asking "did I
+  // already approach her for this job" is asking about one job. It searches
+  // names and the round somebody is on, because those are the two things a
+  // person remembers about a candidate they staged last week.
+  const list = matchingCandidates(all, query);
 
   return (
     <Card>
@@ -410,16 +569,40 @@ function Candidates({ orgId, role }: { orgId: string; role: Role }) {
         <Failure message={candidates.error.message} onRetry={candidates.reload} />
       ) : null}
 
-      {!candidates.loading && list.length === 0 ? (
+      {all.length > 0 ? (
+        <div className="search-input">
+          <Icon name="search" size="sm" />
+          <input
+            className="input"
+            type="search"
+            autoComplete="off"
+            aria-label={`Search candidates on ${role.title}`}
+            placeholder="Search these candidates"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
+        </div>
+      ) : null}
+
+      {!candidates.loading && all.length === 0 ? (
         <Empty title="Nobody yet" icon="people">
           Stage someone from search onto a round for this role and they will appear here.
+        </Empty>
+      ) : null}
+
+      {all.length > 0 && list.length === 0 ? (
+        <Empty title={`Nobody here matches “${query.trim()}”`} icon="people">
+          This searches only the people already on this role — {all.length}{" "}
+          {all.length === 1 ? "person" : "people"}. Somebody you have not staged yet will not be
+          here.
         </Empty>
       ) : null}
 
       {list.map((c) => (
         <div className="od-row" key={c.user_id} style={{ ["--od-gap" as string]: "10px" }}>
           <span className="od-field od-fill">
-            <span>{c.display_name}</span>
+            {/* Through to the scorecard, as in search. */}
+            <Link to={`/contributors/${c.user_id}`}>{c.display_name}</Link>
             <span className="field__help">on {c.shortlist_name}</span>
           </span>
           <Pill tone={CANDIDATE_STATE[c.contact_status]?.tone ?? "secondary"}>
@@ -476,6 +659,16 @@ function CloseForm({
       <SectionTitle note="A role that just stops teaches nobody anything.">
         Why are you closing this?
       </SectionTitle>
+
+      {/* Said BEFORE the decision, not discovered afterwards. Closing is the
+          one action on this screen with no way back, and a hirer who thought
+          it was reversible would close a role to tidy up and then find they
+          have to write it again. */}
+      <Banner icon="warn">
+        <b>Closing is permanent.</b> A closed role cannot be reopened — everybody you contacted
+        about it was told it closed, and a job that un-closes makes that a lie. If you want to
+        change what it says instead, publish a new version.
+      </Banner>
 
       {REASONS.map((r) => (
         <Radio
@@ -568,9 +761,12 @@ function RoleForm({
   const action = revising ? revise : create;
 
   const [form, setForm] = useState<RoleDraft>(revising ? draftOf(revising) : BLANK);
-  const [countries, setCountries] = useState(
-    revising ? revising.eligible_countries.join(", ") : "",
-  );
+  // The same picker the search filters use. Codes were typed here as a comma
+  // list while every other country field on the platform picked them from
+  // port.PlaceService — and a role's eligible countries are matched against a
+  // contributor's stated country exactly, so a typo excluded a country
+  // silently rather than visibly.
+  const [countries, setCountries] = useState<string[]>(revising ? revising.eligible_countries : []);
 
   const set = <K extends keyof RoleDraft>(key: K, value: RoleDraft[K]) =>
     setForm({ ...form, [key]: value });
@@ -578,13 +774,7 @@ function RoleForm({
   const freelance = form.engagement === "freelance";
 
   const submit = () => {
-    const draft: RoleDraft = {
-      ...form,
-      eligible_countries: countries
-        .split(",")
-        .map((c) => c.trim().toUpperCase())
-        .filter(Boolean),
-    };
+    const draft: RoleDraft = { ...form, eligible_countries: countries };
     void action.run(draft).then((ok) => ok && onDone());
   };
 
@@ -634,19 +824,13 @@ function RoleForm({
         </select>
       </Field>
 
-      <Field
+      <CurrencyPicker
+        id="currency"
         label="Currency"
-        htmlFor="currency"
-        help="Three letters, such as GBP. Any amount needs one — a number without a currency cannot be compared against what somebody expects."
-      >
-        <input
-          className="input"
-          id="currency"
-          maxLength={3}
-          value={form.currency}
-          onChange={(event) => set("currency", event.target.value.toUpperCase())}
-        />
-      </Field>
+        help="Any amount needs one — a number without a currency is not compared against what anybody expects, it is skipped."
+        value={form.currency}
+        onChange={(code) => set("currency", code)}
+      />
 
       {freelance ? (
         <>
@@ -718,19 +902,13 @@ function RoleForm({
         </select>
       </Field>
 
-      <Field
+      <CountryList
+        id="countries"
         label="Countries you can hire in"
-        htmlFor="countries"
-        help="Two-letter codes, separated by commas. LEAVE BLANK FOR ANYWHERE — a list you have not thought about would quietly exclude the world."
-      >
-        <input
-          className="input"
-          id="countries"
-          placeholder="GB, DE, IN"
-          value={countries}
-          onChange={(event) => setCountries(event.target.value)}
-        />
-      </Field>
+        help="LEAVE BLANK FOR ANYWHERE — a list you have not thought about would quietly exclude the world."
+        values={countries}
+        onChange={setCountries}
+      />
 
       <Field label="Least years in a job" htmlFor="office_yoe" help="Blank for no minimum.">
         <input

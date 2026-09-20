@@ -5,7 +5,7 @@
 // person would look for — the cheapest way to catch a crash typechecking
 // cannot see.
 
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
@@ -34,6 +34,37 @@ function asHirer() {
     }),
   );
 }
+
+// A role, as the roles list returns one. Shared so a test naming three of them
+// does not carry three copies of twenty-five fields.
+const ROLE_STUB = {
+  organization_id: "o1",
+  description: "",
+  engagement: "full_time",
+  location: "remote",
+  address_id: null,
+  currency: "",
+  yearly_ctc: null,
+  yearly_base: null,
+  hourly_rate: null,
+  expected_hours: null,
+  eligible_countries: [],
+  min_office_yoe: null,
+  min_oss_yoe: null,
+  requires_online_test: null,
+  max_interview_rounds: null,
+  avg_days_to_offer: null,
+  questions: [],
+  opened_at: null,
+  close_requested_at: null,
+  closed_at: null,
+  close_reason: null,
+  hires: [],
+  advertised: false,
+  supersedes: null,
+  created_at: "2026-09-01T00:00:00Z",
+  updated_at: "2026-09-01T00:00:00Z",
+};
 
 describe("the app renders", () => {
   beforeEach(() => {
@@ -191,6 +222,256 @@ describe("the app renders", () => {
     expect(screen.getAllByText(/hidden because their availability lapsed/).length).toBe(1);
     // A null generalist reads as a dash, never as zero.
     expect(screen.getAllByText("—").length).toBeGreaterThan(0);
+
+    // THE BUG THIS EXISTS TO CATCH. That stub returns no shortlists, so there
+    // is nowhere to put anybody — and the Shortlist button used to sit
+    // ENABLED beside every result and do nothing at all when pressed, which
+    // is indistinguishable from the feature being broken.
+    const shortlist = screen.getAllByRole("button", { name: /Shortlist/ })[0];
+    expect(shortlist).toHaveProperty("disabled", true);
+    expect(screen.getByText(/no open rounds to shortlist into/)).toBeTruthy();
+  });
+
+  // Three stacked lists put every draft and every closed role between a hirer
+  // and the open one they came to look at. Filtered by status instead — and
+  // by SEVERAL statuses, because comparing what you have open against what
+  // you drafted is the case a single tab makes hardest.
+  it("filters roles by any combination of statuses, and searches them", async () => {
+    asHirer();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        const body = url.includes("/org-roles")
+          ? {
+              roles: [
+                { ...ROLE_STUB, id: "r1", title: "Open one", status: "open" },
+                { ...ROLE_STUB, id: "r2", title: "Draft one", status: "draft" },
+                { ...ROLE_STUB, id: "r3", title: "Closed one", status: "closed" },
+              ],
+            }
+          : { organization: { id: "o1", name: "Acme", verified: true } };
+        return new Response(JSON.stringify(body), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }),
+    );
+
+    mount("/roles");
+
+    // Open by default: the only status a hirer acts on.
+    expect(await screen.findByText("Open one")).toBeTruthy();
+    expect(screen.queryByText("Draft one")).toBeNull();
+    expect(screen.queryByText("Closed one")).toBeNull();
+
+    // Adding a status WIDENS rather than replacing.
+    fireEvent.click(screen.getByRole("button", { name: /Drafts/ }));
+    expect(await screen.findByText("Draft one")).toBeTruthy();
+    expect(screen.getByText("Open one")).toBeTruthy();
+
+    // All three at once.
+    fireEvent.click(screen.getByRole("button", { name: /Closed/ }));
+    expect(await screen.findByText("Closed one")).toBeTruthy();
+
+    // And the search narrows across whatever is ticked.
+    fireEvent.change(screen.getByLabelText(/Search roles/), {
+      target: { value: "closed" },
+    });
+    expect(await screen.findByText("Closed one")).toBeTruthy();
+    expect(screen.queryByText("Open one")).toBeNull();
+    expect(screen.queryByText("Draft one")).toBeNull();
+  });
+
+  // Scoped to one role. A hirer asking "did I already approach her for this
+  // job" is asking about one job, so the box must not quietly search the
+  // whole pool — and must say so when it finds nobody.
+  it("searches the candidates on a role, within that role only", async () => {
+    asHirer();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        let body: unknown = { organization: { id: "o1", name: "Acme", verified: true } };
+        if (url.includes("/candidates")) {
+          body = {
+            candidates: [
+              {
+                user_id: "u1",
+                display_name: "Alice Okafor",
+                shortlist_name: "Round one",
+                contact_status: "",
+                notified_at: null,
+                accepted: false,
+              },
+              {
+                user_id: "u2",
+                display_name: "Bob Nakamura",
+                shortlist_name: "Round two",
+                contact_status: "accepted",
+                notified_at: "2026-09-01T00:00:00Z",
+                accepted: true,
+              },
+            ],
+          };
+        } else if (url.includes("/org-roles")) {
+          body = {
+            roles: [{ ...ROLE_STUB, id: "r1", title: "Open one", status: "open" }],
+          };
+        }
+        return new Response(JSON.stringify(body), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }),
+    );
+
+    mount("/roles");
+    fireEvent.click(await screen.findByRole("button", { name: /Who is on it/ }));
+
+    expect(await screen.findByText("Alice Okafor")).toBeTruthy();
+    expect(screen.getByText("Bob Nakamura")).toBeTruthy();
+
+    // A name is a way through to the scorecard, everywhere it appears — the
+    // evidence a hirer is deciding on should not be further away here than it
+    // is in search.
+    expect(screen.getByRole("link", { name: "Alice Okafor" })).toHaveProperty(
+      "pathname",
+      "/contributors/u1",
+    );
+
+    fireEvent.change(screen.getByLabelText(/Search candidates on Open one/), {
+      target: { value: "bob" },
+    });
+    expect(await screen.findByText("Bob Nakamura")).toBeTruthy();
+    expect(screen.queryByText("Alice Okafor")).toBeNull();
+
+    // And an empty result says what was searched — the people on THIS role.
+    fireEvent.change(screen.getByLabelText(/Search candidates on Open one/), {
+      target: { value: "nobody" },
+    });
+    expect(await screen.findByText(/Nobody here matches/)).toBeTruthy();
+    expect(screen.getByText(/only the people already on this role/)).toBeTruthy();
+  });
+
+  it("says why a search found nothing, rather than showing a blank list", async () => {
+    asHirer();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        const body = url.includes("/org-roles")
+          ? { roles: [{ ...ROLE_STUB, id: "r1", title: "Open one", status: "open" }] }
+          : { organization: { id: "o1", name: "Acme", verified: true } };
+        return new Response(JSON.stringify(body), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }),
+    );
+
+    mount("/roles");
+    await screen.findByText("Open one");
+
+    fireEvent.change(screen.getByLabelText(/Search roles/), {
+      target: { value: "nothing like this" },
+    });
+
+    // Naming the query, and pointing at the status ticks — a match hiding in
+    // a closed role behind an unticked filter is the likeliest reason.
+    expect(await screen.findByText(/Nothing matches/)).toBeTruthy();
+    expect(screen.getByText(/statuses you have ticked/)).toBeTruthy();
+  });
+
+  // Staging somebody and then searching again used to offer them straight
+  // back: the exclusion only applies when a role is named, and choosing a
+  // round to shortlist INTO never named one — even though a round is opened
+  // for exactly one job.
+  it("naming a round to shortlist into excludes who is already on its role", async () => {
+    asHirer();
+    const fetchMock = vi.fn(async (url: string) => {
+      const body = url.includes("/shortlists")
+        ? { shortlists: [{ id: "s1", role_id: "r1", name: "Platform hiring", status: "open" }] }
+        : {
+            total: 0,
+            inactive_hidden: 0,
+            ranked_by: "overall",
+            page: 1,
+            per_page: 20,
+            results: [],
+          };
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    mount("/search");
+    fireEvent.change(await screen.findByLabelText(/Shortlist into/), {
+      target: { value: "s1" },
+    });
+
+    await waitFor(() => {
+      const calls = fetchMock.mock.calls as unknown as Array<[string]>;
+      expect(calls.some(([url]) => url.includes("for_role=r1"))).toBe(true);
+    });
+  });
+
+  // THE PAGE HAD NO COVERAGE AT ALL, and rendered fine with an empty round —
+  // which is how it shipped reading `entry.user.id` off a response that has
+  // never carried a `user` object. It crashed the moment a round had somebody
+  // on it.
+  it("renders a round that has people on it", async () => {
+    asHirer();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              id: "s1",
+              role_id: "r1",
+              name: "Platform hiring, Q4",
+              status: "open",
+              tentative_result_date: "2026-12-01",
+              entries: [
+                {
+                  user_id: "u1",
+                  display_name: "Alice Okafor",
+                  notified_at: null,
+                  contact_status: null,
+                  email: null,
+                },
+                {
+                  user_id: "u2",
+                  display_name: "Bob Nakamura",
+                  notified_at: "2026-09-01T00:00:00Z",
+                  contact_status: "accepted",
+                  email: "bob@example.com",
+                },
+              ],
+            }),
+            { status: 200, headers: { "content-type": "application/json" } },
+          ),
+      ),
+    );
+
+    mount("/shortlists/s1");
+
+    expect(await screen.findByText("Alice Okafor")).toBeTruthy();
+    expect(screen.getByText("Bob Nakamura")).toBeTruthy();
+
+    // Both names go through to the scorecard.
+    expect(screen.getByRole("link", { name: "Alice Okafor" })).toHaveProperty(
+      "pathname",
+      "/contributors/u1",
+    );
+
+    // Removal turns on notified_at, which is the boundary the SERVER
+    // enforces: Alice was never told, Bob was.
+    expect(screen.getAllByRole("button", { name: /Remove/ }).length).toBe(1);
+    expect(screen.getByText(/Permanent — they have been told/)).toBeTruthy();
+
+    // An address appears only once somebody accepted.
+    expect(screen.getByText(/bob@example.com/)).toBeTruthy();
   });
 
   it("renders a contributor's standing, and never prints a null score as zero", async () => {
@@ -557,14 +838,15 @@ describe("the app renders", () => {
             open_to_internships: false,
             open_to_onsite: false,
             open_to_contract: false,
+            open_to_freelance: false,
             current_country: "",
             office_yoe: null,
             first_pr_url: "",
             latest_pr_url: "",
           },
           needs_attention: false,
-          availability: { status: "looking_for_job", expires_at: "2026-12-01T00:00:00Z" },
-          matchable: false,
+          readiness: { findable: true, blocking: [], limiting: [] },
+          availability: { status: "looking", expires_at: "2026-12-01T00:00:00Z" },
           ...over,
         };
       } else if (url.includes("/me/compensation")) {
@@ -583,25 +865,89 @@ describe("the app renders", () => {
     });
   }
 
-  // The trap this screen exists to close: looking, but having said nothing about
-  // what work you would take. Invisible to every role, and undiagnosable from
-  // outside — the person just never hears from anybody.
-  it("warns a contributor who is looking but matches nothing", async () => {
+  // The trap that USED to be here: looking, having ticked nothing, invisible to
+  // every role and undiagnosable from outside. ADR-0021 removed the state
+  // rather than the warning — looking now means open to anything — so the
+  // assertion worth keeping is that the preferences no longer gate anything.
+  it("does not warn a contributor who has ticked no preference", async () => {
     asContributor();
     vi.stubGlobal("fetch", profileStub());
 
     mount("/being-found");
-    expect(await screen.findByText(/no role can reach you/)).toBeTruthy();
+    await screen.findByText(/What you are open to/);
+    expect(screen.queryByText(/no role can reach you/)).toBeNull();
   });
 
-  it("drops the warning once a shape is ticked", async () => {
+  // THE BUG THIS EXISTS TO CATCH: ticking a preference and having nothing to
+  // press. The shapes lived in one card and the only Save at the bottom of a
+  // second, so a tick produced no visible save and nothing was ever written —
+  // reported as "not persistent in the frontend or the database", which is
+  // exactly what it looked like from outside.
+  it("a ticked preference reaches the server", async () => {
+    asContributor();
+    const fetchMock = profileStub();
+    vi.stubGlobal("fetch", fetchMock);
+
+    mount("/being-found");
+    await screen.findByText(/What you are open to/);
+
+    // Nothing to save before anything changes.
+    expect(screen.getByRole("button", { name: /Saved/ })).toHaveProperty("disabled", true);
+
+    fireEvent.click(screen.getByRole("checkbox", { name: /Freelance work/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /Save your profile/ }));
+
+    await waitFor(() => {
+      const calls = fetchMock.mock.calls as unknown as Array<[string, RequestInit?]>;
+      const put = calls.find(
+        ([url, init]) => url.includes("/me/profile") && init?.method === "PUT",
+      );
+      expect(put).toBeTruthy();
+      expect(JSON.parse(String(put?.[1]?.body)).open_to_freelance).toBe(true);
+    });
+  });
+
+  // The question the page is about. Somebody could satisfy every field on it
+  // and still be in no search result, because search reads overall_score —
+  // and nothing said so.
+  it("says plainly when nobody can find you, and why", async () => {
+    asContributor();
+    vi.stubGlobal(
+      "fetch",
+      profileStub({
+        readiness: {
+          findable: false,
+          blocking: ["no_scored_claim"],
+          limiting: ["no_country"],
+        },
+      }),
+    );
+
+    mount("/being-found");
+    expect(await screen.findByText(/Can hirers find you/)).toBeTruthy();
+    expect(screen.getByText(/None of your work has been scored yet/)).toBeTruthy();
+    // And the blocker is separated from the thing that merely narrows.
+    expect(screen.getByText(/You have not said where you are/)).toBeTruthy();
+    expect(screen.getByText(/stopping you being found/)).toBeTruthy();
+  });
+
+  it("says so when the profile is complete", async () => {
     asContributor();
     vi.stubGlobal("fetch", profileStub());
 
     mount("/being-found");
-    await screen.findByText(/no role can reach you/);
-    fireEvent.click(screen.getByRole("checkbox", { name: /Remote roles/ }));
-    expect(screen.queryByText(/no role can reach you/)).toBeNull();
+    expect(await screen.findByText(/Your profile is complete/)).toBeTruthy();
+  });
+
+  it("offers freelance as a preference, not as an availability state", async () => {
+    // It moved: availability used to carry freelance twice over, which is why
+    // ADR-0018 refused a flag for it. Availability no longer says it at all.
+    asContributor();
+    vi.stubGlobal("fetch", profileStub());
+
+    mount("/being-found");
+    expect(await screen.findByRole("checkbox", { name: /Freelance work/ })).toBeTruthy();
+    expect(screen.getByRole("checkbox", { name: /Looking for opportunities/ })).toBeTruthy();
   });
 
   // A hirer never sees expected pay, and the person typing it should be told so
@@ -678,8 +1024,7 @@ describe("the app renders", () => {
                   latest_pr_url: "",
                 },
                 needs_attention: false,
-                availability: { status: "looking_for_job", expires_at: "2026-12-01T00:00:00Z" },
-                matchable: true,
+                availability: { status: "looking", expires_at: "2026-12-01T00:00:00Z" },
               }
             : url.includes("/me/compensation")
               ? { currency: "", hourly_rate: null, yearly_amount: null }

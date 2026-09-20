@@ -205,7 +205,7 @@
             "id": "01920000-0000-7000-8000-00000000a001",
             "display_name": "Alice Okafor",
             "github_login": "aliceok",
-            "availability": "looking_for_job"
+            "availability": "looking"
           },
           "overall_score": 64.2,
           "generalist_score": 64.2,
@@ -386,7 +386,7 @@
             "id": "01920000-0000-7000-8000-00000000a004",
             "display_name": "Dave Whitfield",
             "github_login": "dwhit",
-            "availability": "open_to_freelance"
+            "availability": "looking"
           },
           "overall_score": 58.0,
           "generalist_score": 58.0,
@@ -444,7 +444,7 @@
             "id": "01920000-0000-7000-8000-00000000a001",
             "display_name": "Alice Okafor",
             "github_login": "aliceok",
-            "availability": "looking_for_job"
+            "availability": "looking"
           },
           "overall_score": 64.2,
           "generalist_score": 64.2,
@@ -627,7 +627,7 @@
             "github_login": "cdiaz",
             "active": false,
             "availability": {
-              "status": "looking_for_job",
+              "status": "looking",
               "last_confirmed_at": "<timestamp>",
               "inactive_for_days": 1
             }
@@ -656,13 +656,13 @@
         "method": "PUT",
         "path": "/me/availability",
         "body": {
-          "status": "looking_for_job"
+          "status": "looking"
         }
       },
       "expect": {
         "status": 200,
         "body": {
-          "status": "looking_for_job",
+          "status": "looking",
           "expires_at": "<timestamp>"
         }
       }
@@ -681,7 +681,7 @@
             "id": "01920000-0000-7000-8000-00000000a003",
             "display_name": "Carol Diaz",
             "github_login": "cdiaz",
-            "availability": "looking_for_job"
+            "availability": "looking"
           },
           "overall_score": 71.5,
           "generalist_score": 71.5,

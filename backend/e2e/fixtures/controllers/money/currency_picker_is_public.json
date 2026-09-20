@@ -1,0 +1,235 @@
+{
+  "name": "the currency picker answers without an account and is not degraded",
+  "description": "ADR-0018 amendment 3, and the reason this endpoint exists beside the country picker.\n\nEvery amount on this platform is minor units plus an ISO 4217 code (decision 8), and an amount is only ever compared against another amount in THE SAME code — a role's salary against a contributor's expectation, in search and in the public-opening gate. A hirer who typed 'usd', 'US$' or 'dollars' would have written a salary that is compared against nothing and be told nothing about it, because the shape check passes and the match silently does not. A closed vocabulary served from one place is how that is prevented at the point it happens rather than by a validator afterwards.\n\nNO BEARER TOKEN. A contributor states what they expect to be paid before anybody has shortlisted them and a hirer writes a salary into a draft role; a list of currencies is not information about a person either way. The unverified hirer asks too, because that is the account the platform refuses almost everywhere.\n\n`degraded` is the fail-open contract made explicit, exactly as for countries: the controller answers 200 with an empty list when the provider is down, so an empty list is not 'there are no currencies' but 'the picker could not be filled'. This case pins degraded:false against a provider that IS up, which is what makes the empty-list case distinguishable — and it is the only assertion that the harness passes --money-api-url at all.\n\nThe 15 entries are the stand-in's money: one for each country the country picker can place somebody in, so a role written for a country in that list can state a salary somebody there would recognise. Their ORDER is part of the snapshot, because a picker whose options shuffle between page loads is a defect in the endpoint rather than something a client should sort.",
+  "seed": ["principals"],
+  "steps": [
+    {
+      "_step": "NOBODY AT ALL. No Authorization header, and 200 — a profile form asks this before anybody has signed in to it.",
+      "as": "anonymous",
+      "request": {
+        "method": "GET",
+        "path": "/money/currencies"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "currencies": [
+            {
+              "code": "AED",
+              "name": "UAE dirham"
+            },
+            {
+              "code": "AUD",
+              "name": "Australian dollar"
+            },
+            {
+              "code": "BRL",
+              "name": "Brazilian real"
+            },
+            {
+              "code": "CAD",
+              "name": "Canadian dollar"
+            },
+            {
+              "code": "CHF",
+              "name": "Swiss franc"
+            },
+            {
+              "code": "EUR",
+              "name": "Euro"
+            },
+            {
+              "code": "GBP",
+              "name": "Pound sterling"
+            },
+            {
+              "code": "INR",
+              "name": "Indian rupee"
+            },
+            {
+              "code": "JPY",
+              "name": "Japanese yen"
+            },
+            {
+              "code": "KES",
+              "name": "Kenyan shilling"
+            },
+            {
+              "code": "NGN",
+              "name": "Nigerian naira"
+            },
+            {
+              "code": "PLN",
+              "name": "Polish zloty"
+            },
+            {
+              "code": "SGD",
+              "name": "Singapore dollar"
+            },
+            {
+              "code": "USD",
+              "name": "United States dollar"
+            },
+            {
+              "code": "ZAR",
+              "name": "South African rand"
+            }
+          ],
+          "degraded": false
+        }
+      }
+    },
+    {
+      "_step": "An unverified hirer, the account that is refused a scorecard, a search and a shortlist. Not refused this: a draft role is written before verification lands.",
+      "as": "pending_pat",
+      "request": {
+        "method": "GET",
+        "path": "/money/currencies"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "currencies": [
+            {
+              "code": "AED",
+              "name": "UAE dirham"
+            },
+            {
+              "code": "AUD",
+              "name": "Australian dollar"
+            },
+            {
+              "code": "BRL",
+              "name": "Brazilian real"
+            },
+            {
+              "code": "CAD",
+              "name": "Canadian dollar"
+            },
+            {
+              "code": "CHF",
+              "name": "Swiss franc"
+            },
+            {
+              "code": "EUR",
+              "name": "Euro"
+            },
+            {
+              "code": "GBP",
+              "name": "Pound sterling"
+            },
+            {
+              "code": "INR",
+              "name": "Indian rupee"
+            },
+            {
+              "code": "JPY",
+              "name": "Japanese yen"
+            },
+            {
+              "code": "KES",
+              "name": "Kenyan shilling"
+            },
+            {
+              "code": "NGN",
+              "name": "Nigerian naira"
+            },
+            {
+              "code": "PLN",
+              "name": "Polish zloty"
+            },
+            {
+              "code": "SGD",
+              "name": "Singapore dollar"
+            },
+            {
+              "code": "USD",
+              "name": "United States dollar"
+            },
+            {
+              "code": "ZAR",
+              "name": "South African rand"
+            }
+          ],
+          "degraded": false
+        }
+      }
+    },
+    {
+      "_step": "And a contributor, saying what they expect to be paid. The same list, cached in memory for the process lifetime.",
+      "as": "alice",
+      "request": {
+        "method": "GET",
+        "path": "/money/currencies"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "currencies": [
+            {
+              "code": "AED",
+              "name": "UAE dirham"
+            },
+            {
+              "code": "AUD",
+              "name": "Australian dollar"
+            },
+            {
+              "code": "BRL",
+              "name": "Brazilian real"
+            },
+            {
+              "code": "CAD",
+              "name": "Canadian dollar"
+            },
+            {
+              "code": "CHF",
+              "name": "Swiss franc"
+            },
+            {
+              "code": "EUR",
+              "name": "Euro"
+            },
+            {
+              "code": "GBP",
+              "name": "Pound sterling"
+            },
+            {
+              "code": "INR",
+              "name": "Indian rupee"
+            },
+            {
+              "code": "JPY",
+              "name": "Japanese yen"
+            },
+            {
+              "code": "KES",
+              "name": "Kenyan shilling"
+            },
+            {
+              "code": "NGN",
+              "name": "Nigerian naira"
+            },
+            {
+              "code": "PLN",
+              "name": "Polish zloty"
+            },
+            {
+              "code": "SGD",
+              "name": "Singapore dollar"
+            },
+            {
+              "code": "USD",
+              "name": "United States dollar"
+            },
+            {
+              "code": "ZAR",
+              "name": "South African rand"
+            }
+          ],
+          "degraded": false
+        }
+      }
+    }
+  ]
+}

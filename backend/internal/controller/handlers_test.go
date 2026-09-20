@@ -21,7 +21,7 @@ func TestMeShapesDifferByAccountType(t *testing.T) {
 		p := contributorPrincipal()
 		expires := fixedTime().Add(15 * 24 * time.Hour)
 		p.Contributor.Availability = &domain.Availability{
-			Status: domain.LookingForJob, ExpiresAt: &expires,
+			Status: domain.Looking, ExpiresAt: &expires,
 		}
 		h.signIn("alice-token", p)
 		h.auth.EXPECT().Me(mock.Anything, mock.Anything).Return(&p, nil)
@@ -39,7 +39,7 @@ func TestMeShapesDifferByAccountType(t *testing.T) {
 		got.decode(t, &body)
 		require.Equal(t, "aliceok", body.GitHubLogin)
 		require.Equal(t, "contributor", body.PrincipalType)
-		require.Equal(t, "looking_for_job", body.Availability.Status)
+		require.Equal(t, "looking", body.Availability.Status)
 	})
 
 	t.Run("hirer", func(t *testing.T) {
@@ -124,11 +124,11 @@ func TestSetAvailability(t *testing.T) {
 	h.signIn("alice-token", contributorPrincipal())
 
 	expires := fixedTime().Add(15 * 24 * time.Hour)
-	h.auth.EXPECT().SetAvailability(mock.Anything, domain.UserID(aliceID), domain.LookingForJob).
-		Return(&domain.Availability{Status: domain.LookingForJob, ExpiresAt: &expires}, nil)
+	h.auth.EXPECT().SetAvailability(mock.Anything, domain.UserID(aliceID), domain.Looking).
+		Return(&domain.Availability{Status: domain.Looking, ExpiresAt: &expires}, nil)
 
 	got := h.do(t, http.MethodPut, "/me/availability", "alice-token",
-		`{"status":"looking_for_job"}`)
+		`{"status":"looking"}`)
 	require.Equal(t, http.StatusOK, got.Status)
 
 	var body struct {
@@ -136,7 +136,7 @@ func TestSetAvailability(t *testing.T) {
 		ExpiresAt *time.Time `json:"expires_at"`
 	}
 	got.decode(t, &body)
-	require.Equal(t, "looking_for_job", body.Status)
+	require.Equal(t, "looking", body.Status)
 	require.NotNil(t, body.ExpiresAt)
 }
 
@@ -558,12 +558,12 @@ func TestSearchFilterParsing(t *testing.T) {
 			return len(q.Skills) == 2 && q.Skills[0] == "go" && q.Skills[1] == "kubernetes" &&
 				q.MinSkillScore != nil && *q.MinSkillScore == 70 &&
 				q.IncludeInactive && q.Page == 2 && q.PerPage == 50 &&
-				len(q.Availability) == 2
+				len(q.OpenTo) == 2
 		})).Return(&domain.SearchResults{Total: 0, RankedBy: "skill:go", Page: 2, PerPage: 50}, nil)
 
 	got := h.do(t, http.MethodGet,
 		"/search?skills=go,kubernetes&min_skill_score=70&include_inactive=true"+
-			"&page=2&per_page=50&availability=looking_for_job,open_to_freelance",
+			"&page=2&per_page=50&open_to=remote,freelance",
 		"hank-token", "")
 	require.Equal(t, http.StatusOK, got.Status, "body was %s", got.Body)
 }

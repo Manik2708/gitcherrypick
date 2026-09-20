@@ -233,7 +233,7 @@ func TestResultSkillsAreSerialized(t *testing.T) {
 			Total: 1, RankedBy: "overall", Page: 1, PerPage: 20,
 			Results: []domain.SearchResult{{
 				Rank: 1, UserID: aliceID, DisplayName: "Alice", Active: true,
-				Availability: &domain.Availability{Status: domain.LookingForJob},
+				Availability: &domain.Availability{Status: domain.Looking},
 				Skills: []domain.ResultSkill{{
 					Slug: "go", Name: "Go", Standing: domain.Primary, Score: 79.3, Rank: &rank,
 				}},

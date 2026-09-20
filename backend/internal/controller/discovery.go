@@ -24,8 +24,8 @@ import (
 // and nothing in the response would say so.
 var knownFilters = map[string]struct{}{
 	"skills": {}, "min_skill_score": {}, "min_overall_score": {},
-	"min_generalist_score": {}, "availability": {},
-	"q": {}, "include_inactive": {}, "page": {}, "per_page": {},
+	"min_generalist_score": {},
+	"q":                    {}, "include_inactive": {}, "page": {}, "per_page": {},
 
 	// What a contributor said about themselves (ADR-0018). No pay filter is
 	// here, and none may ever be added: a hirer able to filter on it would
@@ -548,16 +548,6 @@ func parseSearchQuery(r *http.Request) (domain.SearchQuery, []fieldError, string
 		PerPage:         atoiDefault(values.Get("per_page"), 20),
 	}
 
-	// Availability is repeatable AND comma-separated: a hirer may want both
-	// looking_for_job and open_to_freelance, and either spelling should work.
-	for _, raw := range values["availability"] {
-		for _, status := range strings.Split(raw, ",") {
-			if trimmed := strings.TrimSpace(status); trimmed != "" {
-				q.Availability = append(q.Availability, domain.AvailabilityStatus(trimmed))
-			}
-		}
-	}
-
 	if raw := values.Get("skills"); raw != "" {
 		// Comma-separated, because a hirer types "go,kubernetes" rather than
 		// repeating the parameter.
@@ -616,7 +606,7 @@ func parseSearchQuery(r *http.Request) (domain.SearchQuery, []fieldError, string
 		if !knownShape(shape) {
 			problems = append(problems, fieldError{
 				Field: "open_to", Reason: "unknown_shape", Value: shape,
-				Allowed: []string{"remote", "onsite", "contract", "internship"},
+				Allowed: []string{"remote", "onsite", "contract", "internship", "freelance"},
 			})
 		}
 	}
@@ -664,13 +654,14 @@ func isAlpha2(s string) bool {
 	return true
 }
 
-// knownShape reports one of the four OpenTo flags (ADR-0018 §2).
+// knownShape reports one of the five OpenTo preferences.
 //
-// Freelance is deliberately absent: availability_status carries it, and two
-// controls that both mean "freelance" can disagree.
+// Freelance is here now (ADR-0021 §5). It used to be absent because
+// availability_status carried it; availability no longer says anything about
+// what KIND of work somebody wants, so this is the only place it is said.
 func knownShape(s string) bool {
 	switch s {
-	case "remote", "onsite", "contract", "internship":
+	case "remote", "onsite", "contract", "internship", "freelance":
 		return true
 	}
 	return false

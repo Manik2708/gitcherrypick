@@ -595,18 +595,21 @@
             {
               "user_id": "01920000-0000-7000-8000-00000000a001",
               "display_name": "Alice Okafor",
+              "notified_at": "<timestamp>",
               "contact_status": "pending",
               "email": null
             },
             {
               "user_id": "01920000-0000-7000-8000-00000000a002",
               "display_name": "Bob Nakamura",
+              "notified_at": "<timestamp>",
               "contact_status": "pending",
               "email": null
             },
             {
               "user_id": "01920000-0000-7000-8000-00000000a003",
               "display_name": "Carol Diaz",
+              "notified_at": null,
               "contact_status": null,
               "email": null
             }

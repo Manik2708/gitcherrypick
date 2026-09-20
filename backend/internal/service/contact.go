@@ -132,7 +132,7 @@ func (s *ContactService) Respond(ctx context.Context, id domain.UserID, contact 
 	}
 
 	if accept {
-		if _, err := s.users.SetAvailability(ctx, id, domain.LookingForJob); err != nil {
+		if _, err := s.users.SetAvailability(ctx, id, domain.Looking); err != nil {
 			// Not fatal: the answer is recorded and the email is released. A
 			// stale availability window is a smaller problem than telling a
 			// contributor their acceptance failed when it did not.

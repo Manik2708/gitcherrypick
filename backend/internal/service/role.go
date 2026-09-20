@@ -204,13 +204,31 @@ func (s *RoleService) Open(ctx context.Context, p domain.Principal, org domain.O
 	if err != nil {
 		return nil, err
 	}
-	if _, err := s.owned(ctx, org, id); err != nil {
+	existing, err := s.owned(ctx, org, id)
+	if err != nil {
 		return nil, err
 	}
 	if !settings.RoleCreateAuthority.Commits(hirer.OrgRole == domain.RoleOwner) {
 		return nil, Coded(ErrForbidden, CodeOwnerApprovalRequired,
 			"an owner has to approve this role before it goes out — it states a "+
 				"salary and a process on the organisation's behalf")
+	}
+
+	// A CLOSED ROLE IS FINAL. Only a draft opens.
+	//
+	// Refused here rather than merely left out of the client, because a rule a
+	// hirer is warned about before they close something has to be true
+	// afterwards — and the repository's UPDATE would happily bring one back.
+	//
+	// The sharpest case is a superseded role: something replaced it, so
+	// reopening would leave two open roles for one job, which is the state the
+	// revise-and-close transaction exists to prevent (ADR-0019 §13). The rest
+	// are refused for a plainer reason — everybody contacted was told the role
+	// closed, and a job that un-closes makes that a lie.
+	if existing.Status == domain.RoleClosed {
+		return nil, Coded(ErrConflict, CodeRoleImmutable,
+			"a closed role cannot be reopened — write a new one, which is also "+
+				"what everybody you contacted about the old one would expect")
 	}
 
 	var out *domain.Role

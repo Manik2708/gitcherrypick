@@ -27,17 +27,26 @@
 CREATE TABLE user_work_preferences (
     user_id              uuid PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
 
-    -- No open_to_freelance. `availability_status` already carries it, as
-    -- `looking_for_freelance` and `open_to_freelance`, and two controls that
-    -- both mean "freelance" can disagree — leaving a UI to decide which wins,
-    -- differently in each place somebody reads it.
+    -- WHAT SOMEBODY WOULD PREFER, across all five shapes (ADR-0021).
     --
-    -- The flags therefore cover the shapes the status does NOT: where the work
-    -- happens, and what kind of engagement it is.
+    -- These no longer decide whether a hirer can FIND them — the availability
+    -- switch alone does that. They filter which openings the contributor is
+    -- shown, and a hirer reads them as a stated preference.
+    --
+    -- open_to_freelance is here now, reversing ADR-0018 §2. That decision
+    -- refused the flag because availability_status carried freelance twice
+    -- over and a third place to say it could disagree with the other two. The
+    -- reasoning was right and is spent: availability no longer says it at all,
+    -- so this is the only place, which is what the rule was protecting.
+    --
+    -- Defaults are FALSE. A profile nobody filled in prefers nothing, and
+    -- opting somebody into freelance work by inaction would shape their own
+    -- view of the market around a choice they never made.
     open_to_remote       boolean NOT NULL DEFAULT false,
     open_to_internships  boolean NOT NULL DEFAULT false,
     open_to_onsite       boolean NOT NULL DEFAULT false,
     open_to_contract     boolean NOT NULL DEFAULT false,
+    open_to_freelance    boolean NOT NULL DEFAULT false,
 
     -- Where they are now. ISO 3166-1 alpha-2, matching organization_addresses,
     -- because a role's eligible countries are matched against this and "UK"

@@ -284,7 +284,7 @@
             "id": "01920000-0000-7000-8000-00000000a001",
             "display_name": "Alice Okafor",
             "github_login": "aliceok",
-            "availability": "looking_for_job"
+            "availability": "looking"
           },
           "rubric_version": "v1"
         }
@@ -383,6 +383,7 @@
             {
               "user_id": "<uuid>",
               "display_name": "Alice Okafor",
+              "notified_at": "<timestamp>",
               "contact_status": "declined",
               "email": null
             }
@@ -591,6 +592,7 @@
             {
               "user_id": "<uuid>",
               "display_name": "Alice Okafor",
+              "notified_at": "<timestamp>",
               "contact_status": "accepted",
               "email": "alice@example.com"
             }
@@ -617,6 +619,7 @@
             {
               "user_id": "<uuid>",
               "display_name": "Alice Okafor",
+              "notified_at": "<timestamp>",
               "contact_status": "declined",
               "email": null
             }

@@ -243,6 +243,7 @@ log "starting the api on ${API_PORT}"
   --resend-api-key=dev \
   --app-url="${CLIENT_URL}" \
   --places-api-url="${CONTROL_URL}/places" \
+  --money-api-url="${CONTROL_URL}/money" \
   >"${STATE_DIR}/api.log" 2>&1 &
 API_PID=$!
 

@@ -145,6 +145,8 @@ NOT NULL` in RFC-0005, and `first_pr_authored_at` / `latest_pr_authored_at` /
 | ---------- | ------------------------------------------------------------------------------ |
 | 2026-09-19 | **Amendment 1** — `/me/roles` retired, superseded by ADR-0020                  |
 | 2026-09-19 | **Amendment 2** — a role lists its candidates; hires are picked from that list |
+| 2026-09-20 | **Amendment 3** — closing is final; `closed → open` removed                    |
+| 2026-09-20 | **Amendment 3** — a closed role reopens, unless it was superseded              |
 
 ### 1. A contributor sees published openings, not every matching role
 
@@ -184,3 +186,42 @@ The check is now **acceptance**, so the code is `hire_not_accepted` rather than
 `hire_email_not_released`. Staged, notified-but-unanswered and declined all fail, and they
 fail **identically** — distinguishing them would report a contributor's answer to whoever
 asked about somebody else's hiring.
+
+### 3. A closed role reopens, unless something replaced it
+
+Decision 10's table always allowed `closed → open` under `role_create_authority`, and the
+repository always supported it — but nothing surfaced it, so in practice a closed role was
+final. A headcount that comes back is the ordinary case, and making somebody retype a whole
+role for it punishes them for having closed it honestly.
+
+**Except a `superseded` one.** Something replaced it, and reopening would leave two open
+roles for one job — the exact state the revise-and-close transaction exists to prevent
+(§13). Refused with `role_is_open`, pointing at the successor.
+
+Reopening **wipes the closure** rather than keeping it beside an open status: `closed_at`,
+`closed_by`, `close_reason`, the note and any pending close request all clear, because a role
+cannot be both open and closed-for-a-reason. The hires recorded against it stay, since they
+happened.
+
+### 3. Closing a role is final
+
+Decision 10's table allowed `closed → open` under `role_create_authority`, and the
+repository's `UPDATE ... WHERE status <> 'open'` supported it. Nothing surfaced it, so in
+practice no role was ever reopened — and on the owner's decision it is now **refused**
+rather than left latent.
+
+Two reasons, and the second is the general one:
+
+- a **superseded** role reopening would leave two open roles for one job, which the
+  revise-and-close transaction exists to prevent (§13);
+- every other closure was **announced**. Everybody contacted about the role was told it
+  closed, and a job that un-closes makes that a lie. Writing a new role is the honest way to
+  hire again, and it is also what those people would expect.
+
+Enforced at the service, not merely omitted from the client, because a hirer is **warned
+about this before they close anything** — the closing form says it plainly — and a rule
+somebody is warned about has to hold afterwards.
+
+The same is now true of a **round**: closing one asks for an acknowledgement first, the way
+confirming it already did. It used to close on a single click with nothing asked, which made
+the most final action on that screen the easiest one to take by accident.

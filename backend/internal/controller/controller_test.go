@@ -48,6 +48,7 @@ type harness struct {
 	reeval     *mocks.ReevaluationService
 	profiles   *mocks.ProfileService
 	places     *mocks.PlaceService
+	money      *mocks.MoneyService
 	roles      *mocks.RoleService
 }
 
@@ -70,6 +71,7 @@ func newHarness(t *testing.T) *harness {
 		reeval:     mocks.NewReevaluationService(t),
 		profiles:   mocks.NewProfileService(t),
 		places:     mocks.NewPlaceService(t),
+		money:      mocks.NewMoneyService(t),
 		roles:      mocks.NewRoleService(t),
 	}
 
@@ -93,6 +95,7 @@ func newHarness(t *testing.T) *harness {
 		controller.NewOpeningsController(h.roles),
 		controller.NewOrganizationsController(h.redemption, h.onboarding),
 		controller.NewPlacesController(h.places),
+		controller.NewMoneyController(h.money),
 		controller.NewAdminController(h.admin, h.evaluation, h.onboarding, clock),
 		controller.NewPublicController(h.auth),
 		controller.NewDiscoveryController(h.discovery),

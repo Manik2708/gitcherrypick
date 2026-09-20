@@ -74,7 +74,7 @@
       {
         "_note": "Bob is not_looking in principals.json; the discovery cases need him visible to exercise the generalist filter.",
         "user": "bob",
-        "status": "looking_for_freelance",
+        "status": "looking",
         "expires_in_days": 15
       }
     ]

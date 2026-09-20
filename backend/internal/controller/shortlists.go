@@ -486,10 +486,21 @@ func (c *ShortlistController) contactRequests(w http.ResponseWriter, r *http.Req
 // stay null until the contributor acts: staging discloses nothing, and the
 // address is released only by an acceptance (ADR-0005).
 type roundEntryBody struct {
-	UserID        domain.UserID `json:"user_id"`
-	DisplayName   string        `json:"display_name"`
-	ContactStatus *string       `json:"contact_status"`
-	Email         *string       `json:"email"`
+	UserID      domain.UserID `json:"user_id"`
+	DisplayName string        `json:"display_name"`
+
+	// NotifiedAt is THE boundary removal turns on (ADR-0008 §3a): nil means
+	// still private and removable, set means the contributor was told and the
+	// entry is permanent.
+	//
+	// Carried explicitly rather than inferred from contact_status. The two
+	// almost agree — a notified entry has a request, a staged one does not —
+	// and "almost" is how a client ends up offering a Remove button that the
+	// server refuses.
+	NotifiedAt *time.Time `json:"notified_at"`
+
+	ContactStatus *string `json:"contact_status"`
+	Email         *string `json:"email"`
 }
 
 // roundDetailBody is a single round: who is on it, and where each stands.
@@ -515,7 +526,9 @@ func roundDetailBodyOf(s *domain.Shortlist) roundDetailBody {
 		Entries:             make([]roundEntryBody, 0, len(s.Entries)),
 	}
 	for _, e := range s.Entries {
-		row := roundEntryBody{UserID: e.UserID, DisplayName: e.DisplayName}
+		row := roundEntryBody{
+			UserID: e.UserID, DisplayName: e.DisplayName, NotifiedAt: e.NotifiedAt,
+		}
 		if e.ContactStatus != "" {
 			status := e.ContactStatus
 			row.ContactStatus = &status

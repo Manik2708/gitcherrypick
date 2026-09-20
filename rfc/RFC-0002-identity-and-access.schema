@@ -34,11 +34,18 @@ CREATE TYPE verification_proof_kind AS ENUM (
 
 -- Expires after 15 days; a lapsed status hides the profile from hirers
 -- (RFC-0002). Stale availability is the standard failure of hiring platforms.
+-- Looking, or not (ADR-0021). It had four values; three of them said "yes"
+-- and differed only in what KIND of work somebody wanted, which the OpenTo*
+-- flags answer and answer better — those compose, and an enum made a person
+-- choose between things that are not exclusive.
+--
+-- An enum rather than a boolean because the column has to hold THREE
+-- distinguishable states: no row at all (never answered), 'not_looking' (a
+-- deliberate opt-out that no toggle reveals — ADR-0008 §1a), and 'looking'
+-- with an expires_at that may already have passed.
 CREATE TYPE availability_status AS ENUM (
     'not_looking',
-    'looking_for_job',
-    'looking_for_freelance',
-    'open_to_freelance'
+    'looking'
 );
 
 -- ---------------------------------------------------------------------------

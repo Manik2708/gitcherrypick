@@ -223,7 +223,6 @@ const clearedOpenings = `
 	      JOIN roles r ON r.id = live.role_id
 	      JOIN users u ON u.id = $1
 	      LEFT JOIN user_work_preferences w ON w.user_id = u.id
-	      LEFT JOIN user_availability a ON a.user_id = u.id
 	      LEFT JOIN user_compensation comp ON comp.user_id = u.id
 	     WHERE (live.min_overall_score IS NULL
 	            OR (u.overall_score IS NOT NULL
@@ -265,14 +264,14 @@ const clearedOpenings = `
 	                WHERE os.opening_id = live.opening_id
 	                  AND (us.score IS NULL OR us.score < os.min_score))
 
-	       -- WHAT THEY SAID THEY WOULD TAKE (ADR-0018 §4). Somebody who never
-	       -- opened the profile form has every flag false and matches nothing
-	       -- — the zero value surfaces nobody, deliberately, so an untouched
-	       -- profile never puts anybody in front of work they did not ask for.
+	       -- WHAT THEY SAID THEY WOULD PREFER. This is the contributor's OWN
+	       -- view, so filtering it by their own preference is the point — it
+	       -- is not a gate on who may reach them (ADR-0021 §3).
 	       --
-	       -- Freelance keys on availability_status rather than a flag, because
-	       -- there is no open_to_freelance flag: the status already carries it
-	       -- twice over and two controls meaning one thing can disagree.
+	       -- Freelance reads a flag like every other engagement now. It used
+	       -- to key off availability_status, which made it the one shape
+	       -- expressed differently from the other four and put this CASE arm
+	       -- out of step with itself.
 	       AND (CASE r.engagement
 	                -- A permanent role reads the LOCATION, because "full time"
 	                -- alone says nothing about where, and remote and onsite
@@ -283,8 +282,7 @@ const clearedOpenings = `
 	                         ELSE coalesce(w.open_to_onsite, false) END
 	                WHEN 'contract'   THEN coalesce(w.open_to_contract, false)
 	                WHEN 'internship' THEN coalesce(w.open_to_internships, false)
-	                WHEN 'freelance'  THEN
-	                    a.status IN ('looking_for_freelance', 'open_to_freelance')
+	                WHEN 'freelance'  THEN coalesce(w.open_to_freelance, false)
 	            END)
 
 	       -- WHAT THEY EXPECT TO BE PAID. The one place this figure is ever

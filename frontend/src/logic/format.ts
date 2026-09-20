@@ -30,9 +30,7 @@ export function standingNote(value: Standing): string {
 }
 
 const AVAILABILITY: Record<AvailabilityStatus, string> = {
-  looking_for_job: "Looking for a job",
-  looking_for_freelance: "Looking for freelance work",
-  open_to_freelance: "Open to freelance work",
+  looking: "Looking for opportunities",
   not_looking: "Not looking",
 };
 
