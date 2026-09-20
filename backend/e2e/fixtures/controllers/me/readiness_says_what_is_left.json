@@ -1,0 +1,154 @@
+{
+  "name": "a contributor is told whether anybody can find them, and what is left",
+  "description": "ADR-0022. The rules that decide whether a hirer can see somebody live in the search query — `overall_score IS NOT NULL`, the lapse comparison, the availability gate — and until now a contributor could satisfy every field on their screen and still appear in no result anywhere, with nothing telling them why.\n\nTwo kinds of answer, and keeping them apart is the point. A BLOCKER means no hirer can find you at all. A LIMIT means you are findable and a whole class of role cannot reach you. Flattening the two into one list would present an urgent thing and a deliberate choice as the same thing — the same mistake as showing a lapsed window and an opt-out alike.\n\nTHE ONE PEOPLE DO NOT KNOW ABOUT is no_scored_claim. Search reads overall_score, so somebody who set availability and filled in every field is still invisible until a claim of theirs has been judged. Alice below is exactly that person, and every step she takes leaves it in place.\n\nThis replaces profile_matchable_needs_both_halves, which asserted the composition rule ADR-0021 removed: a live window with nothing ticked used to match nobody. It cannot now, so the case it pinned no longer exists.",
+  "seed": ["principals", "catalogue", "repositories"],
+  "steps": [
+    {
+      "_step": "Alice has answered nothing. Her window is live, so availability is not the problem — and she is still findable by nobody, because no claim of hers has been scored. Four limits sit underneath, each naming a class of role that cannot reach her.",
+      "as": "alice",
+      "request": {
+        "method": "GET",
+        "path": "/me/profile"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "preferences": {
+            "open_to_remote": false,
+            "open_to_internships": false,
+            "open_to_onsite": false,
+            "open_to_contract": false,
+            "open_to_freelance": false,
+            "current_country": "",
+            "office_yoe": null,
+            "first_pr_url": "",
+            "latest_pr_url": ""
+          },
+          "availability": {
+            "status": "looking",
+            "expires_at": "<timestamp>"
+          },
+          "needs_attention": true,
+          "readiness": {
+            "findable": false,
+            "blocking": ["no_scored_claim"],
+            "limiting": ["no_country", "no_verified_first_pr", "no_office_yoe", "no_preferences"]
+          }
+        }
+      }
+    },
+    {
+      "_step": "She fills in what she can. Three limits clear and the BLOCKER does not — which is the honest answer, and the one the old screen could not give: there is nothing left on this page for her to do.",
+      "as": "alice",
+      "request": {
+        "method": "PUT",
+        "path": "/me/profile",
+        "body": {
+          "open_to_remote": true,
+          "open_to_internships": false,
+          "open_to_onsite": false,
+          "open_to_contract": false,
+          "open_to_freelance": true,
+          "current_country": "GB",
+          "office_yoe": 6,
+          "first_pr_url": "",
+          "latest_pr_url": ""
+        }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "preferences": {
+            "open_to_remote": true,
+            "open_to_internships": false,
+            "open_to_onsite": false,
+            "open_to_contract": false,
+            "open_to_freelance": true,
+            "current_country": "GB",
+            "office_yoe": 6,
+            "first_pr_url": "",
+            "latest_pr_url": ""
+          },
+          "availability": {
+            "status": "looking",
+            "expires_at": "<timestamp>"
+          },
+          "needs_attention": false,
+          "readiness": {
+            "findable": false,
+            "blocking": ["no_scored_claim"],
+            "limiting": ["no_verified_first_pr"]
+          }
+        }
+      }
+    },
+    {
+      "_step": "CAROL'S WINDOW LAPSED YESTERDAY, and that is a second blocker beside the unscored claim. Lapsed is not an opt-out — she is still ranked and one click from returning — but a hirer searching by default does not see her.",
+      "as": "carol",
+      "request": {
+        "method": "GET",
+        "path": "/me/profile"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "preferences": {
+            "open_to_remote": false,
+            "open_to_internships": false,
+            "open_to_onsite": false,
+            "open_to_contract": false,
+            "open_to_freelance": false,
+            "current_country": "",
+            "office_yoe": null,
+            "first_pr_url": "",
+            "latest_pr_url": ""
+          },
+          "availability": {
+            "status": "looking",
+            "expires_at": "<timestamp>"
+          },
+          "needs_attention": true,
+          "readiness": {
+            "findable": false,
+            "blocking": ["availability_lapsed", "no_scored_claim"],
+            "limiting": ["no_country", "no_verified_first_pr", "no_office_yoe", "no_preferences"]
+          }
+        }
+      }
+    },
+    {
+      "_step": "BOB OPTED OUT, and is told so rather than nagged. It is a decision he made and it is working — no hirer toggle reveals him (ADR-0008 §1a) — so the screen owes him the fact that it is in force, not a prompt to undo it.",
+      "as": "bob",
+      "request": {
+        "method": "GET",
+        "path": "/me/profile"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "preferences": {
+            "open_to_remote": false,
+            "open_to_internships": false,
+            "open_to_onsite": false,
+            "open_to_contract": false,
+            "open_to_freelance": false,
+            "current_country": "",
+            "office_yoe": null,
+            "first_pr_url": "",
+            "latest_pr_url": ""
+          },
+          "availability": {
+            "status": "not_looking",
+            "expires_at": null
+          },
+          "needs_attention": true,
+          "readiness": {
+            "findable": false,
+            "blocking": ["opted_out", "no_scored_claim"],
+            "limiting": ["no_country", "no_verified_first_pr", "no_office_yoe", "no_preferences"]
+          }
+        }
+      }
+    }
+  ]
+}

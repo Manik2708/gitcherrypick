@@ -94,6 +94,9 @@ func (s *Server) Handler() http.Handler {
 	// The country list (ADR-0018 §10). No live vendor is wired: this is the
 	// only provider, and choosing a real one later is an adapter and a flag.
 	r.Get("/places/countries", s.countries)
+	// The currency list (ADR-0018 amendment 3). Same story: no live vendor,
+	// and the picker exists so two systems agree on one spelling of a code.
+	r.Get("/money/currencies", s.currencies)
 
 	r.Get("/_clock", s.clockRead)
 	r.Post("/_clock/advance", s.clockAdvance)
@@ -124,6 +127,35 @@ func (s *Server) load(w http.ResponseWriter, r *http.Request) {
 // asserting something true.
 func (s *Server) countries(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"countries": fakeCountries})
+}
+
+// currencies answers the currency picker.
+func (s *Server) currencies(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{"currencies": fakeCurrencies})
+}
+
+// fakeCurrencies is the stand-in's money.
+//
+// One currency for each country the list above can place somebody in, so a
+// role written for a country in the picker can state a salary a contributor
+// there would recognise. Real ISO 4217 codes, because a fixture asserting
+// "GBP" should be asserting something true.
+var fakeCurrencies = []map[string]string{
+	{"code": "AED", "name": "UAE dirham"},
+	{"code": "AUD", "name": "Australian dollar"},
+	{"code": "BRL", "name": "Brazilian real"},
+	{"code": "CAD", "name": "Canadian dollar"},
+	{"code": "CHF", "name": "Swiss franc"},
+	{"code": "EUR", "name": "Euro"},
+	{"code": "GBP", "name": "Pound sterling"},
+	{"code": "INR", "name": "Indian rupee"},
+	{"code": "JPY", "name": "Japanese yen"},
+	{"code": "KES", "name": "Kenyan shilling"},
+	{"code": "NGN", "name": "Nigerian naira"},
+	{"code": "PLN", "name": "Polish zloty"},
+	{"code": "SGD", "name": "Singapore dollar"},
+	{"code": "USD", "name": "United States dollar"},
+	{"code": "ZAR", "name": "South African rand"},
 }
 
 // fakeCountries is the stand-in's world.

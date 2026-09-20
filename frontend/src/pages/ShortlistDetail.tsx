@@ -8,8 +8,8 @@
 // that deletion anyway (ADR-0008 §3a).
 
 import { useState } from "react";
-import { useParams } from "react-router-dom";
-import type { ShortlistEntry } from "../contract";
+import { Link, useParams } from "react-router-dom";
+import type { RoundEntry } from "../contract";
 import {
   useCloseShortlist,
   useConfirmShortlist,
@@ -33,9 +33,14 @@ import {
   Pill,
 } from "../ui/primitives";
 
-/** Removal is legal only while nobody has been told. */
-function removable(entry: ShortlistEntry): boolean {
-  return !entry.notified_at && !entry.contact_status;
+/**
+ * Removal is legal only while nobody has been told (ADR-0008 §3a).
+ *
+ * Keyed on notified_at, which is the boundary the server enforces, rather than
+ * on contact_status, which only almost agrees with it.
+ */
+function removable(entry: RoundEntry): boolean {
+  return !entry.notified_at;
 }
 
 function EntryRow({
@@ -43,25 +48,25 @@ function EntryRow({
   onRemove,
   removing,
 }: {
-  entry: ShortlistEntry;
+  entry: RoundEntry;
   onRemove: (userId: string) => void;
   removing: boolean;
 }) {
   return (
     <li className="row">
-      <Avatar name={entry.user.display_name} size="sm" tint={3} />
+      <Avatar name={entry.display_name} size="sm" tint={3} />
       <div className="row__mid">
         <div className="row__ident">
-          <span className="row__name">{entry.user.display_name}</span>
-          <span className="row__login mono">@{entry.user.github_login}</span>
+          {/* A name is a way through to the scorecard, everywhere it appears.
+              A hirer looking at a round is deciding about people, and the
+              evidence that decision rests on is one click away in search —
+              it should not be further away here. */}
+          <Link className="row__name" to={`/contributors/${entry.user_id}`}>
+            {entry.display_name}
+          </Link>
         </div>
         {entry.email ? (
           <p className="row__meta mono">{entry.email} — released when they accepted.</p>
-        ) : null}
-        {entry.added_by ? (
-          <p className="row__meta">
-            <By who={entry.added_by} verb="Staged by" />
-          </p>
         ) : null}
       </div>
       <div className="row__right">
@@ -78,7 +83,7 @@ function EntryRow({
               variant="quiet"
               size="sm"
               disabled={removing}
-              onClick={() => onRemove(entry.user.id)}
+              onClick={() => onRemove(entry.user_id)}
             >
               Remove
             </Button>
@@ -100,6 +105,11 @@ export function ShortlistDetailPage() {
   const close = useCloseShortlist(shortlistId ?? "");
 
   const [acknowledged, setAcknowledged] = useState(false);
+
+  // Its own acknowledgement rather than sharing the confirm one: they are
+  // different irreversible acts, and a tick meant for one must not arm the
+  // other.
+  const [closeAcknowledged, setCloseAcknowledged] = useState(false);
 
   if (round.loading)
     return (
@@ -169,7 +179,7 @@ export function ShortlistDetailPage() {
           <ul className="rows">
             {data.entries.map((entry) => (
               <EntryRow
-                key={entry.user.id}
+                key={entry.user_id}
                 entry={entry}
                 removing={remove.pending}
                 onRemove={(id) => void remove.run(id).then(reload)}
@@ -238,12 +248,31 @@ export function ShortlistDetailPage() {
               Closing stops it accepting anyone new. The record of who was told stays.
             </span>
           </div>
+
+          {/* It used to close on one click, with nothing asked. Every other
+              irreversible act on this screen — confirming the round — is
+              acknowledged first, and this one is no less final: there is no
+              reopening a round. */}
+          <Banner icon="warn">
+            <b>Closing is permanent.</b> A closed round cannot be reopened, and nobody new can be
+            staged into it. Everybody already told stays told — closing sends nothing and takes
+            nothing back.
+          </Banner>
+
+          <Checkbox
+            label="I understand this round cannot be reopened"
+            checked={closeAcknowledged}
+            onChange={setCloseAcknowledged}
+          />
+
+          {close.error ? <Failure message={close.error.message} /> : null}
+
           <Button
-            variant="ghost"
-            disabled={close.pending}
+            variant="danger"
+            disabled={close.pending || !closeAcknowledged}
             onClick={() => void close.run().then(reload)}
           >
-            Close
+            {close.pending ? "Closing…" : "Close this round"}
           </Button>
         </Card>
       ) : null}

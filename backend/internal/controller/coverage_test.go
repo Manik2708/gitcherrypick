@@ -126,7 +126,7 @@ func TestEveryHandlerPropagatesAServiceFailure(t *testing.T) {
 			},
 		},
 		"set availability": {
-			contributorPrincipal(), http.MethodPut, "/me/availability", `{"status":"looking_for_job"}`,
+			contributorPrincipal(), http.MethodPut, "/me/availability", `{"status":"looking"}`,
 			func(h *harness) {
 				h.auth.EXPECT().SetAvailability(mock.Anything, mock.Anything, mock.Anything).
 					Return(nil, errBoom)

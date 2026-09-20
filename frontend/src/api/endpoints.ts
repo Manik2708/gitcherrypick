@@ -160,6 +160,10 @@ export const endpoints = {
     // and has no account behind it either.
     countries: () => "/places/countries",
 
+    // The currency picker. Public for the same reason: a contributor says
+    // what they expect to be paid before anybody has shortlisted them.
+    currencies: () => "/money/currencies",
+
     // The picker a redeemer finds their employer in. Verified organizations
     // only, name and slug only (ADR-0016 §3a).
     organizations: () => "/organizations",

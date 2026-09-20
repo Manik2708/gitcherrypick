@@ -14,6 +14,7 @@ import {
 } from "../hooks/contributor";
 import type { CompensationExpectation, WorkPreferences } from "../contract";
 import { CountryPicker } from "./countries";
+import { CurrencyPicker } from "./currencies";
 import {
   Banner,
   Button,
@@ -34,6 +35,11 @@ const SHAPES: Array<{ key: keyof WorkPreferences; label: string; help: string }>
     help: "A fixed term rather than a permanent position.",
   },
   {
+    key: "open_to_freelance",
+    label: "Freelance work",
+    help: "Invoiced from your own entity, usually part-time.",
+  },
+  {
     key: "open_to_internships",
     label: "Internships",
     help: "Including placements and apprenticeships.",
@@ -45,13 +51,14 @@ const EMPTY: WorkPreferences = {
   open_to_internships: false,
   open_to_onsite: false,
   open_to_contract: false,
+  open_to_freelance: false,
   current_country: "",
   office_yoe: null,
   first_pr_url: "",
   latest_pr_url: "",
 };
 
-export function ProfileForm() {
+export function ProfileForm({ onSaved }: { onSaved?: () => void }) {
   const profile = useMyProfile();
   const save = useSaveProfile();
 
@@ -69,23 +76,19 @@ export function ProfileForm() {
 
   const shown = save.data ?? profile.data;
 
+  // Whether anything differs from what the server last gave us. Compared as
+  // JSON because every field here is a primitive — a deep compare would be
+  // machinery for a shape that has none.
+  const dirty = JSON.stringify(form) !== JSON.stringify(shown?.preferences ?? EMPTY);
+
   // Write-once. Locked as soon as there is a value on the server, so the field
   // says what it will do BEFORE somebody types into it and gets a 409.
   const locked = (shown?.preferences.first_pr_url ?? "") !== "";
-  const anyShape = SHAPES.some((s) => form[s.key] === true);
-
-  // The window is live but nothing is ticked. A person in this state believes
-  // they are findable and is invisible to every role — and there is no way to
-  // tell from outside, which is why it is said here rather than discovered by
-  // nobody ever writing (ADR-0018).
-  const looking = (shown?.availability?.status ?? "not_looking") !== "not_looking";
-  const unmatchable = looking && !anyShape;
-
   if (profile.loading && !loaded) return <Loading what="your profile" />;
 
   return (
     <>
-      <SectionTitle note="Availability says whether you are looking. This says what you would take — you are available for the shapes you tick, and for nothing else.">
+      <SectionTitle note="Availability says whether a hirer can reach you at all. This says what you would PREFER — it shapes which openings you are shown, and never stops anybody approaching you.">
         What you are open to
       </SectionTitle>
 
@@ -93,13 +96,11 @@ export function ProfileForm() {
       {save.error ? <Failure message={save.error.message} /> : null}
 
       <Card>
-        {unmatchable ? (
-          <Banner icon="warn">
-            You are marked as looking, but you have not said what kind of work you would take — so
-            no role can reach you. Tick at least one below.
-          </Banner>
-        ) : null}
-
+        {/* ONE card and ONE Save for the whole section. It used to be two, with
+            the only button at the bottom of the second — so ticking a box in
+            the first had no visible save at all, and the button read as
+            belonging to the pull-request fields beside it. People ticked and
+            left, and nothing was written. */}
         {SHAPES.map((shape) => (
           <Checkbox
             key={shape.key}
@@ -110,13 +111,6 @@ export function ProfileForm() {
           />
         ))}
 
-        <p className="field__help">
-          Freelance work is not here: it is part of your availability above, so that one answer
-          cannot contradict another.
-        </p>
-      </Card>
-
-      <Card>
         {/* The same picker a hirer searches with (ADR-0018 §9). One
             vocabulary, or the two never match. */}
         <CountryPicker
@@ -184,8 +178,28 @@ export function ProfileForm() {
           />
         </Field>
 
-        <Button variant="primary" disabled={save.pending} onClick={() => void save.run(form)}>
-          {save.pending ? "Saving…" : "Save"}
+        {/* Dirty state, said out loud. A form that looks identical before and
+            after a change gives somebody no reason to press anything — which
+            is the other half of why these preferences were not being saved. */}
+        {dirty ? <p className="field__help">You have unsaved changes to this section.</p> : null}
+
+        <Button
+          variant="primary"
+          disabled={save.pending || !dirty}
+          onClick={() =>
+            void save.run(form).then((ok) => {
+              if (!ok) return;
+              // Re-sync from what the server actually stored, so the
+              // write-once lock and any value it normalised are what the
+              // screen shows.
+              if (save.data) setForm(save.data.preferences);
+              // And tell the page, so the readiness panel above stops asking
+              // for something that has just been given.
+              onSaved?.();
+            })
+          }
+        >
+          {save.pending ? "Saving…" : dirty ? "Save your profile" : "Saved"}
         </Button>
       </Card>
 
@@ -240,15 +254,13 @@ function CompensationForm() {
           exactly that and no more, which is why we do not tell them.
         </Banner>
 
-        <Field label="Currency" htmlFor="currency" help="Three letters, such as GBP, USD or INR.">
-          <input
-            className="input"
-            id="currency"
-            maxLength={3}
-            value={form.currency}
-            onChange={(e) => setForm({ ...form, currency: e.target.value.toUpperCase() })}
-          />
-        </Field>
+        <CurrencyPicker
+          id="currency"
+          label="Currency"
+          help="The code your rate is in. A salary is only compared against an expectation in the same currency, so this is picked rather than typed."
+          value={form.currency}
+          onChange={(code) => setForm({ ...form, currency: code })}
+        />
 
         <Field label="Hourly rate" htmlFor="hourly">
           <input

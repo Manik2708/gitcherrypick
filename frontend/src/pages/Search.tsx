@@ -50,20 +50,19 @@ import {
   Stat,
 } from "../ui/primitives";
 
-const AVAILABILITY_CHOICES = [
-  ["looking_for_job", "Looking for a job"],
-  ["looking_for_freelance", "Looking for freelance work"],
-  ["open_to_freelance", "Open to freelance work"],
-] as const;
-
-// What a contributor said they would take (ADR-0018 §2). Independent, because
-// somebody open to a remote contract and an onsite permanent role is stating
+// What a contributor said they would PREFER (ADR-0021 §3). Independent flags,
+// because somebody open to a remote contract and to freelance work is stating
 // two things and a single choice would make them pick.
+//
+// There is no availability filter beside this any more. With one looking state
+// it could only say "looking", which every default result already is — and the
+// distinction it used to draw (freelance or not) lives here now.
 const SHAPE_CHOICES = [
   ["remote", "Remote"],
   ["onsite", "Onsite"],
   ["contract", "Contract"],
   ["internship", "Internship"],
+  ["freelance", "Freelance"],
 ] as const;
 
 /** The gate codes that mean "this account", not "this query". */
@@ -87,12 +86,15 @@ function Row({
   rankedBy,
   onStage,
   staged,
+  canStage,
   staging,
 }: {
   result: SearchResult;
   rankedBy: string;
   onStage: (userId: string) => void;
   staged: boolean;
+  /** Whether a round is chosen. A button that silently does nothing is broken. */
+  canStage: boolean;
   staging: boolean;
 }) {
   const quiet = !result.active;
@@ -156,7 +158,8 @@ function Row({
           <Button
             variant="primary"
             size="sm"
-            disabled={staged || staging}
+            disabled={staged || staging || !canStage}
+            title={canStage ? undefined : "Choose a round to shortlist into, above the results."}
             onClick={() => onStage(result.id)}
           >
             {staged ? (
@@ -244,11 +247,6 @@ export function SearchPage() {
   const perPage = applied.perPage ?? 20;
   const pages = data ? pageCount(data.total, data.per_page || perPage) : 1;
   const page = applied.page ?? 1;
-
-  const toggle = (list: string[] | undefined, value: string) => {
-    const current = list ?? [];
-    return current.includes(value) ? current.filter((v) => v !== value) : [...current, value];
-  };
 
   return (
     <div className="page">
@@ -399,16 +397,6 @@ export function SearchPage() {
 
             <div className="fgroup">
               <div className="fgroup__title">Availability</div>
-              {AVAILABILITY_CHOICES.map(([value, label]) => (
-                <Checkbox
-                  key={value}
-                  label={label}
-                  checked={draft.availability?.includes(value) ?? false}
-                  onChange={() =>
-                    setDraft({ ...draft, availability: toggle(draft.availability, value) })
-                  }
-                />
-              ))}
               <label className="switchline">
                 <span className="switchline__text">
                   <span className="field__label">Include quiet profiles</span>
@@ -615,18 +603,52 @@ export function SearchPage() {
             </Banner>
           ) : null}
 
+          {/* The empty case, said out loud. Without this the Shortlist button
+              sits enabled beside every result with nowhere to put anybody, and
+              pressing it does nothing at all — which is indistinguishable from
+              the feature being broken. */}
+          {data && openRounds.length === 0 ? (
+            <Card>
+              <Banner icon="info">
+                <b>You have no open rounds to shortlist into.</b> A round is opened for a particular
+                job, so start from <Link to="/roles">a role</Link> and then{" "}
+                <Link to="/shortlists">open a round</Link> for it. You can search meanwhile —
+                nothing here is lost.
+              </Banner>
+            </Card>
+          ) : null}
+
           {data && openRounds.length > 0 ? (
             <Card>
               <Field
                 label="Shortlist into"
                 htmlFor="target"
-                help="Staging tells nobody. Confirming does, and that cannot be undone."
+                help="Pick one before shortlisting anybody. Staging tells nobody; confirming does, and that cannot be undone."
               >
                 <select
                   className="select"
                   id="target"
                   value={target}
-                  onChange={(event) => setTarget(event.target.value)}
+                  onChange={(event) => {
+                    const id = event.target.value;
+                    setTarget(id);
+
+                    // CHOOSING A ROUND IMPLIES ITS JOB. A round is opened for
+                    // one role, so the people already on a round for that role
+                    // are exactly the people this hirer has already
+                    // approached for it — and offering them again on the next
+                    // search is the waste the exclusion exists to remove.
+                    //
+                    // Applied straight away rather than waiting for Search:
+                    // the population just changed, and a list that still holds
+                    // somebody you have just staged reads as the staging not
+                    // having worked.
+                    const round = openRounds.find((r) => r.id === id);
+                    const next = { ...draft, forRole: round?.role_id, page: 1 };
+                    setDraft(next);
+                    setFromRole(round?.role_id ?? "");
+                    apply(next);
+                  }}
                 >
                   <option value="">— choose a round —</option>
                   {openRounds.map((round) => (
@@ -648,11 +670,18 @@ export function SearchPage() {
                   result={result}
                   rankedBy={format.rankedBy(data.ranked_by)}
                   staged={staged.includes(result.id)}
+                  canStage={Boolean(target)}
                   staging={stage.pending}
                   onStage={(userId) => {
                     if (!target) return;
                     void stage.run(userId).then((ok) => {
-                      if (ok !== null) setStaged([...staged, userId]);
+                      if (ok === null) return;
+                      setStaged([...staged, userId]);
+                      // The row STAYS, marked. Pulling it out from under the
+                      // cursor mid-list is disorienting, and the button
+                      // already says what happened. The next search is where
+                      // they drop out — which is why the round's role is
+                      // pinned as the exclusion above.
                     });
                   }}
                 />

@@ -9,11 +9,10 @@
         "method": "POST",
         "path": "/saved-searches",
         "body": {
-          "name": "Go + Kubernetes, available",
+          "name": "Go + Kubernetes",
           "filters": {
             "skills": ["go", "kubernetes"],
-            "min_skill_score": 50,
-            "availability": ["looking_for_job", "looking_for_freelance"]
+            "min_skill_score": 50
           }
         }
       },
@@ -24,17 +23,21 @@
         "status": 201,
         "body": {
           "id": "<uuid>",
-          "name": "Go + Kubernetes, available",
+          "name": "Go + Kubernetes",
           "filters": {
             "skills": ["go", "kubernetes"],
-            "min_skill_score": 50,
-            "availability": ["looking_for_job", "looking_for_freelance"]
+            "min_skill_score": 50
           },
           "organization": {
             "id": "01920000-0000-7000-8000-00000000b001",
             "name": "Acme Corp"
           },
-          "created_by": { "id": "01920000-0000-7000-8000-00000000c001", "username": "hank", "display_name": "Hank Rivera", "active": true },
+          "created_by": {
+            "id": "01920000-0000-7000-8000-00000000c001",
+            "username": "hank",
+            "display_name": "Hank Rivera",
+            "active": true
+          },
           "created_at": "<timestamp>"
         }
       }
@@ -158,7 +161,12 @@
             "id": "01920000-0000-7000-8000-00000000b001",
             "name": "Acme Corp"
           },
-          "created_by": { "id": "01920000-0000-7000-8000-00000000c001", "username": "hank", "display_name": "Hank Rivera", "active": true },
+          "created_by": {
+            "id": "01920000-0000-7000-8000-00000000c001",
+            "username": "hank",
+            "display_name": "Hank Rivera",
+            "active": true
+          },
           "created_at": "<timestamp>"
         }
       }
@@ -237,7 +245,7 @@
               "github_login": "bobn",
               "active": true,
               "availability": {
-                "status": "looking_for_freelance",
+                "status": "looking",
                 "expires_at": "<timestamp>"
               },
               "skills": [
@@ -266,7 +274,7 @@
       "as": "hank",
       "request": {
         "method": "GET",
-        "path": "/search?skills=go,kubernetes&min_skill_score=50&availability=looking_for_job,looking_for_freelance"
+        "path": "/search?skills=go,kubernetes&min_skill_score=50"
       },
       "expect": {
         "status": 200,
@@ -284,7 +292,7 @@
               "github_login": "bobn",
               "active": true,
               "availability": {
-                "status": "looking_for_freelance",
+                "status": "looking",
                 "expires_at": "<timestamp>"
               },
               "skills": [
@@ -330,7 +338,7 @@
               "github_login": "bobn",
               "active": true,
               "availability": {
-                "status": "looking_for_freelance",
+                "status": "looking",
                 "expires_at": "<timestamp>"
               },
               "skills": [
@@ -375,11 +383,10 @@
           "saved_searches": [
             {
               "id": "<uuid>",
-              "name": "Go + Kubernetes, available",
+              "name": "Go + Kubernetes",
               "filters": {
                 "skills": ["go", "kubernetes"],
-                "min_skill_score": 50,
-                "availability": ["looking_for_job", "looking_for_freelance"]
+                "min_skill_score": 50
               },
               "created_by": {
                 "id": "01920000-0000-7000-8000-00000000c001",
@@ -430,7 +437,7 @@
               "github_login": "bobn",
               "active": true,
               "availability": {
-                "status": "looking_for_freelance",
+                "status": "looking",
                 "expires_at": "<timestamp>"
               },
               "skills": [

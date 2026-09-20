@@ -128,7 +128,7 @@ func TestUserRepositorySetAvailability(t *testing.T) {
 		db, ctx := newDB(t), testContext(t)
 		created := mustCreateContributor(ctx, t, db, "Alice Okafor", 100001, "aliceok")
 
-		got, err := db.Users().SetAvailability(ctx, created.ID, domain.LookingForJob)
+		got, err := db.Users().SetAvailability(ctx, created.ID, domain.Looking)
 		if err != nil {
 			t.Fatalf("setting availability: %v", err)
 		}
@@ -149,21 +149,21 @@ func TestUserRepositorySetAvailability(t *testing.T) {
 		db, ctx := newDB(t), testContext(t)
 		created := mustCreateContributor(ctx, t, db, "Alice Okafor", 100001, "aliceok")
 
-		if _, err := db.Users().SetAvailability(ctx, created.ID, domain.LookingForJob); err != nil {
+		if _, err := db.Users().SetAvailability(ctx, created.ID, domain.Looking); err != nil {
 			t.Fatalf("first set: %v", err)
 		}
 		if err := db.Users().MarkReminded(ctx, []domain.UserID{created.ID}); err != nil {
 			t.Fatalf("marking reminded: %v", err)
 		}
 
-		got, err := db.Users().SetAvailability(ctx, created.ID, domain.LookingForFreelance)
+		got, err := db.Users().SetAvailability(ctx, created.ID, domain.Looking)
 		if err != nil {
 			t.Fatalf("refreshing: %v", err)
 		}
 		if got.RemindedAt != nil {
 			t.Errorf("expected reminded_at cleared, got %s", got.RemindedAt)
 		}
-		if got.Status != domain.LookingForFreelance {
+		if got.Status != domain.Looking {
 			t.Errorf("expected the new status, got %s", got.Status)
 		}
 		if n := count(t, db, `SELECT count(*) FROM user_availability WHERE user_id = $1`, string(created.ID)); n != 1 {
@@ -177,7 +177,7 @@ func TestUserRepositorySetAvailability(t *testing.T) {
 		db, ctx := newDB(t), testContext(t)
 		created := mustCreateContributor(ctx, t, db, "Carol Diaz", 100003, "cdiaz")
 
-		if _, err := db.Users().SetAvailability(ctx, created.ID, domain.LookingForJob); err != nil {
+		if _, err := db.Users().SetAvailability(ctx, created.ID, domain.Looking); err != nil {
 			t.Fatalf("setting: %v", err)
 		}
 		if _, err := db.Pool().Exec(ctx,
@@ -193,7 +193,7 @@ func TestUserRepositorySetAvailability(t *testing.T) {
 		if got.Availability == nil {
 			t.Fatal("the lapsed row was lost")
 		}
-		if got.Availability.Status != domain.LookingForJob {
+		if got.Availability.Status != domain.Looking {
 			t.Errorf("expected the status preserved, got %s", got.Availability.Status)
 		}
 		if got.Availability.IsActive(time.Now()) {
@@ -213,7 +213,7 @@ func TestUserRepositoryLapsingSoon(t *testing.T) {
 		lapsed := mustCreateContributor(ctx, t, db, "Already Gone", 200005, "gone")
 
 		for _, id := range []domain.UserID{soon.ID, later.ID, reminded.ID, lapsed.ID} {
-			if _, err := db.Users().SetAvailability(ctx, id, domain.LookingForJob); err != nil {
+			if _, err := db.Users().SetAvailability(ctx, id, domain.Looking); err != nil {
 				t.Fatalf("setting availability: %v", err)
 			}
 		}
@@ -247,7 +247,7 @@ func TestUserRepositoryLapsingSoon(t *testing.T) {
 		db, ctx := newDB(t), testContext(t)
 		c := mustCreateContributor(ctx, t, db, "Renewer", 200006, "renew")
 
-		if _, err := db.Users().SetAvailability(ctx, c.ID, domain.LookingForJob); err != nil {
+		if _, err := db.Users().SetAvailability(ctx, c.ID, domain.Looking); err != nil {
 			t.Fatalf("setting: %v", err)
 		}
 		setExpiry(ctx, t, db, c.ID, "now() + interval '2 days'")
@@ -263,7 +263,7 @@ func TestUserRepositoryLapsingSoon(t *testing.T) {
 			t.Fatalf("a reminded contributor should not reappear, got %d", len(got))
 		}
 
-		if _, err := db.Users().SetAvailability(ctx, c.ID, domain.LookingForJob); err != nil {
+		if _, err := db.Users().SetAvailability(ctx, c.ID, domain.Looking); err != nil {
 			t.Fatalf("refreshing: %v", err)
 		}
 		setExpiry(ctx, t, db, c.ID, "now() + interval '2 days'")

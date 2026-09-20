@@ -28,7 +28,6 @@ import { useAction, useAsync } from "./useAsync";
 export interface SearchFilters {
   skills?: string[];
   q?: string;
-  availability?: string[];
   minSkillScore?: number;
   minOverallScore?: number;
   minGeneralistScore?: number;
@@ -67,7 +66,6 @@ export function toQuery(f: SearchFilters): string {
   const q = new URLSearchParams();
   if (f.skills?.length) q.set("skills", f.skills.join(","));
   if (f.q?.trim()) q.set("q", f.q.trim());
-  if (f.availability?.length) q.set("availability", f.availability.join(","));
   if (f.minSkillScore) q.set("min_skill_score", String(f.minSkillScore));
   if (f.minOverallScore) q.set("min_overall_score", String(f.minOverallScore));
   if (f.minGeneralistScore) q.set("min_generalist_score", String(f.minGeneralistScore));
@@ -223,7 +221,6 @@ function rawFilters(f: SearchFilters): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   if (f.skills?.length) out.skills = f.skills.join(",");
   if (f.q?.trim()) out.q = f.q.trim();
-  if (f.availability?.length) out.availability = f.availability.join(",");
   if (f.minSkillScore) out.min_skill_score = f.minSkillScore;
   if (f.minOverallScore) out.min_overall_score = f.minOverallScore;
   if (f.minGeneralistScore) out.min_generalist_score = f.minGeneralistScore;
@@ -246,7 +243,6 @@ export function fromSaved(filters: Record<string, unknown>): SearchFilters {
   return {
     skills: csv("skills"),
     q: str("q"),
-    availability: csv("availability"),
     minSkillScore: num("min_skill_score"),
     minOverallScore: num("min_overall_score"),
     minGeneralistScore: num("min_generalist_score"),
@@ -272,7 +268,6 @@ export function describe(f: SearchFilters): string {
   if (f.countries?.length) bits.push(f.countries.join(" / "));
   if (f.openTo?.length) bits.push(f.openTo.join(" / "));
   if (f.forRole) bits.push("not yet on this round");
-  if (f.availability?.length) bits.push(f.availability.join(" / "));
   if (f.includeInactive) bits.push("including quiet");
   return bits.length ? bits.join(" · ") : "everyone";
 }

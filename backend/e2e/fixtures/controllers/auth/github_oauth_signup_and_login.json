@@ -229,7 +229,7 @@
           "email": "alice@example.com",
           "principal_type": "contributor",
           "availability": {
-            "status": "looking_for_job",
+            "status": "looking",
             "expires_at": "<timestamp>"
           }
         }

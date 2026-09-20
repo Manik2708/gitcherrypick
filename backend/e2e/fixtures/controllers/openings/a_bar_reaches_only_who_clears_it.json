@@ -14,6 +14,7 @@
           "open_to_internships": false,
           "open_to_onsite": false,
           "open_to_contract": false,
+          "open_to_freelance": false,
           "current_country": "GB",
           "office_yoe": 6,
           "first_pr_url": "",

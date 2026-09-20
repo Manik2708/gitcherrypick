@@ -15,11 +15,18 @@ export type PrincipalType = "contributor" | "hirer" | "admin";
 
 export type Standing = "primary" | "secondary";
 
-export type AvailabilityStatus =
-  | "looking_for_job"
-  | "looking_for_freelance"
-  | "open_to_freelance"
-  | "not_looking";
+/**
+ * Looking, or not (ADR-0021).
+ *
+ * There were four values; three said "yes" and differed only in what KIND of
+ * work somebody wanted, which the OpenTo* preferences answer. LOOKING MEANS
+ * OPEN TO ANYTHING — it is the whole of what decides whether a hirer can reach
+ * somebody.
+ *
+ * `not_looking` is a deliberate opt-out that no hirer toggle reveals, and is
+ * distinct from having never answered (no availability at all).
+ */
+export type AvailabilityStatus = "looking" | "not_looking";
 
 export interface Availability {
   status: AvailabilityStatus;
@@ -186,6 +193,14 @@ export interface HirerRef {
 export type ShortlistStatus = "draft" | "open" | "closed";
 export type ContactStatus = "pending" | "accepted" | "declined" | "expired";
 
+/**
+ * An entry as STAGING returns it — nested user, note, who added it.
+ *
+ * Distinct from RoundEntry below, which is what reading a round returns. The
+ * two are genuinely different shapes for different questions, and treating one
+ * as the other is what crashed the round screen: it read `entry.user.id` off a
+ * response that has never carried a `user` object.
+ */
 export interface ShortlistEntry {
   shortlist_id: string;
   user: { id: string; display_name: string; github_login: string };
@@ -196,6 +211,22 @@ export interface ShortlistEntry {
   contact_status?: ContactStatus | null;
   email?: string | null;
   added_at: string;
+}
+
+/**
+ * An entry as READING A ROUND returns it: flat, and carrying where each
+ * candidate stands.
+ *
+ * `notified_at` is the boundary removal turns on (ADR-0008 §3a) — null means
+ * still private and removable, set means they were told and the entry is
+ * permanent. `email` appears only once somebody accepted.
+ */
+export interface RoundEntry {
+  user_id: string;
+  display_name: string;
+  notified_at: string | null;
+  contact_status?: ContactStatus | null;
+  email?: string | null;
 }
 
 export interface ShortlistSummary {
@@ -216,7 +247,7 @@ export interface Shortlist extends ShortlistSummary {
   entry_count: number;
   unnotified_count: number;
   first_confirmed_at?: string | null;
-  entries: ShortlistEntry[];
+  entries: RoundEntry[];
   organization?: { name: string; verified: boolean } | null;
 }
 
@@ -741,6 +772,7 @@ export interface WorkPreferences {
   open_to_internships: boolean;
   open_to_onsite: boolean;
   open_to_contract: boolean;
+  open_to_freelance: boolean;
   current_country: string;
   /** Self-reported. Null is "not said", which is not zero. */
   office_yoe: number | null;
@@ -754,16 +786,35 @@ export interface ContributorProfile {
   preferences: WorkPreferences;
   availability: Availability | null;
   /**
-   * True when this person has never answered the form at all. Distinct from
-   * matchable: somebody who answered "none of these" has answered, and nagging
-   * them about it would be nagging them about a decision they made.
+   * Whether to PROMPT this person to fill the form in. True only when they
+   * have never answered.
+   *
+   * There is no `matchable` beside it any more: ADR-0021 removed the state it
+   * described. A live window with no preference ticked used to reach nobody;
+   * now it reaches everybody, so the only thing worth prompting about is
+   * never having answered at all.
    */
   needs_attention: boolean;
-  /**
-   * False when the window is live and no shape is enabled — a state reachable
-   * by accident and invisible from outside. The screen must say so.
-   */
-  matchable: boolean;
+
+  /** Whether a hirer can find them today, and what is in the way (ADR-0022). */
+  readiness: Readiness;
+}
+
+/**
+ * What stands between a contributor and being found.
+ *
+ * CODES, not sentences: the words belong to the screen, and the server owns
+ * which conditions are true — every one of them is a clause of the search
+ * query, and a second copy here would drift in the direction that leaves
+ * somebody believing they are visible when they are not.
+ */
+export interface Readiness {
+  /** Whether a hirer searching today would see them at all. */
+  findable: boolean;
+  /** Nobody can find you until these are cleared. */
+  blocking: string[];
+  /** Findable, but a whole class of role cannot reach you. */
+  limiting: string[];
 }
 
 /**
@@ -784,6 +835,24 @@ export interface Country {
 
 export interface CountriesResponse {
   countries: Country[];
+  /** True when the provider could not be reached — let the person type a code. */
+  degraded: boolean;
+}
+
+/**
+ * One currency, from the same kind of third party as a country.
+ *
+ * ISO 4217 alpha-3. An amount is only compared against another amount in the
+ * SAME code, so this is a closed vocabulary rather than a label (ADR-0018
+ * amendment 3).
+ */
+export interface Currency {
+  code: string;
+  name: string;
+}
+
+export interface CurrenciesResponse {
+  currencies: Currency[];
   /** True when the provider could not be reached — let the person type a code. */
   degraded: boolean;
 }

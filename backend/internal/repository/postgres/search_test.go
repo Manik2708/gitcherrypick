@@ -516,11 +516,11 @@ func newSearchPopulation(ctx context.Context, t *testing.T, db *postgres.DB) sea
 	giveHirerGitHubIdentity(ctx, t, db, daveHiring.ID, 100004, "dwhit")
 
 	for _, u := range []domain.UserID{alice.ID, bob.ID, dave.ID} {
-		if _, err := db.Users().SetAvailability(ctx, u, domain.LookingForJob); err != nil {
+		if _, err := db.Users().SetAvailability(ctx, u, domain.Looking); err != nil {
 			t.Fatalf("setting availability: %v", err)
 		}
 	}
-	if _, err := db.Users().SetAvailability(ctx, carol.ID, domain.LookingForJob); err != nil {
+	if _, err := db.Users().SetAvailability(ctx, carol.ID, domain.Looking); err != nil {
 		t.Fatalf("setting availability: %v", err)
 	}
 	setExpiry(ctx, t, db, carol.ID, "now() - interval '1 day'")

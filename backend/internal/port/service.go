@@ -273,17 +273,16 @@ type ContributorProfile struct {
 	// NeedsAttention is whether this person should be PROMPTED to fill the
 	// form in. True when they have never stated anything at all.
 	//
-	// Separate from Matchable, which can be false for a perfectly deliberate
-	// reason — somebody who is not looking. Nobody should be nagged about an
-	// answer they have given.
+	// It no longer has a Matchable to be confused with: ADR-0021 removed that
+	// field along with the state it described. A live window with nothing
+	// ticked used to reach nobody; now it reaches everybody, so the only thing
+	// left worth prompting about is never having answered.
 	NeedsAttention bool
 
-	// Matchable is false when the window is live and no flag is enabled — a
-	// state reachable by accident and invisible from outside (ADR-0018
-	// §The unmatchable state). Computed here rather than left to a client,
-	// because a client that forgot would leave somebody wondering why nobody
-	// ever writes to them.
-	Matchable bool
+	// Readiness is whether a hirer can find them today, and what is in the
+	// way. Computed on the server because it restates the search gates, and
+	// two copies of a gate stack drift (ADR-0022).
+	Readiness *domain.Readiness
 }
 
 // VerificationStatus is a hirer's view of their own review.

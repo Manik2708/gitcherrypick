@@ -14,6 +14,7 @@
           "open_to_internships": true,
           "open_to_onsite": false,
           "open_to_contract": false,
+          "open_to_freelance": false,
           "current_country": "DE",
           "office_yoe": 4,
           "first_pr_url": "https://github.com/indie/smalllib/pull/12",
@@ -29,17 +30,22 @@
             "open_to_internships": true,
             "open_to_onsite": false,
             "open_to_contract": false,
+            "open_to_freelance": false,
             "current_country": "DE",
             "office_yoe": 4,
             "first_pr_url": "https://github.com/indie/smalllib/pull/12",
             "latest_pr_url": "https://github.com/acme/bigrepo/pull/101"
           },
           "availability": {
-            "status": "looking_for_job",
+            "status": "looking",
             "expires_at": "<timestamp>"
           },
           "needs_attention": false,
-          "matchable": true
+          "readiness": {
+            "findable": false,
+            "blocking": ["no_scored_claim"],
+            "limiting": []
+          }
         },
         "db": {
           "user_work_preferences": {
@@ -52,6 +58,7 @@
               "open_to_internships": true,
               "open_to_onsite": false,
               "open_to_contract": false,
+              "open_to_freelance": false,
               "current_country": "DE",
               "office_yoe": 4,
               "first_pr_url": "https://github.com/indie/smalllib/pull/12",
@@ -76,17 +83,22 @@
             "open_to_internships": true,
             "open_to_onsite": false,
             "open_to_contract": false,
+            "open_to_freelance": false,
             "current_country": "DE",
             "office_yoe": 4,
             "first_pr_url": "https://github.com/indie/smalllib/pull/12",
             "latest_pr_url": "https://github.com/acme/bigrepo/pull/101"
           },
           "availability": {
-            "status": "looking_for_job",
+            "status": "looking",
             "expires_at": "<timestamp>"
           },
           "needs_attention": false,
-          "matchable": true
+          "readiness": {
+            "findable": false,
+            "blocking": ["no_scored_claim"],
+            "limiting": []
+          }
         }
       }
     },
@@ -101,6 +113,7 @@
           "open_to_internships": false,
           "open_to_onsite": false,
           "open_to_contract": false,
+          "open_to_freelance": false,
           "current_country": "",
           "office_yoe": null,
           "first_pr_url": "https://github.com/indie/smalllib/pull/12",
@@ -116,17 +129,22 @@
             "open_to_internships": false,
             "open_to_onsite": false,
             "open_to_contract": false,
+            "open_to_freelance": false,
             "current_country": "",
             "office_yoe": null,
             "first_pr_url": "https://github.com/indie/smalllib/pull/12",
             "latest_pr_url": "https://github.com/acme/platform/pull/56"
           },
           "availability": {
-            "status": "looking_for_job",
+            "status": "looking",
             "expires_at": "<timestamp>"
           },
           "needs_attention": false,
-          "matchable": false
+          "readiness": {
+            "findable": false,
+            "blocking": ["no_scored_claim"],
+            "limiting": ["no_country", "no_office_yoe", "no_preferences"]
+          }
         },
         "db": {
           "user_work_preferences": {
@@ -140,6 +158,7 @@
               "open_to_internships": false,
               "open_to_onsite": false,
               "open_to_contract": false,
+              "open_to_freelance": false,
               "current_country": null,
               "office_yoe": null,
               "first_pr_url": "https://github.com/indie/smalllib/pull/12",
@@ -163,17 +182,22 @@
             "open_to_internships": false,
             "open_to_onsite": false,
             "open_to_contract": false,
+            "open_to_freelance": false,
             "current_country": "",
             "office_yoe": null,
             "first_pr_url": "https://github.com/indie/smalllib/pull/12",
             "latest_pr_url": "https://github.com/acme/platform/pull/56"
           },
           "availability": {
-            "status": "looking_for_job",
+            "status": "looking",
             "expires_at": "<timestamp>"
           },
           "needs_attention": false,
-          "matchable": false
+          "readiness": {
+            "findable": false,
+            "blocking": ["no_scored_claim"],
+            "limiting": ["no_country", "no_office_yoe", "no_preferences"]
+          }
         }
       }
     },
@@ -188,6 +212,7 @@
           "open_to_internships": false,
           "open_to_onsite": false,
           "open_to_contract": false,
+          "open_to_freelance": false,
           "current_country": "GB",
           "office_yoe": 4,
           "first_pr_url": "https://github.com/acme/bigrepo/pull/900",
@@ -231,17 +256,22 @@
             "open_to_internships": false,
             "open_to_onsite": false,
             "open_to_contract": false,
+            "open_to_freelance": false,
             "current_country": "",
             "office_yoe": null,
             "first_pr_url": "https://github.com/indie/smalllib/pull/12",
             "latest_pr_url": "https://github.com/acme/platform/pull/56"
           },
           "availability": {
-            "status": "looking_for_job",
+            "status": "looking",
             "expires_at": "<timestamp>"
           },
           "needs_attention": false,
-          "matchable": false
+          "readiness": {
+            "findable": false,
+            "blocking": ["no_scored_claim"],
+            "limiting": ["no_country", "no_office_yoe", "no_preferences"]
+          }
         }
       }
     },
@@ -256,6 +286,7 @@
           "open_to_internships": false,
           "open_to_onsite": false,
           "open_to_contract": true,
+          "open_to_freelance": false,
           "current_country": "GB",
           "office_yoe": 5,
           "first_pr_url": "https://github.com/indie/smalllib/pull/12",
@@ -270,17 +301,22 @@
             "open_to_internships": false,
             "open_to_onsite": false,
             "open_to_contract": true,
+            "open_to_freelance": false,
             "current_country": "GB",
             "office_yoe": 5,
             "first_pr_url": "https://github.com/indie/smalllib/pull/12",
             "latest_pr_url": "https://github.com/acme/bigrepo/pull/904"
           },
           "availability": {
-            "status": "looking_for_job",
+            "status": "looking",
             "expires_at": "<timestamp>"
           },
           "needs_attention": false,
-          "matchable": true
+          "readiness": {
+            "findable": false,
+            "blocking": ["no_scored_claim"],
+            "limiting": []
+          }
         },
         "db": {
           "user_work_preferences": {
@@ -310,6 +346,7 @@
           "open_to_internships": false,
           "open_to_onsite": false,
           "open_to_contract": true,
+          "open_to_freelance": false,
           "current_country": "GB",
           "office_yoe": 5,
           "first_pr_url": "https://github.com/indie/smalllib/pull/12",
@@ -331,6 +368,41 @@
             "count": 1,
             "all_match": {
               "office_yoe": 5
+            }
+          }
+        }
+      }
+    },
+    {
+      "_step": "FREELANCE PERSISTS LIKE ANY OTHER PREFERENCE. It used to live on availability_status, so nothing here ever asserted it reaching this table. The whole point of moving it is that it is no longer special.",
+      "as": "alice",
+      "request": {
+        "method": "PUT",
+        "path": "/me/profile",
+        "body": {
+          "open_to_remote": false,
+          "open_to_internships": false,
+          "open_to_onsite": false,
+          "open_to_contract": false,
+          "open_to_freelance": true,
+          "current_country": "GB",
+          "office_yoe": 5,
+          "first_pr_url": "",
+          "latest_pr_url": ""
+        }
+      },
+      "expect": {
+        "status": 200,
+        "db": {
+          "user_work_preferences": {
+            "where": {
+              "user_id": "{{alice.id}}"
+            },
+            "count": 1,
+            "all_match": {
+              "open_to_freelance": true,
+              "open_to_remote": false,
+              "open_to_contract": false
             }
           }
         }

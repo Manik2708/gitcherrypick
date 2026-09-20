@@ -106,7 +106,7 @@ const alreadyShortlisted = `
 // vanishing from a result count.
 // The three profile parameters are passed as a BASE rather than fixed, because
 // the page and the count renumber everything: the count drops the paging pair,
-// so what is $16 in one query is $14 in the other. Naming the base once is what
+// so what is $15 in one query is $13 in the other. Naming the base once is what
 // keeps the two from drifting — and a drift here would make a total the page
 // could never produce.
 func eligibleCTE(nowParam, profileParam int) string {
@@ -144,12 +144,11 @@ func eligibleCTE(nowParam, profileParam int) string {
 	          ))
 	      AND ($5::numeric IS NULL OR r.overall_score    >= $5::numeric)
 	      AND ($6::numeric IS NULL OR r.generalist_score >= $6::numeric)
-	      AND ($7::text[]  IS NULL OR r.availability_status::text = ANY($7::text[]))
-	      AND ($9::text    IS NULL OR EXISTS (
+	      AND ($8::text    IS NULL OR EXISTS (
 	              SELECT 1 FROM users u
 	              LEFT JOIN user_github_identities gi ON gi.user_id = u.id
 	              WHERE u.id = r.user_id
-	                AND (u.display_name ILIKE '%%' || $9 || '%%' OR gi.github_login ILIKE '%%' || $9 || '%%')
+	                AND (u.display_name ILIKE '%%' || $8 || '%%' OR gi.github_login ILIKE '%%' || $8 || '%%')
 	          ))
 
 	      -- What the contributor said about themselves (ADR-0018), matched in
@@ -163,7 +162,7 @@ func eligibleCTE(nowParam, profileParam int) string {
 	      -- to reach.
 	      --
 	      -- No pay filter is here and none may be added (ADR-0018 §5).
-	      AND ($10::int IS NULL OR w.office_yoe >= $10::int)
+	      AND ($9::int IS NULL OR w.office_yoe >= $9::int)
 
 	      -- Open-source years, VERIFIED and dated from AUTHORSHIP (ADR-0019
 	      -- §7). first_pr_verified_at being null means a fetch we could not
@@ -178,22 +177,26 @@ func eligibleCTE(nowParam, profileParam int) string {
 	      AND ($%[3]d::text[] IS NULL OR cardinality($%[3]d::text[]) = 0
 	           OR w.current_country = ANY($%[3]d::text[]))
 
-	      -- The shapes they ticked, ANY of them. Composed with availability
-	      -- exactly as ADR-0018 §4 requires: somebody is available for the
-	      -- shapes they enabled and for nothing else, and the availability
-	      -- gate above has already run.
+	      -- WHAT THEY SAID THEY WOULD PREFER, and it is a preference rather
+	      -- than a gate (ADR-0021 §3). Somebody looking is open to anything;
+	      -- this narrows a hirer's search to people who said they would take
+	      -- that kind of work, and stops there.
+	      --
+	      -- Which is why an unticked flag no longer hides anybody: the filter
+	      -- applies when a hirer asks for it, and never otherwise.
 	      AND ($%[4]d::text[] IS NULL OR cardinality($%[4]d::text[]) = 0 OR (
 	              ('remote'     = ANY($%[4]d::text[]) AND w.open_to_remote)
 	           OR ('onsite'     = ANY($%[4]d::text[]) AND w.open_to_onsite)
 	           OR ('contract'   = ANY($%[4]d::text[]) AND w.open_to_contract)
-	           OR ('internship' = ANY($%[4]d::text[]) AND w.open_to_internships)))
+	           OR ('internship' = ANY($%[4]d::text[]) AND w.open_to_internships)
+	           OR ('freelance'  = ANY($%[4]d::text[]) AND w.open_to_freelance)))
 	)`, nowParam, ossParam, countryParam, shapeParam)
 }
 
 // visibleCTE applies the two gates that are parameters: the inactive toggle,
 // and the already-on-this-round exclusion.
 const visibleCTE = `visible AS (
-	SELECT * FROM eligible WHERE (active OR $8::boolean) AND NOT shortlisted)`
+	SELECT * FROM eligible WHERE (active OR $7::boolean) AND NOT shortlisted)`
 
 // Search runs the ranked query.
 func (r *SearchRepository) Search(ctx context.Context, caller domain.HirerID, q domain.SearchQuery) (*domain.SearchResults, error) {
@@ -217,24 +220,23 @@ func (r *SearchRepository) Search(ctx context.Context, caller domain.HirerID, q 
 	includeInactive := q.IncludeInactive || q.Query != ""
 
 	args := []any{
-		string(caller),                     // $1
-		q.Skills,                           // $2
-		len(q.Skills),                      // $3
-		q.MinSkillScore,                    // $4
-		q.MinOverallScore,                  // $5
-		q.MinGeneralistScore,               // $6
-		availabilityFilter(q.Availability), // $7
-		includeInactive,                    // $8
-		nullIfEmpty(q.Query),               // $9
-		q.MinOfficeYOE,                     // $10
-		perPage,                            // $11
-		(page - 1) * perPage,               // $12
+		string(caller),       // $1
+		q.Skills,             // $2
+		len(q.Skills),        // $3
+		q.MinSkillScore,      // $4
+		q.MinOverallScore,    // $5
+		q.MinGeneralistScore, // $6
+		includeInactive,      // $7
+		nullIfEmpty(q.Query), // $8
+		q.MinOfficeYOE,       // $9
+		perPage,              // $10
+		(page - 1) * perPage, // $11
 
 		// The platform's clock, not the database's (ADR-0012). "Is this
 		// availability live" and "was this merged recently" are business
 		// questions, and answering them from a second clock nothing else reads
 		// is what made this suite's result depend on the calendar date.
-		r.db.now(), // $13
+		r.db.now(), // $12
 	}
 
 	// The version discovery gates on, resolved once for the page and the
@@ -247,26 +249,26 @@ func (r *SearchRepository) Search(ctx context.Context, caller domain.HirerID, q 
 	if err != nil {
 		return nil, err
 	}
-	args = append(args, active, unversioned) // $14, $15
+	args = append(args, active, unversioned) // $13, $14
 
 	// The contributor's own account of themselves (ADR-0018). Appended LAST
-	// rather than slotted in beside the other filters: $14 and $15 are the
+	// rather than slotted in beside the other filters: $13 and $14 are the
 	// rubric versions, and renumbering them would move two parameters that
 	// every comment in this file names by position.
 	args = append(args,
-		q.MinOSSYOE, // $16
-		q.Countries, // $17
-		q.OpenTo,    // $18
+		q.MinOSSYOE, // $15
+		q.Countries, // $16
+		q.OpenTo,    // $17
 
 		// The role whose existing candidates to exclude. Last, and nullable:
 		// most searches are not for a particular job.
-		roleArg(q.ForRole), // $19
+		roleArg(q.ForRole), // $18
 	)
 
 	query := `
-	WITH` + fmt.Sprintf(alreadyShortlisted, 19) + `,
-	` + rankedPopulation(13, 14, 15) + `,
-	` + eligibleCTE(13, 16) + `,
+	WITH` + fmt.Sprintf(alreadyShortlisted, 18) + `,
+	` + rankedPopulation(12, 13, 14) + `,
+	` + eligibleCTE(12, 15) + `,
 	` + visibleCTE + `
 	SELECT (SELECT count(*) FROM visible)                    AS total,
 	       -- Each count means EXACTLY ONE thing. Inactive counts only those
@@ -284,7 +286,7 @@ func (r *SearchRepository) Search(ctx context.Context, caller domain.HirerID, q 
 	JOIN users u ON u.id = v.user_id
 	LEFT JOIN user_github_identities gi ON gi.user_id = v.user_id
 	ORDER BY rank, u.display_name
-	LIMIT $11 OFFSET $12`
+	LIMIT $10 OFFSET $11`
 
 	rows, err := r.db.pool.Query(ctx, query, args...)
 	if err != nil {
@@ -441,8 +443,8 @@ func resolveOrdering(q domain.SearchQuery) (domain.RankedBy, string) {
 // counts runs the same CTEs without paging, so an empty page still reports
 // how many matched and how many were hidden.
 //
-// It takes args[:10] — the filter parameters — then the clock, the two rubric
-// versions, and the profile filters. The paging pair ($11, $12) does not
+// It takes args[:9] — the filter parameters — then the clock, the two rubric
+// versions, and the profile filters. The paging pair ($10, $11) does not
 // appear in this query, and passing them would be an arity error.
 //
 // EVERY filter the page applies has to be applied here too. A count computed
@@ -450,40 +452,29 @@ func resolveOrdering(q domain.SearchQuery) (domain.RankedBy, string) {
 // a hirer would page towards results that do not exist — which is exactly what
 // happened when the profile filters were added and this slice was left alone.
 func (r *SearchRepository) counts(ctx context.Context, args []any, active, unversioned string) (total, hidden, shortlisted int, err error) {
-	// args[15:] is MinOSSYOE, Countries, OpenTo — the three appended after the
-	// rubric versions. They land at $14, $15, $16 here, which is what the
+	// args[14:] is MinOSSYOE, Countries, OpenTo — the three appended after the
+	// rubric versions. They land at $13, $14, $15 here, which is what the
 	// renumbered CTEs below expect.
 	// args[15:18] is MinOSSYOE, Countries, OpenTo; args[18] is ForRole. They
-	// land at $14..$17 here, which is what the renumbered CTEs expect.
-	profile := args[15:]
+	// land at $14..$16 here, which is what the renumbered CTEs expect.
+	profile := args[14:]
 
 	err = r.db.pool.QueryRow(ctx, `
-	WITH`+fmt.Sprintf(alreadyShortlisted, 17)+`,
-	`+rankedPopulation(11, 12, 13)+`,
-	`+eligibleCTE(11, 14)+`,
+	WITH`+fmt.Sprintf(alreadyShortlisted, 16)+`,
+	`+rankedPopulation(10, 11, 12)+`,
+	`+eligibleCTE(10, 13)+`,
 	visible AS (
-	    SELECT * FROM eligible WHERE (active OR $8::boolean) AND NOT shortlisted)
+	    SELECT * FROM eligible WHERE (active OR $7::boolean) AND NOT shortlisted)
 	SELECT (SELECT count(*) FROM visible),
 	       (SELECT count(*) FROM eligible WHERE NOT shortlisted)
 	           - (SELECT count(*) FROM visible),
 	       (SELECT count(*) FROM eligible WHERE shortlisted)`,
-		append(append(append([]any{}, args[:10]...), r.db.now(), active, unversioned),
+		append(append(append([]any{}, args[:9]...), r.db.now(), active, unversioned),
 			profile...)...).Scan(&total, &hidden, &shortlisted)
 	if err != nil {
 		return 0, 0, 0, translate(err, "counting search results")
 	}
 	return total, hidden, shortlisted, nil
-}
-
-func availabilityFilter(statuses []domain.AvailabilityStatus) []string {
-	if len(statuses) == 0 {
-		return nil
-	}
-	out := make([]string, len(statuses))
-	for i, s := range statuses {
-		out[i] = string(s)
-	}
-	return out
 }
 
 func nullIfEmpty(s string) *string {

@@ -81,10 +81,18 @@ type AddressID string
 type WorkPreferences struct {
 	UserID UserID
 
+	// What somebody would PREFER. These gate nothing: the availability switch
+	// alone decides whether a hirer can reach them (ADR-0021 §2). They filter
+	// this contributor's own view of what is open, and a hirer reads them as
+	// a stated preference.
 	OpenToRemote      bool
 	OpenToInternships bool
 	OpenToOnsite      bool
 	OpenToContract    bool
+
+	// Added by ADR-0021, reversing ADR-0018 §2: availability no longer carries
+	// freelance, so this is the only place it is said.
+	OpenToFreelance bool
 
 	// CurrentCountry is ISO 3166-1 alpha-2, typed by the person. Distinct from
 	// users.location, which GitHub supplies and a sign-in overwrites.
@@ -160,19 +168,6 @@ func (w *WorkPreferences) VerificationPending() bool {
 	return w != nil && w.FirstPRURL != "" && w.FirstPRVerifiedAt == nil
 }
 
-// Matchable reports whether any role could reach this contributor.
-//
-// A live availability window with no flag enabled matches NOTHING, and that is
-// reachable by accident: refresh the window, believe you are findable, and be
-// invisible to every role because you never said what work you would take
-// (ADR-0018 §The unmatchable state). Reported as a field rather than left for
-// a client to derive, because a client that forgot would leave someone
-// wondering why nobody writes.
-func (w *WorkPreferences) Matchable() bool {
-	return w != nil && (w.OpenToRemote || w.OpenToInternships ||
-		w.OpenToOnsite || w.OpenToContract)
-}
-
 // Compensation is what a contributor expects to be paid.
 //
 // A HIRER NEVER SEES THIS (ADR-0018 §2). It exists to filter what the
@@ -193,6 +188,17 @@ type Compensation struct {
 // Country is one entry in the picker, from port.PlaceService.
 type Country struct {
 	Code string // ISO 3166-1 alpha-2
+	Name string
+}
+
+// Currency is one entry in the currency picker, from port.MoneyService.
+//
+// A CODE AND A NAME, like a country, and for the same reason: every amount on
+// this platform is minor units plus an ISO 4217 code (ADR-0018 decision 8),
+// and a salary compared against an expectation in a different currency is not
+// compared at all. "quid", "GBP" and "£" cannot be three currencies.
+type Currency struct {
+	Code string // ISO 4217 alpha-3
 	Name string
 }
 
@@ -277,12 +283,23 @@ type Contributor struct {
 // AvailabilityStatus is what a contributor says about being open to work.
 type AvailabilityStatus string
 
-// The availability states a contributor may set.
+// The two states a contributor may set (ADR-0021).
+//
+// There were four. Three of them said "yes" and differed only in what KIND of
+// work somebody wanted, which the OpenTo* preferences answer — and answer
+// better, because those compose and an enum made a person choose between
+// things that are not exclusive.
+//
+// LOOKING MEANS OPEN TO ANYTHING. It is the whole of what decides whether a
+// hirer can reach somebody; the shape preferences filter that contributor's
+// own view and gate nothing.
 const (
-	NotLooking          AvailabilityStatus = "not_looking"
-	LookingForJob       AvailabilityStatus = "looking_for_job"
-	LookingForFreelance AvailabilityStatus = "looking_for_freelance"
-	OpenToFreelance     AvailabilityStatus = "open_to_freelance"
+	// NotLooking is a deliberate opt-out that no toggle reveals (ADR-0008
+	// §1a). Distinct from having no row at all, which is never having
+	// answered — and distinct again from Looking with a window that lapsed.
+	NotLooking AvailabilityStatus = "not_looking"
+
+	Looking AvailabilityStatus = "looking"
 )
 
 // Availability expires 15 days after it is set (ADR-0002 §6).
@@ -540,4 +557,101 @@ func ValidProofKind(k VerificationProofKind) bool {
 		return true
 	}
 	return false
+}
+
+// ReadinessCode names one thing standing between a contributor and being
+// found (ADR-0022).
+type ReadinessCode string
+
+// The things that decide whether anybody can reach somebody, and how widely.
+//
+// Split deliberately into two kinds. A BLOCKER means no hirer can find them at
+// all; a LIMIT means they are findable but a whole class of role cannot reach
+// them. Presenting the two alike would be the same mistake as presenting a
+// lapsed window and an opt-out alike: one is urgent and the other is a choice.
+const (
+	// --- blockers ---------------------------------------------------------
+
+	// ReadyNeverAnswered — no availability row at all. A new contributor is
+	// invisible until they choose to be visible.
+	ReadyNeverAnswered ReadinessCode = "availability_never_set"
+
+	// ReadyOptedOut — not_looking. A deliberate refusal, and no hirer toggle
+	// reveals them (ADR-0008 §1a). Listed so they can see it is in force, not
+	// as something to fix.
+	ReadyOptedOut ReadinessCode = "opted_out"
+
+	// ReadyLapsed — they said yes and the fifteen-day window ran out. Hidden
+	// from default search, still ranked, and one click from returning.
+	ReadyLapsed ReadinessCode = "availability_lapsed"
+
+	// ReadyNoScore — no overall score, because nothing has been judged yet.
+	//
+	// THE ONE PEOPLE DO NOT KNOW ABOUT. Search reads `overall_score IS NOT
+	// NULL`, so a contributor who has set availability and filled in every
+	// field is still in no result anywhere until a claim of theirs is scored.
+	// Nothing on the platform said so before this.
+	ReadyNoScore ReadinessCode = "no_scored_claim"
+
+	// --- limits -----------------------------------------------------------
+
+	// ReadyNoCountry — no stated country, so any role that can only hire in
+	// certain places cannot reach them (ADR-0019 §6).
+	ReadyNoCountry ReadinessCode = "no_country"
+
+	// ReadyNoVerifiedFirstPR — no verified first pull request, so any role
+	// asking for years in open source excludes them. That figure fails CLOSED
+	// on purpose: unknown is not zero (ADR-0019 §7).
+	ReadyNoVerifiedFirstPR ReadinessCode = "no_verified_first_pr"
+
+	// ReadyVerificationPending — stated, and we could not read it yet. A job
+	// retries; until it lands they are treated as unknown.
+	ReadyVerificationPending ReadinessCode = "first_pr_verification_pending"
+
+	// ReadyNoOfficeYOE — no stated years in a job, so a role with a minimum
+	// excludes them. Self-reported either way, which is why it is a limit and
+	// not a blocker.
+	ReadyNoOfficeYOE ReadinessCode = "no_office_yoe"
+
+	// ReadyNoPreferences — nothing ticked. Since ADR-0021 this hides nobody
+	// from a hirer; what it empties is the contributor's OWN view of what is
+	// open, which is the opposite way round from how it used to fail and
+	// worth saying plainly.
+	ReadyNoPreferences ReadinessCode = "no_preferences"
+)
+
+// ReadinessItem is one outstanding thing.
+type ReadinessItem struct {
+	Code ReadinessCode
+
+	// Blocking is whether this alone stops every hirer finding them.
+	Blocking bool
+}
+
+// Readiness is whether a contributor can be found, and what is in the way.
+//
+// Computed on the SERVER because the rules it reports are the search query's
+// own — `overall_score IS NOT NULL`, the lapse comparison, the country join.
+// A client deriving them would be a second copy of the gate stack, and the
+// two would drift in exactly the direction that leaves somebody believing
+// they are visible when they are not.
+type Readiness struct {
+	// Findable is whether a hirer searching today would see them at all.
+	Findable bool
+
+	Items []ReadinessItem
+}
+
+// Blockers returns only the items that stop them being found.
+func (r *Readiness) Blockers() []ReadinessItem {
+	if r == nil {
+		return nil
+	}
+	var out []ReadinessItem
+	for _, item := range r.Items {
+		if item.Blocking {
+			out = append(out, item)
+		}
+	}
+	return out
 }

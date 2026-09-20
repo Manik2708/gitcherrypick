@@ -25,11 +25,13 @@ func TestWorkPreferences(t *testing.T) {
 		if err != nil {
 			t.Fatalf("reading a blank profile should not fail: %v", err)
 		}
-		if got.Matchable() {
-			t.Error("a blank profile must match nothing")
-		}
-		if got.OpenToRemote || got.OpenToInternships || got.OpenToOnsite || got.OpenToContract {
-			t.Error("no flag may default to true")
+		// Every preference false. Since ADR-0021 this no longer hides them
+		// from hirers — the availability switch does that — but it does mean
+		// their own view of what is open is unfiltered by preference, which
+		// is the right default for somebody who has stated none.
+		if got.OpenToRemote || got.OpenToInternships || got.OpenToOnsite ||
+			got.OpenToContract || got.OpenToFreelance {
+			t.Error("no preference may default to true")
 		}
 	})
 
@@ -51,14 +53,15 @@ func TestWorkPreferences(t *testing.T) {
 		}
 
 		save(domain.WorkPreferences{
-			OpenToRemote: true, OpenToContract: true,
+			OpenToRemote: true, OpenToContract: true, OpenToFreelance: true,
 			CurrentCountry: "GB", OfficeYOE: &yoe,
 		})
 		got, err := db.Profiles().WorkPreferences(ctx, alice.ID)
 		if err != nil {
 			t.Fatalf("reading: %v", err)
 		}
-		if !got.OpenToRemote || !got.OpenToContract || got.CurrentCountry != "GB" {
+		if !got.OpenToRemote || !got.OpenToContract || !got.OpenToFreelance ||
+			got.CurrentCountry != "GB" {
 			t.Fatalf("the first save did not land: %+v", got)
 		}
 		if got.OfficeYOE == nil || *got.OfficeYOE != 6 {
@@ -72,8 +75,8 @@ func TestWorkPreferences(t *testing.T) {
 		if err != nil {
 			t.Fatalf("reading: %v", err)
 		}
-		if got.Matchable() {
-			t.Error("clearing every flag left one set — this was a merge, not a replace")
+		if got.OpenToRemote || got.OpenToContract || got.OpenToFreelance {
+			t.Error("clearing every preference left one set — this was a merge, not a replace")
 		}
 		if got.CurrentCountry != "" || got.OfficeYOE != nil {
 			t.Error("cleared fields should clear")
@@ -197,8 +200,7 @@ func TestStatedDistinguishesNeverAskedFromAnsweredNo(t *testing.T) {
 	if !after.Stated {
 		t.Error("an answer of 'none of these' is still an answer")
 	}
-	// Both are unmatchable. Only one should be prompted.
-	if before.Matchable() || after.Matchable() {
-		t.Error("neither should match anything")
-	}
+	// Neither has stated a preference. Only one should be prompted — which
+	// is the whole of what Stated is for, now that "matchable" is gone
+	// (ADR-0021 §4).
 }

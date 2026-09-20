@@ -21,7 +21,7 @@ import type { SearchFilters } from "../hooks/hirer";
 /** The subset of a search a role can answer. */
 export type DerivedFilters = Pick<
   SearchFilters,
-  "countries" | "minOfficeYoe" | "minOssYoe" | "openTo" | "availability" | "forRole"
+  "countries" | "minOfficeYoe" | "minOssYoe" | "openTo" | "forRole"
 >;
 
 /**
@@ -44,24 +44,12 @@ function shapesFor(role: Role): string[] {
     case "internship":
       return ["internship"];
     case "freelance":
-      // There is no open_to_freelance flag, deliberately: availability_status
-      // already carries freelance twice over, and two controls that both mean
-      // it can disagree (ADR-0018 §2). So freelance narrows availability
-      // instead, below.
-      return [];
+      // A preference like every other engagement now (ADR-0021 §5). It used
+      // to narrow availability instead, because there was no flag for it —
+      // which made freelance the one shape expressed differently from the
+      // other four, and put an exception in three separate places.
+      return ["freelance"];
   }
-}
-
-/**
- * What availability a role implies.
- *
- * Only freelance narrows it. Every other engagement is open to anybody who is
- * looking, and guessing at `looking_for_job` would hide the people who ticked
- * `open_to_freelance` and would happily take a permanent role.
- */
-function availabilityFor(role: Role): string[] | undefined {
-  if (role.engagement !== "freelance") return undefined;
-  return ["looking_for_freelance", "open_to_freelance"];
 }
 
 /**
@@ -80,7 +68,6 @@ export function filtersFromRole(role: Role): DerivedFilters {
     minOfficeYoe: role.min_office_yoe ?? undefined,
     minOssYoe: role.min_oss_yoe ?? undefined,
     openTo: shapesFor(role).length > 0 ? shapesFor(role) : undefined,
-    availability: availabilityFor(role),
 
     // And stop offering the people already on a round for it. Searching again
     // for a job you have been working is the case this whole feature is for,

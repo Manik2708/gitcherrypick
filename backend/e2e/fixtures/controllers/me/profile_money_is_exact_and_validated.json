@@ -1,10 +1,10 @@
 {
   "name": "money is minor units and exact, and every bad field is named before the database sees it",
-  "description": "ADR-0018 \u00a78 and the validation half of step 4.\n\nMONEY IS bigint MINOR UNITS WITH A REQUIRED ISO 4217 CURRENCY, never a float. 45_00 goes in and 45_00 comes out: no rounding, no drift, no division by a hundred on the way through. One of the amounts here is 4_500_000_000 minor units, which is a perfectly ordinary annual figure in a currency with small units and does not fit in a 32-bit column \u2014 so a schema or a decoder that narrowed anywhere along the path fails rather than silently wrapping somebody's salary.\n\nAn amount with no currency is refused. A number without one is not a rate, and guessing one from the country would be worse than asking: people are paid in currencies they do not live in. Zero is refused too \u2014 nobody means to state a rate of zero, so it is far likelier to be an empty form than an offer.\n\nEVERY REFUSAL IS A NAMED ERROR AND NOTHING IS WRITTEN. The schema also carries check constraints for all of this, which is exactly the trap: a service that skipped validation would still be safe, and the caller would get a 500 out of a constraint violation nobody can read and no client can branch on. So each case here asserts the code AND that the table is untouched, which together say the refusal happened above the database rather than in it.\n\nThe country code is validated for SHAPE, since a malformed one cannot be a country in any vocabulary. Whether a well-formed code is a country the platform knows about is port.PlaceService's question and is deliberately not asserted here \u2014 see the note on the last step.\n\nZero office years is LEGAL and 81 is not. Somebody contributing before their first job is a real person with a real answer, and nobody has worked for 81 years.",
+  "description": "ADR-0018 §8 and the validation half of step 4.\n\nMONEY IS bigint MINOR UNITS WITH A REQUIRED ISO 4217 CURRENCY, never a float. 45_00 goes in and 45_00 comes out: no rounding, no drift, no division by a hundred on the way through. One of the amounts here is 4_500_000_000 minor units, which is a perfectly ordinary annual figure in a currency with small units and does not fit in a 32-bit column — so a schema or a decoder that narrowed anywhere along the path fails rather than silently wrapping somebody's salary.\n\nAn amount with no currency is refused. A number without one is not a rate, and guessing one from the country would be worse than asking: people are paid in currencies they do not live in. Zero is refused too — nobody means to state a rate of zero, so it is far likelier to be an empty form than an offer.\n\nEVERY REFUSAL IS A NAMED ERROR AND NOTHING IS WRITTEN. The schema also carries check constraints for all of this, which is exactly the trap: a service that skipped validation would still be safe, and the caller would get a 500 out of a constraint violation nobody can read and no client can branch on. So each case here asserts the code AND that the table is untouched, which together say the refusal happened above the database rather than in it.\n\nThe country code is validated for SHAPE, since a malformed one cannot be a country in any vocabulary. Whether a well-formed code is a country the platform knows about is port.PlaceService's question and is deliberately not asserted here — see the note on the last step.\n\nZero office years is LEGAL and 81 is not. Somebody contributing before their first job is a real person with a real answer, and nobody has worked for 81 years.",
   "seed": ["principals", "catalogue", "repositories"],
   "steps": [
     {
-      "_step": "Nothing stated yet. An empty currency and two nulls \u2014 and NO ROW, because absence is not an error and not a row of zeros either.",
+      "_step": "Nothing stated yet. An empty currency and two nulls — and NO ROW, because absence is not an error and not a row of zeros either.",
       "as": "alice",
       "request": {
         "method": "GET",
@@ -113,7 +113,7 @@
       }
     },
     {
-      "_step": "AN AMOUNT WITH NO CURRENCY. Refused by name \u2014 the constraint in the schema would have caught it too, with a 500 nobody can act on.",
+      "_step": "AN AMOUNT WITH NO CURRENCY. Refused by name — the constraint in the schema would have caught it too, with a 500 nobody can act on.",
       "as": "alice",
       "request": {
         "method": "PUT",
@@ -183,7 +183,7 @@
       }
     },
     {
-      "_step": "Zero is not a rate anybody means to state \u2014 far likelier an empty field than an offer.",
+      "_step": "Zero is not a rate anybody means to state — far likelier an empty field than an offer.",
       "as": "alice",
       "request": {
         "method": "PUT",
@@ -251,7 +251,7 @@
       }
     },
     {
-      "_step": "CLEARING IT. Both amounts and the currency go, and the read that follows is indistinguishable from never having stated one \u2014 which is the only honest thing for it to be.",
+      "_step": "CLEARING IT. Both amounts and the currency go, and the read that follows is indistinguishable from never having stated one — which is the only honest thing for it to be.",
       "as": "alice",
       "request": {
         "method": "PUT",
@@ -296,6 +296,7 @@
           "open_to_internships": false,
           "open_to_onsite": false,
           "open_to_contract": false,
+          "open_to_freelance": false,
           "current_country": "usa",
           "office_yoe": 4
         }
@@ -326,6 +327,7 @@
           "open_to_internships": false,
           "open_to_onsite": false,
           "open_to_contract": false,
+          "open_to_freelance": false,
           "current_country": "g",
           "office_yoe": 4
         }
@@ -348,6 +350,7 @@
           "open_to_internships": false,
           "open_to_onsite": false,
           "open_to_contract": false,
+          "open_to_freelance": false,
           "current_country": "GB",
           "office_yoe": 81
         }
@@ -370,6 +373,7 @@
           "open_to_internships": false,
           "open_to_onsite": false,
           "open_to_contract": false,
+          "open_to_freelance": false,
           "current_country": "GB",
           "office_yoe": -1
         }
@@ -400,6 +404,7 @@
           "open_to_internships": false,
           "open_to_onsite": false,
           "open_to_contract": false,
+          "open_to_freelance": false,
           "current_country": "GB",
           "office_yoe": 0
         }
@@ -412,17 +417,22 @@
             "open_to_internships": false,
             "open_to_onsite": false,
             "open_to_contract": false,
+            "open_to_freelance": false,
             "current_country": "GB",
             "office_yoe": 0,
             "first_pr_url": "",
             "latest_pr_url": ""
           },
           "availability": {
-            "status": "looking_for_job",
+            "status": "looking",
             "expires_at": "<timestamp>"
           },
           "needs_attention": false,
-          "matchable": true
+          "readiness": {
+            "findable": false,
+            "blocking": ["no_scored_claim"],
+            "limiting": ["no_verified_first_pr"]
+          }
         },
         "db": {
           "user_work_preferences": {
@@ -439,7 +449,7 @@
       }
     },
     {
-      "_step": "GB is a country the stand-in's picker lists, and 80 is the boundary. Whether a WELL-FORMED code the picker does not list \u2014 'ZZ' \u2014 should be refused is not asserted anywhere in this suite: ADR-0018 \u00a79 calls the country list a closed vocabulary two systems must agree on, and \u00a7PlaceService says the check FAILS OPEN when the provider is down, which only means something if there is a check when it is up. No implementation consults PlaceService on a write. That gap belongs to the Planner rather than to a fixture that picks whichever answer is easier to assert.",
+      "_step": "GB is a country the stand-in's picker lists, and 80 is the boundary. Whether a WELL-FORMED code the picker does not list — 'ZZ' — should be refused is not asserted anywhere in this suite: ADR-0018 §9 calls the country list a closed vocabulary two systems must agree on, and §PlaceService says the check FAILS OPEN when the provider is down, which only means something if there is a check when it is up. No implementation consults PlaceService on a write. That gap belongs to the Planner rather than to a fixture that picks whichever answer is easier to assert.",
       "as": "alice",
       "request": {
         "method": "PUT",
@@ -449,6 +459,7 @@
           "open_to_internships": false,
           "open_to_onsite": false,
           "open_to_contract": true,
+          "open_to_freelance": false,
           "current_country": "GB",
           "office_yoe": 80
         }
@@ -461,17 +472,22 @@
             "open_to_internships": false,
             "open_to_onsite": false,
             "open_to_contract": true,
+            "open_to_freelance": false,
             "current_country": "GB",
             "office_yoe": 80,
             "first_pr_url": "",
             "latest_pr_url": ""
           },
           "availability": {
-            "status": "looking_for_job",
+            "status": "looking",
             "expires_at": "<timestamp>"
           },
           "needs_attention": false,
-          "matchable": true
+          "readiness": {
+            "findable": false,
+            "blocking": ["no_scored_claim"],
+            "limiting": ["no_verified_first_pr"]
+          }
         },
         "db": {
           "user_work_preferences": {
@@ -482,7 +498,8 @@
             "all_match": {
               "office_yoe": 80,
               "open_to_remote": false,
-              "open_to_contract": true
+              "open_to_contract": true,
+              "open_to_freelance": false
             }
           }
         }

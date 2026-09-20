@@ -92,6 +92,7 @@ func StartAPI(ctx context.Context, schema string) (*API, error) {
 		// indistinguishable from "the provider is down", which is precisely
 		// what the picker fixture must not be asserting.
 		"--places-api-url="+control+"/places",
+		"--money-api-url="+control+"/money",
 	)
 	cmd.Stdout = log
 	cmd.Stderr = log

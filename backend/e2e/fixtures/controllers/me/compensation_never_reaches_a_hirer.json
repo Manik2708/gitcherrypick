@@ -64,6 +64,7 @@
           "open_to_internships": false,
           "open_to_onsite": false,
           "open_to_contract": true,
+          "open_to_freelance": false,
           "current_country": "GB",
           "office_yoe": 6,
           "first_pr_url": "https://github.com/indie/smalllib/pull/12",
@@ -78,17 +79,22 @@
             "open_to_internships": false,
             "open_to_onsite": false,
             "open_to_contract": true,
+            "open_to_freelance": false,
             "current_country": "GB",
             "office_yoe": 6,
             "first_pr_url": "https://github.com/indie/smalllib/pull/12",
             "latest_pr_url": "https://github.com/acme/platform/pull/56"
           },
           "availability": {
-            "status": "looking_for_job",
+            "status": "looking",
             "expires_at": "<timestamp>"
           },
           "needs_attention": false,
-          "matchable": true
+          "readiness": {
+            "findable": true,
+            "blocking": [],
+            "limiting": []
+          }
         }
       }
     },
@@ -122,7 +128,7 @@
           "email": "alice@example.com",
           "principal_type": "contributor",
           "availability": {
-            "status": "looking_for_job",
+            "status": "looking",
             "expires_at": "<timestamp>"
           },
           "overall_score": 64.2,
@@ -178,7 +184,7 @@
               "github_login": "aliceok",
               "active": true,
               "availability": {
-                "status": "looking_for_job",
+                "status": "looking",
                 "expires_at": "<timestamp>"
               },
               "skills": [
@@ -199,7 +205,7 @@
               "github_login": "bobn",
               "active": true,
               "availability": {
-                "status": "looking_for_freelance",
+                "status": "looking",
                 "expires_at": "<timestamp>"
               },
               "skills": [
@@ -231,7 +237,7 @@
             "id": "01920000-0000-7000-8000-00000000a001",
             "display_name": "Alice Okafor",
             "github_login": "aliceok",
-            "availability": "looking_for_job"
+            "availability": "looking"
           },
           "overall_score": 64.2,
           "generalist_score": 64.2,
@@ -470,6 +476,7 @@
             {
               "user_id": "<uuid>",
               "display_name": "Alice Okafor",
+              "notified_at": null,
               "contact_status": null,
               "email": null
             }
@@ -607,6 +614,7 @@
             {
               "user_id": "<uuid>",
               "display_name": "Alice Okafor",
+              "notified_at": "<timestamp>",
               "contact_status": "accepted",
               "email": "alice@example.com"
             }

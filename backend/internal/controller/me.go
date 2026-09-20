@@ -540,15 +540,17 @@ func availabilityOf(a *domain.Availability) *availabilityBody {
 
 // --- the contributor profile (ADR-0018) ---------------------------------------
 
-// workPreferencesBody is what shape of work somebody will take.
+// workPreferencesBody is what shape of work somebody would PREFER.
 //
-// No open_to_freelance: availability already carries freelance, and two
-// controls meaning one thing can disagree (ADR-0018 §6).
+// Five flags now, freelance included (ADR-0021 §5). They gate nothing: the
+// availability switch alone decides whether a hirer can reach somebody, and
+// these filter that contributor's own view of what is open.
 type workPreferencesBody struct {
 	OpenToRemote      bool `json:"open_to_remote"`
 	OpenToInternships bool `json:"open_to_internships"`
 	OpenToOnsite      bool `json:"open_to_onsite"`
 	OpenToContract    bool `json:"open_to_contract"`
+	OpenToFreelance   bool `json:"open_to_freelance"`
 
 	// CurrentCountry is ISO 3166-1 alpha-2, empty when unstated. Distinct from
 	// the free-text location GitHub supplies.
@@ -580,11 +582,40 @@ type profileBody struct {
 	// answer somebody may mean and must not be nagged about.
 	NeedsAttention bool `json:"needs_attention"`
 
-	// Matchable is false when the window is live and no shape is enabled — a
-	// state reachable by accident and invisible from outside (ADR-0018). A
-	// named field rather than something a client derives, because a client
-	// that forgot would leave somebody wondering why nobody ever writes.
-	Matchable bool `json:"matchable"`
+	// Readiness answers "can a hirer find me, and what is left" (ADR-0022).
+	Readiness readinessBody `json:"readiness"`
+}
+
+// readinessBody is what stands between somebody and being found.
+//
+// CODES, not sentences. The words belong to the screen — a client renders the
+// explanation and the link to the field that fixes it — and the server owns
+// which conditions are true, because they are the search query's own clauses.
+type readinessBody struct {
+	// Findable is whether a hirer searching today would see them at all.
+	Findable bool `json:"findable"`
+
+	// Blocking separates "nobody can find you" from "found, but a class of
+	// role cannot reach you". Presenting the two alike would flatten an
+	// urgent thing and a choice into one list.
+	Blocking []string `json:"blocking"`
+	Limiting []string `json:"limiting"`
+}
+
+func readinessBodyOf(r *domain.Readiness) readinessBody {
+	out := readinessBody{Blocking: []string{}, Limiting: []string{}}
+	if r == nil {
+		return out
+	}
+	out.Findable = r.Findable
+	for _, item := range r.Items {
+		if item.Blocking {
+			out.Blocking = append(out.Blocking, string(item.Code))
+			continue
+		}
+		out.Limiting = append(out.Limiting, string(item.Code))
+	}
+	return out
 }
 
 // compensationBody is what somebody expects to be paid.
@@ -610,6 +641,7 @@ func profileBodyOf(p *port.ContributorProfile) profileBody {
 			OpenToInternships: p.Preferences.OpenToInternships,
 			OpenToOnsite:      p.Preferences.OpenToOnsite,
 			OpenToContract:    p.Preferences.OpenToContract,
+			OpenToFreelance:   p.Preferences.OpenToFreelance,
 			CurrentCountry:    p.Preferences.CurrentCountry,
 			OfficeYOE:         p.Preferences.OfficeYOE,
 			FirstPRURL:        p.Preferences.FirstPRURL,
@@ -617,7 +649,7 @@ func profileBodyOf(p *port.ContributorProfile) profileBody {
 		},
 		Availability:   availabilityOf(p.Availability),
 		NeedsAttention: p.NeedsAttention,
-		Matchable:      p.Matchable,
+		Readiness:      readinessBodyOf(p.Readiness),
 	}
 }
 
@@ -673,6 +705,7 @@ func (c *MeController) saveProfile(w http.ResponseWriter, r *http.Request) {
 			OpenToInternships: body.OpenToInternships,
 			OpenToOnsite:      body.OpenToOnsite,
 			OpenToContract:    body.OpenToContract,
+			OpenToFreelance:   body.OpenToFreelance,
 			CurrentCountry:    body.CurrentCountry,
 			OfficeYOE:         body.OfficeYOE,
 			FirstPRURL:        body.FirstPRURL,

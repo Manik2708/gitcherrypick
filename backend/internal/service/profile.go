@@ -291,9 +291,11 @@ func (s *ProfileService) profile(ctx context.Context, id domain.UserID) (*port.C
 	return &port.ContributorProfile{
 		Preferences:  *prefs,
 		Availability: contributor.Availability,
-		// Matchable is the composition rule, computed once here rather than in
-		// every client: a live window AND at least one shape.
-		Matchable: matchable(contributor.Availability, prefs, s.clock.Now()),
+		Readiness:    readiness(contributor, prefs, s.clock.Now()),
+		// Matchable is gone (ADR-0021 §4). It reported whether the window and
+		// the flags composed to reach anybody, and a live window with nothing
+		// ticked used to reach NOBODY while looking fine from the inside.
+		// That state cannot occur now: looking means open to anything.
 
 		// Never asked, so ask. Somebody who has answered — even by ticking
 		// nothing — has answered, and prompting them again would be nagging.
@@ -301,22 +303,59 @@ func (s *ProfileService) profile(ctx context.Context, id domain.UserID) (*port.C
 	}, nil
 }
 
-// matchable reports whether any role could reach this contributor.
+// readiness answers "can anybody find me, and what is in the way" (ADR-0022).
 //
-// Both halves, because they compose (ADR-0018 §4):
+// It restates the SEARCH GATES from the contributor's side, which is the only
+// reason it is computed here rather than in the client: every condition below
+// is a clause of the query in search.go, and a second copy anywhere else would
+// drift in the direction that leaves somebody believing they are visible when
+// they are not.
 //
-//   - the window must be LIVE. Availability.IsActive already encodes that rule
-//     — not_looking is an opt-out, a lapsed window is hidden by default
-//     (ADR-0008 §1a) — and reimplementing it here would be a second place for
-//     it to drift;
-//   - at least one SHAPE must be enabled. A person who never said what work
-//     they would take is invisible however live their window is.
-//
-// The second case is the dangerous one. It is reachable by accident, and a
-// contributor in it has no way to tell from outside that nobody can see them,
-// which is why this is reported as a field rather than left to a client.
-func matchable(a *domain.Availability, w *domain.WorkPreferences, now time.Time) bool {
-	return a.IsActive(now) && w.Matchable()
+// The order is the order to fix them in.
+func readiness(c *domain.Contributor, w *domain.WorkPreferences, now time.Time) *domain.Readiness {
+	out := domain.Readiness{}
+	add := func(code domain.ReadinessCode, blocking bool) {
+		out.Items = append(out.Items, domain.ReadinessItem{Code: code, Blocking: blocking})
+	}
+
+	switch {
+	case c.Availability == nil:
+		add(domain.ReadyNeverAnswered, true)
+	case c.Availability.OptedOut():
+		// Reported, not scolded. This is a decision they made and it is
+		// working; what the screen owes them is that it is in force.
+		add(domain.ReadyOptedOut, true)
+	case !c.Availability.IsActive(now):
+		add(domain.ReadyLapsed, true)
+	}
+
+	// `WHERE u.overall_score IS NOT NULL` in the search query. Nothing on the
+	// platform said this out loud before: somebody could set availability,
+	// fill in every field, and appear in no result anywhere because no claim
+	// of theirs had been scored.
+	if c.OverallScore == nil {
+		add(domain.ReadyNoScore, true)
+	}
+
+	if w.CurrentCountry == "" {
+		add(domain.ReadyNoCountry, false)
+	}
+	switch {
+	case w.FirstPRURL == "":
+		add(domain.ReadyNoVerifiedFirstPR, false)
+	case w.FirstPRVerifiedAt == nil:
+		add(domain.ReadyVerificationPending, false)
+	}
+	if w.OfficeYOE == nil {
+		add(domain.ReadyNoOfficeYOE, false)
+	}
+	if !w.OpenToRemote && !w.OpenToOnsite && !w.OpenToContract &&
+		!w.OpenToInternships && !w.OpenToFreelance {
+		add(domain.ReadyNoPreferences, false)
+	}
+
+	out.Findable = len(out.Blockers()) == 0
+	return &out
 }
 
 // Compensation returns what a contributor expects to be paid.

@@ -26,7 +26,7 @@
               "github_login": "bobn",
               "active": true,
               "availability": {
-                "status": "looking_for_freelance",
+                "status": "looking",
                 "expires_at": "<timestamp>"
               },
               "skills": [
@@ -68,7 +68,7 @@
               "_note": "Both staleness numbers. last_confirmed_at is how stale the signal is; inactive_for_days is how long she has been gone. They differ by the 15-day window.",
               "active": false,
               "availability": {
-                "status": "looking_for_job",
+                "status": "looking",
                 "last_confirmed_at": "<timestamp>",
                 "inactive_for_days": 1
               },
@@ -90,7 +90,7 @@
               "github_login": "bobn",
               "active": true,
               "availability": {
-                "status": "looking_for_freelance",
+                "status": "looking",
                 "expires_at": "<timestamp>"
               },
               "skills": [
@@ -131,7 +131,7 @@
               "github_login": "aliceok",
               "active": true,
               "availability": {
-                "status": "looking_for_job",
+                "status": "looking",
                 "expires_at": "<timestamp>"
               },
               "skills": [
@@ -152,7 +152,7 @@
               "github_login": "bobn",
               "active": true,
               "availability": {
-                "status": "looking_for_freelance",
+                "status": "looking",
                 "expires_at": "<timestamp>"
               },
               "skills": [
@@ -233,7 +233,7 @@
               "github_login": "bobn",
               "active": true,
               "availability": {
-                "status": "looking_for_freelance",
+                "status": "looking",
                 "expires_at": "<timestamp>"
               },
               "skills": [
@@ -274,7 +274,7 @@
               "github_login": "dwhit",
               "active": true,
               "availability": {
-                "status": "open_to_freelance",
+                "status": "looking",
                 "expires_at": "<timestamp>"
               },
               "skills": [
@@ -295,7 +295,7 @@
               "github_login": "bobn",
               "active": true,
               "availability": {
-                "status": "looking_for_freelance",
+                "status": "looking",
                 "expires_at": "<timestamp>"
               },
               "skills": [
@@ -336,7 +336,7 @@
               "github_login": "bobn",
               "active": true,
               "availability": {
-                "status": "looking_for_freelance",
+                "status": "looking",
                 "expires_at": "<timestamp>"
               },
               "skills": [
@@ -384,7 +384,7 @@
               "github_login": "bobn",
               "active": true,
               "availability": {
-                "status": "looking_for_freelance",
+                "status": "looking",
                 "expires_at": "<timestamp>"
               },
               "_note": "Overall 60.4 is below Alice's 64.2. Generalist 122.7 is nearly double hers. Both true, and they rank him differently — which is why there are two numbers.",
@@ -426,6 +426,7 @@
           "open_to_internships": false,
           "open_to_onsite": false,
           "open_to_contract": false,
+          "open_to_freelance": false,
           "current_country": "GB",
           "office_yoe": 6,
           "first_pr_url": "",
@@ -459,7 +460,7 @@
               "github_login": "aliceok",
               "active": true,
               "availability": {
-                "status": "looking_for_job",
+                "status": "looking",
                 "expires_at": "<timestamp>"
               },
               "skills": [
@@ -519,7 +520,7 @@
               "github_login": "aliceok",
               "active": true,
               "availability": {
-                "status": "looking_for_job",
+                "status": "looking",
                 "expires_at": "<timestamp>"
               },
               "skills": [
@@ -578,7 +579,7 @@
               "github_login": "aliceok",
               "active": true,
               "availability": {
-                "status": "looking_for_job",
+                "status": "looking",
                 "expires_at": "<timestamp>"
               },
               "skills": [
@@ -873,7 +874,7 @@
               "github_login": "cdiaz",
               "active": false,
               "availability": {
-                "status": "looking_for_job",
+                "status": "looking",
                 "last_confirmed_at": "<timestamp>",
                 "inactive_for_days": 1
               },
@@ -915,7 +916,7 @@
               "github_login": "bobn",
               "active": true,
               "availability": {
-                "status": "looking_for_freelance",
+                "status": "looking",
                 "expires_at": "<timestamp>"
               },
               "skills": [
@@ -976,7 +977,7 @@
               "github_login": "cdiaz",
               "active": false,
               "availability": {
-                "status": "looking_for_job",
+                "status": "looking",
                 "last_confirmed_at": "<timestamp>",
                 "inactive_for_days": 1
               },
@@ -1002,14 +1003,14 @@
         "method": "PUT",
         "path": "/me/availability",
         "body": {
-          "status": "looking_for_job"
+          "status": "looking"
         }
       },
       "expect": {
         "status": 200,
         "_note": "Refreshing resets the window to now + 15 days. A visible profile is an actively maintained one.",
         "body": {
-          "status": "looking_for_job",
+          "status": "looking",
           "expires_at": "<timestamp>"
         }
       }
@@ -1036,7 +1037,7 @@
               "github_login": "cdiaz",
               "active": true,
               "availability": {
-                "status": "looking_for_job",
+                "status": "looking",
                 "expires_at": "<timestamp>"
               },
               "skills": [
@@ -1057,7 +1058,7 @@
               "github_login": "bobn",
               "active": true,
               "availability": {
-                "status": "looking_for_freelance",
+                "status": "looking",
                 "expires_at": "<timestamp>"
               },
               "skills": [
@@ -1136,7 +1137,7 @@
               "github_login": "cdiaz",
               "active": true,
               "availability": {
-                "status": "looking_for_job",
+                "status": "looking",
                 "expires_at": "<timestamp>"
               },
               "skills": [
@@ -1177,7 +1178,7 @@
               "github_login": "cdiaz",
               "active": true,
               "availability": {
-                "status": "looking_for_job",
+                "status": "looking",
                 "expires_at": "<timestamp>"
               },
               "skills": [

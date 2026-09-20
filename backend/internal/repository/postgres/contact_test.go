@@ -153,7 +153,7 @@ func TestSavedSearchRepository(t *testing.T) {
 			Filters: domain.SearchQuery{
 				Skills:        []string{"go", "kubernetes"},
 				MinSkillScore: &score,
-				Availability:  []domain.AvailabilityStatus{domain.LookingForJob},
+				OpenTo:        []string{"remote"},
 			},
 		})
 		if err != nil {
@@ -175,7 +175,7 @@ func TestSavedSearchRepository(t *testing.T) {
 		var raw string
 		scanRow(ctx, t, db, []any{&raw},
 			`SELECT filters::text FROM saved_searches WHERE id = $1`, string(saved.ID))
-		for _, key := range []string{`"skills"`, `"min_skill_score"`, `"availability"`} {
+		for _, key := range []string{`"skills"`, `"min_skill_score"`, `"open_to"`} {
 			if !strings.Contains(raw, key) {
 				t.Errorf("expected %s in the stored filters, got %s", key, raw)
 			}

@@ -8,7 +8,7 @@
       "email": "alice@example.com",
       "github_user_id": 100001,
       "github_login": "aliceok",
-      "availability": { "status": "looking_for_job", "expires_in_days": 15 }
+      "availability": { "status": "looking", "expires_in_days": 15 }
     },
     {
       "key": "bob",
@@ -27,7 +27,7 @@
       "github_user_id": 100003,
       "github_login": "cdiaz",
       "_note": "Availability set but EXPIRED. Must be invisible to hirer search — ADR-0002.",
-      "availability": { "status": "looking_for_job", "expires_in_days": -1 }
+      "availability": { "status": "looking", "expires_in_days": -1 }
     },
     {
       "key": "dave",
@@ -37,7 +37,7 @@
       "github_user_id": 100004,
       "github_login": "dwhit",
       "_note": "Shares github_user_id with hirer 'dave_hiring'. Self-hire exclusion target — ADR-0002.",
-      "availability": { "status": "open_to_freelance", "expires_in_days": 15 }
+      "availability": { "status": "looking", "expires_in_days": 15 }
     }
   ],
   "organizations": [

@@ -223,6 +223,20 @@ type PlaceService interface {
 	Countries(ctx context.Context) ([]domain.Country, error)
 }
 
+// MoneyService answers what currencies exist (ADR-0018 amendment 3).
+//
+// Separate from PlaceService rather than a second method on it: a currency is
+// not a place. They are wired to the same stand-in today, but a live vendor
+// for one is not a live vendor for the other, and an interface that bundled
+// them would make choosing a country provider a decision about salaries.
+//
+// Callers must FAIL OPEN, exactly as they do for countries. A provider that is
+// down falls back to accepting any well-formed alpha-3 code: a hirer writing a
+// role at 2am does not care whose uptime the picker depends on.
+type MoneyService interface {
+	Currencies(ctx context.Context) ([]domain.Currency, error)
+}
+
 // --- notifier ----------------------------------------------------------------
 
 // Notifier delivers email.

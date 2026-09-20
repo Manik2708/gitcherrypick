@@ -12,12 +12,13 @@ import "time"
 // saved search replays as a query string with no translation layer, and a
 // renamed parameter cannot silently diverge from what was stored.
 type SearchQuery struct {
-	Skills             []string             `json:"skills,omitempty"`
-	MinSkillScore      *float64             `json:"min_skill_score,omitempty"`
-	MinOverallScore    *float64             `json:"min_overall_score,omitempty"`
-	MinGeneralistScore *float64             `json:"min_generalist_score,omitempty"`
-	Availability       []AvailabilityStatus `json:"availability,omitempty"`
-	Query              string               `json:"q,omitempty"`
+	Skills             []string `json:"skills,omitempty"`
+	MinSkillScore      *float64 `json:"min_skill_score,omitempty"`
+	MinOverallScore    *float64 `json:"min_overall_score,omitempty"`
+	MinGeneralistScore *float64 `json:"min_generalist_score,omitempty"`
+	// No `availability` filter (ADR-0021 §8). With one looking state it could
+	// only say "looking", which every default result already is.
+	Query string `json:"q,omitempty"`
 
 	// What a contributor said about themselves (ADR-0018), as opposed to what
 	// their evidence says. Everything here is opt-in, and an unstated value
@@ -54,10 +55,13 @@ type SearchQuery struct {
 	// matching this query that company has already approached.
 	ForRole *RoleID `json:"for_role,omitempty"`
 
-	// OpenTo are the shapes of work a contributor ticked: remote, onsite,
-	// contract, internship. OR again, and composed with availability exactly
-	// as ADR-0018 §4 requires — somebody is available for the shapes they
-	// enabled and for nothing else.
+	// OpenTo are the shapes somebody said they would PREFER: remote, onsite,
+	// contract, internship, freelance. OR, not AND.
+	//
+	// A stated preference rather than a boundary (ADR-0021 §3). Filtering on
+	// it asks for people who said they would take that kind of work; it does
+	// not stop a hirer approaching anybody about anything, and the consent
+	// that matters is still the contact request.
 	OpenTo []string `json:"open_to,omitempty"`
 
 	// Default false. Reveals contributors whose availability window lapsed.

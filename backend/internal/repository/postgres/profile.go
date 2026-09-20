@@ -30,13 +30,14 @@ func (r *ProfileRepository) WorkPreferences(ctx context.Context, id domain.UserI
 	out := domain.WorkPreferences{UserID: id}
 	err := r.db.pool.QueryRow(ctx, `
 		SELECT open_to_remote, open_to_internships, open_to_onsite, open_to_contract,
+		       open_to_freelance,
 		       coalesce(current_country, ''), office_yoe,
 		       coalesce(first_pr_url, ''), coalesce(latest_pr_url, ''),
 		       first_pr_authored_at, latest_pr_authored_at, first_pr_verified_at
 		  FROM user_work_preferences
 		 WHERE user_id = $1`, string(id),
 	).Scan(&out.OpenToRemote, &out.OpenToInternships, &out.OpenToOnsite,
-		&out.OpenToContract, &out.CurrentCountry, &out.OfficeYOE,
+		&out.OpenToContract, &out.OpenToFreelance, &out.CurrentCountry, &out.OfficeYOE,
 		&out.FirstPRURL, &out.LatestPRURL,
 		&out.FirstPRAuthoredAt, &out.LatestPRAuthoredAt, &out.FirstPRVerifiedAt)
 	if err != nil {
@@ -61,15 +62,16 @@ func (r *ProfileRepository) SaveWorkPreferences(ctx context.Context, t port.Tx, 
 	_, err := r.db.q(t).Exec(ctx, `
 		INSERT INTO user_work_preferences
 		    (user_id, open_to_remote, open_to_internships, open_to_onsite,
-		     open_to_contract, current_country, office_yoe,
+		     open_to_contract, open_to_freelance, current_country, office_yoe,
 		     first_pr_url, latest_pr_url)
-		VALUES ($1, $2, $3, $4, $5, NULLIF($6, ''), $7,
-		        NULLIF($8, ''), NULLIF($9, ''))
+		VALUES ($1, $2, $3, $4, $5, $6, NULLIF($7, ''), $8,
+		        NULLIF($9, ''), NULLIF($10, ''))
 		ON CONFLICT (user_id) DO UPDATE SET
 		    open_to_remote      = excluded.open_to_remote,
 		    open_to_internships = excluded.open_to_internships,
 		    open_to_onsite      = excluded.open_to_onsite,
 		    open_to_contract    = excluded.open_to_contract,
+		    open_to_freelance   = excluded.open_to_freelance,
 		    current_country     = excluded.current_country,
 		    office_yoe          = excluded.office_yoe,
 		    latest_pr_url       = excluded.latest_pr_url,
@@ -89,7 +91,7 @@ func (r *ProfileRepository) SaveWorkPreferences(ctx context.Context, t port.Tx, 
 		        WHEN user_work_preferences.latest_pr_url IS DISTINCT FROM excluded.latest_pr_url
 		        THEN NULL ELSE user_work_preferences.latest_pr_authored_at END`,
 		string(w.UserID), w.OpenToRemote, w.OpenToInternships, w.OpenToOnsite,
-		w.OpenToContract, w.CurrentCountry, w.OfficeYOE,
+		w.OpenToContract, w.OpenToFreelance, w.CurrentCountry, w.OfficeYOE,
 		w.FirstPRURL, w.LatestPRURL)
 	return translate(err, fmt.Sprintf("saving work preferences for %s", w.UserID))
 }
