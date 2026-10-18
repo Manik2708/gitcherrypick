@@ -68,7 +68,7 @@ var jobs = map[string]job{
 	"overdue-sweep": {
 		summary: "flag hiring rounds past their stated result date",
 		run: func(ctx context.Context, svc port.JobService) (int, error) {
-			return svc.FlagOverdueShortlists(ctx)
+			return svc.FlagOverdueRoles(ctx)
 		},
 	},
 	"expire-contact-requests": {
@@ -214,7 +214,7 @@ func runJob(ctx context.Context, cfg config, name string) error {
 	)
 
 	svc := service.NewJobService(
-		db.Users(), db.Shortlists(), db.Contacts(), db.Norms(), db.Hirers(),
+		db.Users(), db.Roles(), db.Contacts(), db.Norms(), db.Hirers(),
 		db.Onboarding(), profiles,
 		resend.New(resend.Config{
 			BaseURL:  cfg.resendAPIURL,

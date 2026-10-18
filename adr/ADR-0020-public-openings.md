@@ -83,3 +83,20 @@ Live opening (published, not withdrawn) on an **open** role, and:
 - Withdrawing is a stamp, not a delete, so the advert history survives.
 
 ## Open questions
+
+## Amendments
+
+| Date       | Change                                                                    |
+| ---------- | ------------------------------------------------------------------------- |
+| 2026-10-17 | **Amendment 1** — where a role hires is read off its locations (ADR-0024) |
+
+### 1. Where a role hires (ADR-0024)
+
+Decision 3 says "the role states where it can hire", and the contributor's filter admits a
+role that "hires where they are, or hires anywhere (ADR-0019 §6)". Both still hold; what a
+role states has changed. [ADR-0024](ADR-0024-role-locations.md) replaces
+`role_eligible_countries` with location entries, and the filter reads them per entry: an
+entry admits a contributor by place (remote-anywhere and onsite admit everybody;
+remote-in-a-country admits that country) and, for a full-time role, only if its mode is one
+they ticked. The opening shape carries `locations` in place of `location` and
+`eligible_countries`.

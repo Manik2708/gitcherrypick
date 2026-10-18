@@ -1,0 +1,941 @@
+{
+  "name": "an owner takes the organisation fully remote, and coming back is reviewed again",
+  "description": "ADR-0024 decision 15, and decision 13 a second time.\n\nAn organisation with an office may go fully remote. ONLY AN OWNER may — it changes what the organisation is, like the roster and the settings — and only while no DRAFT or OPEN role has an onsite entry: the refusal is `onsite_roles_exist` with `roles` naming them, and the owner closes or revises them first. A remote-only open role does not block it. The switch, in one transaction, stamps EVERY live address removed — the main office included, which this is the only path to remove — with `removed_by` the owner, and sets the kind. It is not reviewed and emails nobody: it takes capability away rather than granting any.\n\nClosed roles that named those addresses are untouched and still render them, marked removed. Afterwards the organisation is fully remote in every respect: no address can be added, no onsite entry written, and switching again is refused.\n\nCOMING BACK is decision 13 again, reviewed again: a member cannot ask, an owner can, and on approval the new address becomes the ONLY live main office. The old main office is not revived; it stays removed beside the new one, which is why the schema counts only live main offices.\n\nThe way back is rejected once before it is approved, and the MEMBER reads the rejection's reason from GET …/addresses (amendment 1 §1.3, the owner's decision): a member drafting a role can see why Onsite is unavailable without asking an owner what an email said. `roles` on `onsite_roles_exist` is `[{id, title, status}]`, oldest first (§1.4). The onsite entry refused after the switch points at an id nobody holds and answers `organization_fully_remote`, which §1.5 checks before the address.",
+  "seed": ["principals"],
+  "steps": [
+    {
+      "_step": "A MEMBER cannot. Owners only, refused as the roster refuses a member.",
+      "as": "dave_hiring",
+      "request": {
+        "method": "POST",
+        "path": "/orgs/01920000-0000-7000-8000-00000000b001/fully-remote"
+      },
+      "expect": {
+        "status": 403,
+        "body": {
+          "error": "not_an_org_member"
+        },
+        "db": {
+          "organizations": {
+            "where": {
+              "id": "01920000-0000-7000-8000-00000000b001"
+            },
+            "count": 1,
+            "all_match": {
+              "workplace": "office"
+            }
+          }
+        }
+      }
+    },
+    {
+      "_step": "A DRAFT onsite at the main office...",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles",
+        "body": {
+          "title": "Bengaluru platform engineer",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "onsite",
+              "address_id": "{{acme.address.main}}"
+            }
+          ]
+        }
+      },
+      "capture": {
+        "onsite_draft": "$.id"
+      },
+      "expect": {
+        "status": 201,
+        "body": {
+          "id": "<uuid>",
+          "organization_id": "01920000-0000-7000-8000-00000000b001",
+          "status": "draft",
+          "title": "Bengaluru platform engineer",
+          "description": "",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "onsite",
+              "country": null,
+              "address": {
+                "id": "01920000-0000-7000-8000-0000000ad001",
+                "country": "IN",
+                "city": "Bengaluru",
+                "postal_code": "560001",
+                "street1": "1 MG Road",
+                "street2": "Floor 4",
+                "is_main_office": true,
+                "removed": false
+              }
+            }
+          ],
+          "currency": "",
+          "yearly_ctc": null,
+          "yearly_base": null,
+          "hourly_rate": null,
+          "expected_hours": null,
+          "min_office_yoe": null,
+          "min_oss_yoe": null,
+          "requires_online_test": null,
+          "max_interview_rounds": null,
+          "avg_days_to_offer": null,
+          "questions": [],
+          "opened_at": null,
+          "close_requested_at": null,
+          "closed_at": null,
+          "close_reason": null,
+          "hires": [],
+          "advertised": false,
+          "supersedes": null,
+          "created_at": "<timestamp>",
+          "updated_at": "<timestamp>"
+        }
+      }
+    },
+    {
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles",
+        "body": {
+          "title": "Austin support lead",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "onsite",
+              "address_id": "{{acme.address.austin}}"
+            },
+            {
+              "mode": "remote",
+              "country": "US"
+            }
+          ]
+        }
+      },
+      "capture": {
+        "onsite_open": "$.id"
+      },
+      "expect": {
+        "status": 201,
+        "body": {
+          "id": "<uuid>",
+          "organization_id": "01920000-0000-7000-8000-00000000b001",
+          "status": "draft",
+          "title": "Austin support lead",
+          "description": "",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "remote",
+              "country": "US",
+              "address": null
+            },
+            {
+              "mode": "onsite",
+              "country": null,
+              "address": {
+                "id": "01920000-0000-7000-8000-0000000ad002",
+                "country": "US",
+                "city": "Austin",
+                "postal_code": "78701",
+                "street1": "500 W 2nd St",
+                "street2": "Suite 300",
+                "is_main_office": false,
+                "removed": false
+              }
+            }
+          ],
+          "currency": "",
+          "yearly_ctc": null,
+          "yearly_base": null,
+          "hourly_rate": null,
+          "expected_hours": null,
+          "min_office_yoe": null,
+          "min_oss_yoe": null,
+          "requires_online_test": null,
+          "max_interview_rounds": null,
+          "avg_days_to_offer": null,
+          "questions": [],
+          "opened_at": null,
+          "close_requested_at": null,
+          "closed_at": null,
+          "close_reason": null,
+          "hires": [],
+          "advertised": false,
+          "supersedes": null,
+          "created_at": "<timestamp>",
+          "updated_at": "<timestamp>"
+        }
+      }
+    },
+    {
+      "_step": "...and an OPEN role onsite at Austin. The seeded open role is remote from anywhere and blocks nothing.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles/{{onsite_open}}/open"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "id": "<uuid>",
+          "organization_id": "01920000-0000-7000-8000-00000000b001",
+          "status": "open",
+          "title": "Austin support lead",
+          "description": "",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "remote",
+              "country": "US",
+              "address": null
+            },
+            {
+              "mode": "onsite",
+              "country": null,
+              "address": {
+                "id": "01920000-0000-7000-8000-0000000ad002",
+                "country": "US",
+                "city": "Austin",
+                "postal_code": "78701",
+                "street1": "500 W 2nd St",
+                "street2": "Suite 300",
+                "is_main_office": false,
+                "removed": false
+              }
+            }
+          ],
+          "currency": "",
+          "yearly_ctc": null,
+          "yearly_base": null,
+          "hourly_rate": null,
+          "expected_hours": null,
+          "min_office_yoe": null,
+          "min_oss_yoe": null,
+          "requires_online_test": null,
+          "max_interview_rounds": null,
+          "avg_days_to_offer": null,
+          "questions": [],
+          "opened_at": "<timestamp>",
+          "close_requested_at": null,
+          "closed_at": null,
+          "close_reason": null,
+          "hires": [],
+          "advertised": false,
+          "supersedes": null,
+          "created_at": "<timestamp>",
+          "updated_at": "<timestamp>"
+        }
+      }
+    },
+    {
+      "_step": "REFUSED, naming the roles in the way — the same shape as address_in_use.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/orgs/01920000-0000-7000-8000-00000000b001/fully-remote"
+      },
+      "expect": {
+        "status": 409,
+        "body": {
+          "error": "onsite_roles_exist",
+          "roles": [
+            {
+              "id": "<uuid>",
+              "title": "Bengaluru platform engineer",
+              "status": "draft"
+            },
+            {
+              "id": "<uuid>",
+              "title": "Austin support lead",
+              "status": "open"
+            }
+          ]
+        },
+        "db": {
+          "organization_addresses": {
+            "where": {
+              "organization_id": "01920000-0000-7000-8000-00000000b001",
+              "removed_at": null
+            },
+            "count": 2
+          },
+          "organizations": {
+            "where": {
+              "id": "01920000-0000-7000-8000-00000000b001"
+            },
+            "count": 1,
+            "all_match": {
+              "workplace": "office"
+            }
+          }
+        }
+      }
+    },
+    {
+      "_step": "The draft drops its onsite entry.",
+      "as": "hank",
+      "request": {
+        "method": "PATCH",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles/{{onsite_draft}}",
+        "body": {
+          "title": "Bengaluru platform engineer",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "remote",
+              "country": "IN"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "id": "<uuid>",
+          "organization_id": "01920000-0000-7000-8000-00000000b001",
+          "status": "draft",
+          "title": "Bengaluru platform engineer",
+          "description": "",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "remote",
+              "country": "IN",
+              "address": null
+            }
+          ],
+          "currency": "",
+          "yearly_ctc": null,
+          "yearly_base": null,
+          "hourly_rate": null,
+          "expected_hours": null,
+          "min_office_yoe": null,
+          "min_oss_yoe": null,
+          "requires_online_test": null,
+          "max_interview_rounds": null,
+          "avg_days_to_offer": null,
+          "questions": [],
+          "opened_at": null,
+          "close_requested_at": null,
+          "closed_at": null,
+          "close_reason": null,
+          "hires": [],
+          "advertised": false,
+          "supersedes": null,
+          "created_at": "<timestamp>",
+          "updated_at": "<timestamp>"
+        }
+      }
+    },
+    {
+      "_step": "Still refused: the open role cannot be edited, only closed or revised.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/orgs/01920000-0000-7000-8000-00000000b001/fully-remote"
+      },
+      "expect": {
+        "status": 409,
+        "body": {
+          "error": "onsite_roles_exist",
+          "roles": [
+            {
+              "id": "<uuid>",
+              "title": "Austin support lead",
+              "status": "open"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles/{{onsite_open}}/close",
+        "body": {
+          "reason": "not_needed"
+        }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "id": "<uuid>",
+          "organization_id": "01920000-0000-7000-8000-00000000b001",
+          "status": "closed",
+          "title": "Austin support lead",
+          "description": "",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "remote",
+              "country": "US",
+              "address": null
+            },
+            {
+              "mode": "onsite",
+              "country": null,
+              "address": {
+                "id": "01920000-0000-7000-8000-0000000ad002",
+                "country": "US",
+                "city": "Austin",
+                "postal_code": "78701",
+                "street1": "500 W 2nd St",
+                "street2": "Suite 300",
+                "is_main_office": false,
+                "removed": false
+              }
+            }
+          ],
+          "currency": "",
+          "yearly_ctc": null,
+          "yearly_base": null,
+          "hourly_rate": null,
+          "expected_hours": null,
+          "min_office_yoe": null,
+          "min_oss_yoe": null,
+          "requires_online_test": null,
+          "max_interview_rounds": null,
+          "avg_days_to_offer": null,
+          "questions": [],
+          "opened_at": "<timestamp>",
+          "close_requested_at": null,
+          "closed_at": "<timestamp>",
+          "close_reason": "not_needed",
+          "hires": [],
+          "advertised": false,
+          "supersedes": null,
+          "created_at": "<timestamp>",
+          "updated_at": "<timestamp>"
+        }
+      }
+    },
+    {
+      "_step": "THE SWITCH. 200 with the addresses envelope, so the client disables Onsite and the add-address form from the same response.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/orgs/01920000-0000-7000-8000-00000000b001/fully-remote"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "workplace": "fully_remote",
+          "addresses": [],
+          "office_request": null
+        },
+        "db": {
+          "organization_addresses": {
+            "_note": "EVERY address stamped, the main office included, by the owner who switched. Stamped, not deleted.",
+            "where": {
+              "organization_id": "01920000-0000-7000-8000-00000000b001"
+            },
+            "count": 2,
+            "all_match": {
+              "removed_by": "01920000-0000-7000-8000-00000000c001"
+            },
+            "none_match": {
+              "removed_at": null
+            }
+          },
+          "organizations": {
+            "where": {
+              "id": "01920000-0000-7000-8000-00000000b001"
+            },
+            "count": 1,
+            "all_match": {
+              "workplace": "fully_remote"
+            }
+          }
+        }
+      }
+    },
+    {
+      "_step": "A CLOSED ROLE STILL SAYS WHERE IT WAS: a contact request sent last month still says onsite in Austin.",
+      "as": "hank",
+      "request": {
+        "method": "GET",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles/{{onsite_open}}"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "id": "<uuid>",
+          "organization_id": "01920000-0000-7000-8000-00000000b001",
+          "status": "closed",
+          "title": "Austin support lead",
+          "description": "",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "remote",
+              "country": "US",
+              "address": null
+            },
+            {
+              "mode": "onsite",
+              "country": null,
+              "address": {
+                "id": "01920000-0000-7000-8000-0000000ad002",
+                "country": "US",
+                "city": "Austin",
+                "postal_code": "78701",
+                "street1": "500 W 2nd St",
+                "street2": "Suite 300",
+                "is_main_office": false,
+                "removed": true
+              }
+            }
+          ],
+          "currency": "",
+          "yearly_ctc": null,
+          "yearly_base": null,
+          "hourly_rate": null,
+          "expected_hours": null,
+          "min_office_yoe": null,
+          "min_oss_yoe": null,
+          "requires_online_test": null,
+          "max_interview_rounds": null,
+          "avg_days_to_offer": null,
+          "questions": [],
+          "opened_at": "<timestamp>",
+          "close_requested_at": null,
+          "closed_at": "<timestamp>",
+          "close_reason": "not_needed",
+          "hires": [],
+          "advertised": false,
+          "supersedes": null,
+          "created_at": "<timestamp>",
+          "updated_at": "<timestamp>"
+        }
+      }
+    },
+    {
+      "_step": "Every seat now reads a fully remote organisation.",
+      "as": "dave_hiring",
+      "request": {
+        "method": "GET",
+        "path": "/orgs/01920000-0000-7000-8000-00000000b001/addresses"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "workplace": "fully_remote",
+          "addresses": [],
+          "office_request": null
+        }
+      }
+    },
+    {
+      "_step": "No address can be added...",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/orgs/01920000-0000-7000-8000-00000000b001/addresses",
+        "body": {
+          "country": "IN",
+          "city": "Bengaluru",
+          "postal_code": "560025",
+          "street1": "22 Residency Road",
+          "street2": "Block C"
+        }
+      },
+      "expect": {
+        "status": 409,
+        "body": {
+          "error": "organization_fully_remote"
+        }
+      }
+    },
+    {
+      "_step": "...no onsite entry written...",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles",
+        "body": {
+          "title": "Onsite again",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "remote",
+              "country": "IN"
+            },
+            {
+              "mode": "onsite",
+              "address_id": "01920000-0000-7000-8000-0000000adfff"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "organization_fully_remote",
+          "field": "locations",
+          "position": 2
+        }
+      }
+    },
+    {
+      "_step": "...and it cannot switch again.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/orgs/01920000-0000-7000-8000-00000000b001/fully-remote"
+      },
+      "expect": {
+        "status": 409,
+        "body": {
+          "error": "organization_fully_remote"
+        }
+      }
+    },
+    {
+      "_step": "The switch emailed nobody — not the owner who made it...",
+      "as": "system",
+      "request": {
+        "method": "READ_EMAIL",
+        "path": "/",
+        "body": {
+          "to": "hank@acme.com",
+          "count": 0
+        }
+      },
+      "expect": {
+        "status": 200
+      }
+    },
+    {
+      "_step": "...and not the other seat.",
+      "as": "system",
+      "request": {
+        "method": "READ_EMAIL",
+        "path": "/",
+        "body": {
+          "to": "dave.hiring@example.com",
+          "count": 0
+        }
+      },
+      "expect": {
+        "status": 200
+      }
+    },
+    {
+      "_step": "AND BACK. A member cannot ask for an office.",
+      "as": "dave_hiring",
+      "request": {
+        "method": "POST",
+        "path": "/orgs/01920000-0000-7000-8000-00000000b001/office-request",
+        "body": {
+          "country": "IN",
+          "city": "Bengaluru",
+          "postal_code": "560025",
+          "street1": "22 Residency Road",
+          "street2": "Block C"
+        }
+      },
+      "expect": {
+        "status": 403,
+        "body": {
+          "error": "not_an_org_member"
+        },
+        "db": {
+          "organization_office_requests": {
+            "count": 0
+          }
+        }
+      }
+    },
+    {
+      "_step": "The owner can, and it is reviewed like a first address — because, for a fully remote organisation, it is one.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/orgs/01920000-0000-7000-8000-00000000b001/office-request",
+        "body": {
+          "country": "IN",
+          "city": "Bengaluru",
+          "postal_code": "560025",
+          "street1": "22 Residency Road",
+          "street2": "Block C"
+        }
+      },
+      "capture": {
+        "return_request": "$.id"
+      },
+      "expect": {
+        "status": 201,
+        "body": {
+          "id": "<uuid>",
+          "status": "pending",
+          "address": {
+            "country": "IN",
+            "city": "Bengaluru",
+            "postal_code": "560025",
+            "street1": "22 Residency Road",
+            "street2": "Block C"
+          },
+          "requested_at": "<timestamp>"
+        }
+      }
+    },
+    {
+      "_step": "Waiting, and nothing has changed.",
+      "as": "hank",
+      "request": {
+        "method": "GET",
+        "path": "/orgs/01920000-0000-7000-8000-00000000b001/addresses"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "workplace": "fully_remote",
+          "addresses": [],
+          "office_request": {
+            "id": "<uuid>",
+            "status": "pending",
+            "address": {
+              "country": "IN",
+              "city": "Bengaluru",
+              "postal_code": "560025",
+              "street1": "22 Residency Road",
+              "street2": "Block C"
+            },
+            "requested_at": "<timestamp>"
+          }
+        }
+      }
+    },
+    {
+      "_step": "Rejected the first time.",
+      "as": "root",
+      "request": {
+        "method": "POST",
+        "path": "/admin/office-requests/{{return_request}}/decide",
+        "body": {
+          "decision": "rejected",
+          "reason": "The office lease is unsigned."
+        }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "id": "<uuid>",
+          "status": "rejected",
+          "reviewed_at": "<timestamp>",
+          "reviewed_by": "<uuid>"
+        }
+      }
+    },
+    {
+      "_step": "THE MEMBER SEES WHY. The reason is shown to every seat that can read the list, not only emailed to the owner who asked.",
+      "as": "dave_hiring",
+      "request": {
+        "method": "GET",
+        "path": "/orgs/01920000-0000-7000-8000-00000000b001/addresses"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "workplace": "fully_remote",
+          "addresses": [],
+          "office_request": {
+            "id": "<uuid>",
+            "status": "rejected",
+            "address": {
+              "country": "IN",
+              "city": "Bengaluru",
+              "postal_code": "560025",
+              "street1": "22 Residency Road",
+              "street2": "Block C"
+            },
+            "requested_at": "<timestamp>",
+            "decided_at": "<timestamp>",
+            "reason": "The office lease is unsigned."
+          }
+        }
+      }
+    },
+    {
+      "_step": "The owner who asked is emailed the reason...",
+      "as": "system",
+      "request": {
+        "method": "READ_EMAIL",
+        "path": "/",
+        "body": {
+          "to": "hank@acme.com",
+          "subject": "Your office address was not approved",
+          "contains": ["The office lease is unsigned."],
+          "count": 1
+        }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "to": "hank@acme.com",
+          "subject": "Your office address was not approved",
+          "html": "<string>",
+          "token": "<string>"
+        }
+      }
+    },
+    {
+      "_step": "...and nobody else is.",
+      "as": "system",
+      "request": {
+        "method": "READ_EMAIL",
+        "path": "/",
+        "body": {
+          "to": "dave.hiring@example.com",
+          "count": 0
+        }
+      },
+      "expect": {
+        "status": 200
+      }
+    },
+    {
+      "_step": "Asked again at once.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/orgs/01920000-0000-7000-8000-00000000b001/office-request",
+        "body": {
+          "country": "IN",
+          "city": "Bengaluru",
+          "postal_code": "560025",
+          "street1": "22 Residency Road",
+          "street2": "Block C"
+        }
+      },
+      "capture": {
+        "second_return": "$.id"
+      },
+      "expect": {
+        "status": 201,
+        "body": {
+          "id": "<uuid>",
+          "status": "pending",
+          "address": {
+            "country": "IN",
+            "city": "Bengaluru",
+            "postal_code": "560025",
+            "street1": "22 Residency Road",
+            "street2": "Block C"
+          },
+          "requested_at": "<timestamp>"
+        }
+      }
+    },
+    {
+      "_step": "Approved.",
+      "as": "root",
+      "request": {
+        "method": "POST",
+        "path": "/admin/office-requests/{{second_return}}/decide",
+        "body": {
+          "decision": "approved"
+        }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "id": "<uuid>",
+          "status": "approved",
+          "reviewed_at": "<timestamp>",
+          "reviewed_by": "<uuid>"
+        },
+        "db": {
+          "organization_addresses": {
+            "_note": "Two main-office rows over the organisation's life: the old one, still removed, and the new one, live. Exactly one is live.",
+            "where": {
+              "organization_id": "01920000-0000-7000-8000-00000000b001",
+              "is_main_office": true
+            },
+            "count": 2,
+            "same_value": ["organization_id"]
+          },
+          "organizations": {
+            "where": {
+              "id": "01920000-0000-7000-8000-00000000b001"
+            },
+            "count": 1,
+            "all_match": {
+              "workplace": "office"
+            }
+          }
+        }
+      }
+    },
+    {
+      "_step": "ONE live address, the new main office. Austin and the old main office are not revived.",
+      "as": "hank",
+      "request": {
+        "method": "GET",
+        "path": "/orgs/01920000-0000-7000-8000-00000000b001/addresses"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "workplace": "office",
+          "addresses": [
+            {
+              "id": "<uuid>",
+              "country": "IN",
+              "city": "Bengaluru",
+              "postal_code": "560025",
+              "street1": "22 Residency Road",
+              "street2": "Block C",
+              "is_main_office": true,
+              "removed": false
+            }
+          ],
+          "office_request": null
+        },
+        "db": {
+          "organization_addresses": {
+            "where": {
+              "organization_id": "01920000-0000-7000-8000-00000000b001",
+              "removed_at": null
+            },
+            "count": 1,
+            "all_match": {
+              "street1": "22 Residency Road",
+              "is_main_office": true,
+              "added_by": "01920000-0000-7000-8000-00000000c001"
+            }
+          }
+        }
+      }
+    },
+    {
+      "_step": "The requesting owner is emailed the approval: one message for the one approval.",
+      "as": "system",
+      "request": {
+        "method": "READ_EMAIL",
+        "path": "/",
+        "body": {
+          "to": "hank@acme.com",
+          "subject": "Your office address was approved",
+          "contains": ["Bengaluru", "India"],
+          "count": 1
+        }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "to": "hank@acme.com",
+          "subject": "Your office address was approved",
+          "html": "<string>",
+          "token": "<string>"
+        }
+      }
+    }
+  ]
+}

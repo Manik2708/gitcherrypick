@@ -19,11 +19,15 @@ import (
 // company would make the queue unworkable and buys nothing.
 type OrganizationController struct {
 	orgs port.OrganizationService
+
+	// workplace owns the organisation's kind and addresses (ADR-0024). The
+	// same /orgs prefix, because chi mounts one handler per prefix.
+	workplace port.WorkplaceService
 }
 
-// NewOrganizationController wires seat management.
-func NewOrganizationController(orgs port.OrganizationService) *OrganizationController {
-	return &OrganizationController{orgs: orgs}
+// NewOrganizationController wires seat management and addresses.
+func NewOrganizationController(orgs port.OrganizationService, workplace port.WorkplaceService) *OrganizationController {
+	return &OrganizationController{orgs: orgs, workplace: workplace}
 }
 
 var _ port.Controller = (*OrganizationController)(nil)
@@ -39,6 +43,14 @@ func (c *OrganizationController) Routes() (string, http.Handler) {
 	r.Post("/{orgID}/roster", c.addToRoster)
 	r.Delete("/{orgID}/roster/{entryID}", c.removeFromRoster)
 	r.Get("/{orgID}/seats", c.listSeats)
+
+	// Where the organisation is (ADR-0024). Reading is every seat's; every
+	// write is an owner's.
+	r.Get("/{orgID}/addresses", c.addresses)
+	r.Post("/{orgID}/addresses", c.addAddress)
+	r.Delete("/{orgID}/addresses/{addressID}", c.removeAddress)
+	r.Post("/{orgID}/office-request", c.requestOffice)
+	r.Post("/{orgID}/fully-remote", c.goFullyRemote)
 
 	return "/orgs", r
 }

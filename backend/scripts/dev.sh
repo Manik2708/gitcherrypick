@@ -158,7 +158,7 @@ log "starting the third-party stand-in on ${FAKE_PORT}"
   --addr="127.0.0.1:${FAKE_PORT}" \
   --self-url="${CONTROL_URL}" \
   --oauth-callback-url="${CLIENT_URL}/auth/github/callback" \
-  --hirer-oauth-callback-url="${CLIENT_URL}/auth/hirer/github/callback" \
+  --google-callback-url="${CLIENT_URL}/auth/google/callback" \
   >"${STATE_DIR}/fake.log" 2>&1 &
 FAKE_PID=$!
 
@@ -276,6 +276,10 @@ cat <<EOF
 
     A USERNAME, not an email (ADR-0016). Two seats may share a contact
     address, so an address identifies nobody.
+
+  sign in — hirer, with Google
+    GET ${API_URL}/auth/google/start, open authorize_url, pick an account.
+      hank  owner, Acme Corp (hank@acme.com)
 
   sign in — admin         password: ${SEEDED_PASSWORD}
     POST ${API_URL}/auth/admin/login  admin@gitcherrypick.test

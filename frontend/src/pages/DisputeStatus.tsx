@@ -42,11 +42,7 @@ export function DisputeStatusPage() {
 
   return (
     <div className="page">
-      <PageHead
-        eyebrow="Disputes"
-        title="Arguing with a verdict"
-        lede="A dispute is read by a person. Being wrong once costs nothing — only a run of rejected disputes starts a cooldown."
-      />
+      <PageHead eyebrow="Disputes" title="Arguing with a verdict" />
 
       <div className="headline-scores">
         <div className="hscore">
@@ -75,16 +71,12 @@ export function DisputeStatusPage() {
       {d.blocked_by === "cooldown" ? (
         <Banner icon="clock">
           You are in a cooldown until {format.date(d.cooldown_until)} (
-          {format.relativeDays(d.cooldown_until, new Date())}). It exists to make systematic
-          disputing pointless, not to punish being wrong once.
+          {format.relativeDays(d.cooldown_until, new Date())}).
         </Banner>
       ) : null}
 
       {d.blocked_by === "pending_request" ? (
-        <Banner icon="clock">
-          You already have a dispute open. One at a time — a queue of them from one person is a way
-          to spend an administrator's attention rather than to be heard.
-        </Banner>
+        <Banner icon="clock">You already have a dispute open. One at a time.</Banner>
       ) : null}
 
       <Card>

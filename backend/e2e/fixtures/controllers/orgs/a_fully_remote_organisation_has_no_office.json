@@ -1,0 +1,241 @@
+{
+  "name": "a fully remote organisation has no address, adds none, and posts no onsite entry",
+  "description": "ADR-0024 decision 12 and the `organization_fully_remote` code.\n\nTiny Studio said at onboarding that it is fully remote. GET …/addresses is where its seats — and its role form — learn that: `workplace: fully_remote`, no addresses, no pending request. It cannot add an address through the owner route (409 organization_fully_remote): its FIRST address is reviewed by a person, and that goes through an office request (orgs/an_office_request_is_reviewed). Its roles are remote-anywhere or remote-in-a-country and nothing else: an onsite entry is refused on create, on a draft's PATCH and on revise, 422 with `field: \"locations\"` and `position`. And it cannot switch to fully remote, because it already is.\n\nAmendment 1 §1.5: a fully remote organisation's onsite entry is refused for being onsite, whatever is wrong with its address — so an entry pointing at an id nobody holds answers `organization_fully_remote`, not `address_not_found`.",
+  "seed": ["principals"],
+  "steps": [
+    {
+      "_step": "The kind, from the route a role form already reads.",
+      "as": "sam_studio",
+      "request": {
+        "method": "GET",
+        "path": "/orgs/01920000-0000-7000-8000-00000000b002/addresses"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "workplace": "fully_remote",
+          "addresses": [],
+          "office_request": null
+        }
+      }
+    },
+    {
+      "_step": "An owner cannot add an address to a fully remote organisation. Its first is reviewed.",
+      "as": "sam_studio",
+      "request": {
+        "method": "POST",
+        "path": "/orgs/01920000-0000-7000-8000-00000000b002/addresses",
+        "body": {
+          "country": "ES",
+          "city": "Madrid",
+          "postal_code": "28013",
+          "street1": "Calle Mayor 10",
+          "street2": "3rd floor"
+        }
+      },
+      "expect": {
+        "status": 409,
+        "body": {
+          "error": "organization_fully_remote"
+        },
+        "db": {
+          "organization_addresses": {
+            "where": {
+              "organization_id": "01920000-0000-7000-8000-00000000b002"
+            },
+            "count": 0
+          },
+          "organization_office_requests": {
+            "where": {
+              "organization_id": "01920000-0000-7000-8000-00000000b002"
+            },
+            "count": 0
+          }
+        }
+      }
+    },
+    {
+      "_step": "Remote is entirely open to it — in two countries where it has no office at all.",
+      "as": "sam_studio",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b002/roles",
+        "body": {
+          "title": "Remote designer",
+          "engagement": "contract",
+          "locations": [
+            {
+              "mode": "remote",
+              "country": "FR"
+            },
+            {
+              "mode": "remote",
+              "country": "ES"
+            }
+          ]
+        }
+      },
+      "capture": {
+        "draft": "$.id"
+      },
+      "expect": {
+        "status": 201,
+        "body": {
+          "id": "<uuid>",
+          "organization_id": "01920000-0000-7000-8000-00000000b002",
+          "status": "draft",
+          "title": "Remote designer",
+          "description": "",
+          "engagement": "contract",
+          "locations": [
+            {
+              "mode": "remote",
+              "country": "ES",
+              "address": null
+            },
+            {
+              "mode": "remote",
+              "country": "FR",
+              "address": null
+            }
+          ],
+          "currency": "",
+          "yearly_ctc": null,
+          "yearly_base": null,
+          "hourly_rate": null,
+          "expected_hours": null,
+          "min_office_yoe": null,
+          "min_oss_yoe": null,
+          "requires_online_test": null,
+          "max_interview_rounds": null,
+          "avg_days_to_offer": null,
+          "questions": [],
+          "opened_at": null,
+          "close_requested_at": null,
+          "closed_at": null,
+          "close_reason": null,
+          "hires": [],
+          "advertised": false,
+          "supersedes": null,
+          "created_at": "<timestamp>",
+          "updated_at": "<timestamp>"
+        }
+      }
+    },
+    {
+      "_step": "An ONSITE entry is refused on create, and the entry is named.",
+      "as": "sam_studio",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b002/roles",
+        "body": {
+          "title": "Studio designer",
+          "engagement": "contract",
+          "locations": [
+            {
+              "mode": "remote",
+              "country": "FR"
+            },
+            {
+              "mode": "onsite",
+              "address_id": "01920000-0000-7000-8000-0000000adfff"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "organization_fully_remote",
+          "field": "locations",
+          "position": 2
+        }
+      }
+    },
+    {
+      "_step": "...on a draft's PATCH...",
+      "as": "sam_studio",
+      "request": {
+        "method": "PATCH",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b002/roles/{{draft}}",
+        "body": {
+          "title": "Remote designer",
+          "engagement": "contract",
+          "locations": [
+            {
+              "mode": "onsite",
+              "address_id": "01920000-0000-7000-8000-0000000adfff"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "organization_fully_remote",
+          "field": "locations",
+          "position": 1
+        },
+        "db": {
+          "role_locations": {
+            "where": {
+              "role_id": "{{draft}}"
+            },
+            "count": 2,
+            "all_match": {
+              "mode": "remote"
+            }
+          }
+        }
+      }
+    },
+    {
+      "_step": "...and on revise, which writes no successor.",
+      "as": "sam_studio",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b002/roles/{{startup.role}}/revise",
+        "body": {
+          "title": "Backend engineer",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "onsite",
+              "address_id": "01920000-0000-7000-8000-0000000adfff"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "organization_fully_remote",
+          "field": "locations",
+          "position": 1
+        },
+        "db": {
+          "roles": {
+            "where": {
+              "organization_id": "01920000-0000-7000-8000-00000000b002"
+            },
+            "count": 2
+          }
+        }
+      }
+    },
+    {
+      "_step": "It cannot go fully remote: it already is.",
+      "as": "sam_studio",
+      "request": {
+        "method": "POST",
+        "path": "/orgs/01920000-0000-7000-8000-00000000b002/fully-remote"
+      },
+      "expect": {
+        "status": 409,
+        "body": {
+          "error": "organization_fully_remote"
+        }
+      }
+    }
+  ]
+}

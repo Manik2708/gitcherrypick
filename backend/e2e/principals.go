@@ -26,6 +26,28 @@ type Organization struct {
 	LinkedInURL     *string `json:"linkedin_url"`
 	Verified        bool    `json:"verified"`
 	PaymentVerified bool    `json:"payment_verified"`
+
+	// Workplace is "office" or "fully_remote" (ADR-0024 decision 11). Every
+	// seeded organisation states one, and the seed never writes a state the
+	// product cannot: an office organisation has exactly one live main office,
+	// a fully remote one has no address at all.
+	Workplace string `json:"workplace"`
+
+	// Addresses are bound as {{<org>.address.<binding>}} so a fixture can name
+	// one in a request. Fixed ids, so an expected body can name one too.
+	Addresses []OrganizationAddress `json:"addresses"`
+}
+
+// OrganizationAddress is one seeded office (ADR-0017 §3, ADR-0024 §8).
+type OrganizationAddress struct {
+	Binding      string `json:"binding"`
+	ID           string `json:"id"`
+	Country      string `json:"country"`
+	City         string `json:"city"`
+	PostalCode   string `json:"postal_code"`
+	Street1      string `json:"street1"`
+	Street2      string `json:"street2"`
+	IsMainOffice bool   `json:"is_main_office"`
 }
 
 // Contributor is a seeded GitHub-authenticated user.

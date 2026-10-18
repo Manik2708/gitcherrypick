@@ -256,21 +256,7 @@ type SkillRank struct {
 	OutOf    *int
 }
 
-// --- shortlists --------------------------------------------------------------
-
-// ShortlistStatus tracks a hiring round.
-//
-// draft means nothing has been disclosed to anyone and every entry is still
-// removable. open means at least one confirm has happened and those
-// disclosures are permanent (ADR-0008 §3a).
-type ShortlistStatus string
-
-// The states of a hiring round. draft has disclosed nothing to anyone.
-const (
-	ShortlistDraft  ShortlistStatus = "draft"
-	ShortlistOpen   ShortlistStatus = "open"
-	ShortlistClosed ShortlistStatus = "closed"
-)
+// --- candidates on a role ----------------------------------------------------
 
 // HirerRef names the seat that authored something.
 //
@@ -303,64 +289,13 @@ func RefTo(h *Hirer) HirerRef {
 	}
 }
 
-// Shortlist is a hiring round, owned by the ORGANIZATION rather than the
-// recruiter who made it — one that vanished when a recruiter left the company
-// would be worse than useless.
-type Shortlist struct {
-	ID             ShortlistID
-	OrganizationID OrganizationID
-
-	// RoleID is the job this round is for (ADR-0019 §3). One shortlist, one
-	// role: a hirer wanting the same contributor for a second opening opens a
-	// second shortlist, which raises a second, separate contact request.
-	//
-	// Required. Without it a contact request can only say "somebody is
-	// interested in you", and the role details have no route to the person
-	// being contacted.
-	RoleID RoleID
-
-	Name                string
-	Description         string
-	Status              ShortlistStatus
-	TentativeResultDate time.Time
-	CreatedBy           HirerRef
-	CreatedAt           time.Time
-	UpdatedAt           time.Time
-	FirstConfirmedAt    *time.Time
-	ClosedAt            *time.Time
-	Entries             []ShortlistEntry
-}
-
-// ShortlistEntry is one staged or notified candidate.
+// Removable reports whether a candidate may still be taken off a role.
 //
 // NotifiedAt is the boundary the whole two-phase design turns on: nil means
-// still private and removable, set means the contributor was told and the entry
-// is permanent. An endpoint that erased the record of a disclosure that already
-// happened would be pretending otherwise.
-type ShortlistEntry struct {
-	ShortlistID ShortlistID
-	UserID      UserID
-
-	// Resolved from the contributor, not stored on the entry. A hirer reading
-	// a round is looking at people; a column of uuids would send them to fetch
-	// each one.
-	DisplayName string
-	GitHubLogin string
-
-	// ContactStatus is the contributor's answer, empty until the round is
-	// confirmed and a request exists to answer. Email is released ONLY on
-	// acceptance (ADR-0005) — staging discloses nothing.
-	ContactStatus string
-	Email         string
-
-	Note       string
-	AddedBy    HirerRef
-	NotifiedAt *time.Time
-	AddedAt    time.Time
-}
-
-// Removable reports whether this entry may still be deleted.
-func (e *ShortlistEntry) Removable() bool { return e != nil && e.NotifiedAt == nil }
+// still private and removable, set means the contributor was told and the row
+// is permanent. An endpoint that erased the record of a disclosure that
+// already happened would be pretending otherwise.
+func Removable(c *RoleCandidate) bool { return c != nil && c.NotifiedAt == nil }
 
 // ContactRequestStatus is a contributor's answer.
 type ContactRequestStatus string
@@ -378,18 +313,16 @@ const (
 // and, only after acceptance, an email.
 type ContactRequest struct {
 	ID             ContactID
-	ShortlistID    ShortlistID
 	UserID         UserID
 	OrganizationID OrganizationID
 	RequestedBy    HirerRef
 	Status         ContactRequestStatus
 
-	// Copied from the shortlist at confirm time, so the record of what the
-	// contributor was told survives a later edit.
+	// Promised at the moment of contact, so the record of what the
+	// contributor was told survives whatever the company does afterwards.
 	TentativeResultDate time.Time
 
-	// RoleID is the job, read through the shortlist this request came from
-	// (ADR-0019 §3).
+	// RoleID is the job this request was raised for (ADR-0023).
 	RoleID RoleID
 
 	// Role is the opening itself, hydrated for the CONTRIBUTOR'S view.

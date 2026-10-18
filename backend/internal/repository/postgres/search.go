@@ -83,22 +83,20 @@ func scoreRubricVersion(userColumn string, baselineParam int) string {
 	), $%d::text)`, userColumn, baselineParam)
 }
 
-// alreadyShortlisted is everybody on a round for one role (ADR-0008
-// amendment 3).
+// alreadyShortlisted is everybody already on one role (ADR-0008 amendment 3).
 //
-// A CTE over the ROUNDS rather than a correlated subquery per candidate:
-// measured at 1,000 contributors and 500 shortlists it resolves in 0.84ms
-// against idx_shortlists_role, and it does not grow with the population —
+// A CTE over the candidates rather than a correlated subquery per row:
+// measured at 1,000 contributors and 500 staged candidates it resolves in
+// 0.84ms against the primary key, and it does not grow with the population —
 // only with how heavily that one job has been worked.
 //
-// DISTINCT because one person can be on several rounds for one role, and the
-// anti-join wants people rather than entries.
+// No DISTINCT since ADR-0023: (role_id, user_id) is the primary key, so one
+// person cannot appear twice on one job.
 const alreadyShortlisted = `
 	already AS (
-	    SELECT DISTINCT e.user_id
-	      FROM shortlist_entries e
-	      JOIN shortlists s ON s.id = e.shortlist_id
-	     WHERE $%[1]d::uuid IS NOT NULL AND s.role_id = $%[1]d::uuid
+	    SELECT c.user_id
+	      FROM role_candidates c
+	     WHERE $%[1]d::uuid IS NOT NULL AND c.role_id = $%[1]d::uuid
 	)`
 
 // eligibleCTE applies every gate except the inactive one, which is counted

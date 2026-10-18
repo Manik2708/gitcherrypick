@@ -147,6 +147,7 @@ NOT NULL` in RFC-0005, and `first_pr_authored_at` / `latest_pr_authored_at` /
 | 2026-09-19 | **Amendment 2** — a role lists its candidates; hires are picked from that list |
 | 2026-09-20 | **Amendment 3** — closing is final; `closed → open` removed                    |
 | 2026-09-20 | **Amendment 3** — a closed role reopens, unless it was superseded              |
+| 2026-10-17 | **Amendment 5** — a role's location is a set of entries (ADR-0024)             |
 
 ### 1. A contributor sees published openings, not every matching role
 
@@ -225,3 +226,47 @@ somebody is warned about has to hold afterwards.
 The same is now true of a **round**: closing one asks for an acknowledgement first, the way
 confirming it already did. It used to close on a single click with nothing asked, which made
 the most final action on that screen the easiest one to take by accident.
+
+### 4. The candidate list carries a released address, and both lists filter by stage
+
+Amendment 2 said the candidate list carries **no addresses**: the hirer who needs one has it
+from the contact request. Reversed by the owner during a review, and the reversal is right —
+the argument was about _bulk_, and this list is not bulk. It is the people this organisation
+already approached for one job, and the only addresses in it are ones a contributor released
+**by accepting**.
+
+Withholding it there did not protect anybody. It sent a hirer who had just read "accepted"
+somewhere else to find out what accepting had given them, which is the kind of gap a person
+fills by keeping their own spreadsheet.
+
+So `GET /org-roles/{orgID}/roles/{roleID}/candidates` now carries `email`, under the **same
+guard the round's own entry list uses**: `email_released_at IS NOT NULL`, stamped by an
+acceptance and never by a decline or an expiry. The field is **omitted** rather than null
+when there is nothing to release, so a body that carries no key cannot be read as "they have
+no address".
+
+Both lists — the candidates on a role and the entries on a round — are also **filtered by
+stage** in the client: not contacted, waiting, accepted, declined, never answered. A hirer
+reading either one is asking a stage-shaped question ("who still owes me an answer", "who
+said yes"), and scanning a mixed list for pills is how that question was being answered
+before.
+
+### 5. Where a role's work is, and what a refusal names (ADR-0024)
+
+Superseded by [ADR-0024](ADR-0024-role-locations.md), from RFC-0024:
+
+- **§5** — "a role points at an `organization_addresses` row, or is remote". A role now holds
+  a set of location entries: remote from anywhere, remote within a named country, or onsite
+  at one of the organisation's addresses. `roles.location`, `roles.address_id` and
+  `ck_role_location` are dropped.
+- **§6** — "no eligible countries means anywhere". `role_eligible_countries` is dropped. What
+  §6 protected against, a blank that silently excludes the world, cannot happen: a role must
+  have an entry, and "anywhere" is an explicit remote entry rather than an empty list.
+- **§2** — the contact request carries `locations` in place of the location and the eligible
+  countries, at the detail ADR-0024 decision 7 allows a contributor: a city and country for
+  onsite, a country or "anywhere" for remote.
+- **§13** — unchanged, and extended: a role's entries are as immutable as the role.
+- **Every `invalid_role`** — role, close, settings and contact — now carries `field`, the
+  request key it is about, with `index` for a list. The code is unchanged.
+- **`GET /me/roles`'s query** (`RoleRepository.Matching`), retired by amendment 1 but still in
+  the code, is deleted rather than ported.

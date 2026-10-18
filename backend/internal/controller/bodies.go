@@ -167,16 +167,16 @@ type contactRoleBody struct {
 	Title       string        `json:"title"`
 	Description string        `json:"description"`
 	Engagement  string        `json:"engagement"`
-	Location    string        `json:"location"`
+
+	// Locations at a contributor's level of detail: a city and a country,
+	// never a street (ADR-0024 decision 7).
+	Locations []contactLocationBody `json:"locations"`
 
 	Currency      string `json:"currency"`
 	YearlyCTC     *int64 `json:"yearly_ctc"`
 	YearlyBase    *int64 `json:"yearly_base"`
 	HourlyRate    *int64 `json:"hourly_rate"`
 	ExpectedHours *int   `json:"expected_hours"`
-
-	// Empty means ANYWHERE, not nowhere. A client showing this has to say so.
-	EligibleCountries []string `json:"eligible_countries"`
 
 	// The process, disclosed here and nowhere else (ADR-0017).
 	RequiresOnlineTest *bool `json:"requires_online_test"`
@@ -203,16 +203,13 @@ type contactQuestionBody struct {
 func contactRoleBodyOf(r domain.Role) contactRoleBody {
 	out := contactRoleBody{
 		ID: r.ID, Title: r.Title, Description: r.Description,
-		Engagement: string(r.Engagement), Location: string(r.Location),
-		Currency: r.Currency, YearlyCTC: r.YearlyCTC, YearlyBase: r.YearlyBase,
+		Engagement: string(r.Engagement),
+		Locations:  contactLocationBodies(r.Locations),
+		Currency:   r.Currency, YearlyCTC: r.YearlyCTC, YearlyBase: r.YearlyBase,
 		HourlyRate: r.HourlyRate, ExpectedHours: r.ExpectedHours,
-		EligibleCountries:  r.EligibleCountries,
 		RequiresOnlineTest: r.RequiresOnlineTest,
 		MaxInterviewRounds: r.MaxInterviewRounds,
 		AvgDaysToOffer:     r.AvgDaysToOffer,
-	}
-	if out.EligibleCountries == nil {
-		out.EligibleCountries = []string{}
 	}
 	out.Questions = make([]contactQuestionBody, 0, len(r.Questions))
 	for _, q := range r.Questions {

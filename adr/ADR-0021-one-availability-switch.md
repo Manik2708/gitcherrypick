@@ -69,3 +69,17 @@ and none is needed now.
   the owner their saved question no longer means what it did.
 
 ## Open questions
+
+## Amendments
+
+| Date       | Change                                                                      |
+| ---------- | --------------------------------------------------------------------------- |
+| 2026-10-17 | **Amendment 1** — a role's shapes come from its location entries (ADR-0024) |
+
+### 1. A role with several locations (ADR-0024)
+
+§Implementation's role-to-search mapping and the opening filter read one location to choose
+between `remote` and `onsite` for a full-time role. [ADR-0024](ADR-0024-role-locations.md)
+gives a role a set of entries. The mapping now yields every mode present, OR-ed; the opening
+filter counts an entry only if its mode is one the contributor ticked. The shapes remain a
+preference, not a gate, exactly as decision 3 says.

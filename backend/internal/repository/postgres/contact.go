@@ -26,8 +26,8 @@ var _ port.ContactRepository = (*ContactRepository)(nil)
 // (ADR-0016 §9): a request made by a colleague who has since left is still
 // theirs, and the reader needs a name to make sense of it.
 var contactColumns = `
-	cr.id, cr.shortlist_id, cr.user_id, cr.organization_id, ` + hirerRefColumns("author") + `,
-	sl.role_id,
+	cr.id, cr.user_id, cr.organization_id, ` + hirerRefColumns("author") + `,
+	cr.role_id,
 	cr.status, cr.tentative_result_date, cr.responded_at, cr.email_released_at,
 	cr.expires_at, cr.created_at,
 	coalesce(o.name, ''), (o.verified_at IS NOT NULL), (o.payment_verified_at IS NOT NULL),
@@ -38,7 +38,6 @@ var contactColumns = `
 const contactFrom = `
 	FROM contact_requests cr
 	JOIN hirer_accounts author ON author.id = cr.requested_by
-	JOIN shortlists sl ON sl.id = cr.shortlist_id
 	LEFT JOIN organizations o ON o.id = cr.organization_id
 	JOIN users u ON u.id = cr.user_id
 	LEFT JOIN user_github_identities gi ON gi.user_id = cr.user_id`
@@ -55,7 +54,7 @@ func (r *ContactRepository) ByID(ctx context.Context, id domain.ContactID) (*dom
 
 // ListForUser reads a contributor's own requests.
 //
-// Their own, and nothing else: nothing about shortlist membership is visible
+// Their own, and nothing else: nothing about who else is on a role is visible
 // to a contributor beyond the requests addressed to them, so there is no query
 // here that could widen it.
 func (r *ContactRepository) ListForUser(ctx context.Context, id domain.UserID, status *domain.ContactRequestStatus) ([]domain.ContactRequest, error) {
@@ -69,14 +68,6 @@ func (r *ContactRepository) ListForUser(ctx context.Context, id domain.UserID, s
 		WHERE cr.user_id = $1
 		  AND ($2::contact_request_status IS NULL OR cr.status = $2::contact_request_status)
 		ORDER BY cr.created_at DESC`, string(id), filter)
-}
-
-// ListForShortlist reads a round's requests for the hirer side.
-func (r *ContactRepository) ListForShortlist(ctx context.Context, id domain.ShortlistID) ([]domain.ContactRequest, error) {
-	return r.list(ctx, `
-		SELECT`+contactColumns+contactFrom+`
-		WHERE cr.shortlist_id = $1
-		ORDER BY cr.created_at`, string(id))
 }
 
 // Respond records the contributor's answer.
@@ -116,7 +107,6 @@ func (r *ContactRepository) Respond(ctx context.Context, t port.Tx, id domain.Co
 		SELECT`+contactColumns+`
 		FROM answered cr
 		JOIN hirer_accounts author ON author.id = cr.requested_by
-	JOIN shortlists sl ON sl.id = cr.shortlist_id
 		LEFT JOIN organizations o ON o.id = cr.organization_id
 		JOIN users u ON u.id = cr.user_id
 		LEFT JOIN user_github_identities gi ON gi.user_id = cr.user_id`,
@@ -163,7 +153,7 @@ func (r *ContactRepository) list(ctx context.Context, query string, args ...any)
 func scanContact(row rowScanner) (*domain.ContactRequest, error) {
 	var cr domain.ContactRequest
 	targets := scanTargets(
-		[]any{&cr.ID, &cr.ShortlistID, &cr.UserID, &cr.OrganizationID},
+		[]any{&cr.ID, &cr.UserID, &cr.OrganizationID},
 		&cr.RequestedBy,
 		[]any{&cr.RoleID,
 			&cr.Status, &cr.TentativeResultDate, &cr.RespondedAt, &cr.EmailReleasedAt,

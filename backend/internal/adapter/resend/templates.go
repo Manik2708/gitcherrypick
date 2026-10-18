@@ -103,6 +103,16 @@ var bodies = map[port.NotificationKind]string{
 {{else if .token}}<p>Enter this code to correct and resubmit: <code>{{.token}}</code></p>{{end}}
 {{end}}`,
 
+	// An office request's answer, to the owner who asked (ADR-0024 §1.10).
+	// An approval names the place, so the owner can see which address it was;
+	// a rejection carries the reason, which every seat also reads in the app.
+	port.NotifyOfficeRequestApproved: `<p>The office address you submitted for <strong>{{.organization}}</strong> in {{.city}}, {{.country}} was approved.</p>
+<p>It is now your main office. Owners can add further addresses, and roles can be offered onsite.</p>`,
+
+	port.NotifyOfficeRequestRejected: `<p>The office address you submitted for <strong>{{.organization}}</strong> in {{.city}} was not approved.</p>
+<p>Reason: {{.reason}}</p>
+<p>The organisation stays fully remote. Any owner may submit a corrected address at once.</p>`,
+
 	port.NotifyVerificationDecided: `<p>Your organization verification was {{.decision}}.</p>
 {{if .reason}}<p>Reason: {{.reason}}</p>{{end}}`,
 
@@ -124,6 +134,8 @@ var subjects = map[port.NotificationKind]string{
 	port.NotifyEmailVerification:      "Confirm your email address",
 	port.NotifyOnboardingVerification: "Confirm your company's email address",
 	port.NotifyOnboardingDecided:      "Your organization has been reviewed",
+	port.NotifyOfficeRequestApproved:  "Your office address was approved",
+	port.NotifyOfficeRequestRejected:  "Your office address was not approved",
 	port.NotifyVerificationDecided:    "Your organization verification was decided",
 	port.NotifySkillRequestDecided:    "Your skill request was decided",
 	port.NotifyReevaluationDecided:    "Your re-evaluation request was decided",

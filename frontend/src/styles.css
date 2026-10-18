@@ -876,6 +876,13 @@ img {
   color: var(--text-help-ink);
   line-height: var(--lh-normal);
 }
+/* A refusal naming this control. The help role's size, the accent's ink. */
+.field__error {
+  font-size: var(--text-help-size);
+  font-weight: var(--w-medium);
+  color: var(--cherry-deep);
+  line-height: var(--lh-normal);
+}
 
 /* An action that reads as a link because it continues a sentence.
    A <button> and not an <a>: it fires a request rather than going anywhere,
@@ -1168,6 +1175,11 @@ img {
     color: var(--ink);
     background: var(--surface);
   }
+}
+/* A stage nothing is in. Still pressable — it answers "nobody, yet" — but
+   quieter, so the shape of a list can be read without pressing anything. */
+.segmented button.is-empty[aria-pressed="false"] {
+  color: var(--ink-3);
 }
 
 /* ---------- search layout ------------------------------------------------ */

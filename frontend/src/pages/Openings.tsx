@@ -14,6 +14,8 @@
 import type { ContributorOpening } from "../contract";
 import { useOpenings } from "../hooks/contributor";
 import * as format from "../logic/format";
+import { describeForContributor } from "../logic/roleLocations";
+import { useCountryNames } from "../ui/countries";
 import { Card, Empty, Failure, Loading, PageHead, Pill } from "../ui/primitives";
 
 const ENGAGEMENTS: Record<string, string> = {
@@ -28,7 +30,13 @@ function money(minor: number | null, currency: string): string | null {
   return `${currency} ${(minor / 100).toLocaleString()}`;
 }
 
-function OpeningCard({ opening }: { opening: ContributorOpening }) {
+function OpeningCard({
+  opening,
+  nameOf,
+}: {
+  opening: ContributorOpening;
+  nameOf: (code: string) => string;
+}) {
   const role = opening.role;
   if (!role) return null;
 
@@ -59,19 +67,14 @@ function OpeningCard({ opening }: { opening: ContributorOpening }) {
       </div>
 
       <p className="field__help">
-        {ENGAGEMENTS[role.engagement] ?? role.engagement} ·{" "}
-        {role.location === "remote" ? "remote" : "at their office"}
+        {ENGAGEMENTS[role.engagement] ?? role.engagement}
         {pay ? ` · ${pay}${role.engagement === "freelance" ? " an hour" : " a year"}` : ""}
         {opening.posted_at ? ` · open since ${format.date(opening.posted_at)}` : ""}
       </p>
 
       {role.description ? <p className="small">{role.description}</p> : null}
 
-      {role.eligible_countries.length > 0 ? (
-        <p className="field__help">Can hire in {role.eligible_countries.join(", ")}.</p>
-      ) : (
-        <p className="field__help">Hires anywhere.</p>
-      )}
+      <p className="field__help">{describeForContributor(role.locations, nameOf)}.</p>
 
       {/* The bar is shown because you have already cleared it — it discloses
           nothing you could not infer, and a role that says what it wanted is
@@ -87,16 +90,13 @@ function OpeningCard({ opening }: { opening: ContributorOpening }) {
 
 export function OpeningsPage() {
   const openings = useOpenings();
+  const nameOf = useCountryNames();
   const list = openings.data?.openings ?? [];
   const missed = openings.data?.missed ?? 0;
 
   return (
     <div className="page">
-      <PageHead
-        eyebrow="Discovery"
-        title="Open to you"
-        lede="Roles companies have published, filtered to the ones you meet. Nobody is told you looked — companies approach you, and you answer."
-      />
+      <PageHead eyebrow="Discovery" title="Open to you" />
 
       {openings.loading && !openings.data ? <Loading what="open roles" /> : null}
       {openings.error ? (
@@ -106,13 +106,13 @@ export function OpeningsPage() {
       {!openings.loading && list.length === 0 ? (
         <Empty title="Nothing open to you right now" icon="bookmark">
           {missed > 0
-            ? `${missed} ${missed === 1 ? "role is" : "roles are"} published that you do not currently meet. Submitting a claim is what moves that number: a role asking for a score reaches nobody the platform has not judged.`
-            : "No company has published a role yet. This fills in as they do."}
+            ? `${missed} ${missed === 1 ? "role is" : "roles are"} published that you do not currently meet. Submit a claim to move that number.`
+            : "No company has published a role yet."}
         </Empty>
       ) : null}
 
       {list.map((opening) => (
-        <OpeningCard key={opening.id} opening={opening} />
+        <OpeningCard key={opening.id} opening={opening} nameOf={nameOf} />
       ))}
 
       {/* The count is the whole of what you are told about the rest. It names

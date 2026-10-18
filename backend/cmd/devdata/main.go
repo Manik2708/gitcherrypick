@@ -146,6 +146,13 @@ func run(ctx context.Context, cfg config) error {
 		fmt.Printf("seeded %s\n", strings.Join(cfg.seeds, ", "))
 	}
 
+	// The demo layer, every time: it is idempotent, and the developer who
+	// already has a database is the one who has been looking at a list with
+	// one stage in it.
+	if err := seedDemo(ctx, pool, cfg.schema); err != nil {
+		return err
+	}
+
 	// Read back rather than taken from the seed's return value: on a database
 	// that was already built there was no seed call to return them.
 	bindings, err := seededIDs(ctx, pool, cfg.schema)
@@ -164,7 +171,82 @@ func run(ctx context.Context, cfg config) error {
 	// a hand-written request references, and nothing else in the running
 	// system reports them.
 	report(bindings)
+
+	// Each organisation's kind and live addresses (ADR-0024 step 2): a role
+	// form offers Onsite only where there is an address to be onsite at, and a
+	// developer testing it needs to know which seeded company has one.
+	workplaces, err := seededWorkplaces(ctx, pool, cfg.schema)
+	if err != nil {
+		return err
+	}
+	reportWorkplaces(workplaces)
 	return nil
+}
+
+// seededWorkplace is one organisation's kind and its live addresses.
+type seededWorkplace struct {
+	name      string
+	workplace string
+	addresses []seededAddress
+}
+
+// seededAddress is one live address, as a developer needs to reference it.
+type seededAddress struct {
+	id         string
+	city       string
+	country    string
+	mainOffice bool
+}
+
+// seededWorkplaces reads every organisation's kind and live addresses.
+func seededWorkplaces(ctx context.Context, pool *pgxpool.Pool, schema string) ([]seededWorkplace, error) {
+	rows, err := pool.Query(ctx, fmt.Sprintf(`
+		SELECT o.name, o.workplace::text,
+		       coalesce(a.id::text, ''), coalesce(a.city, ''), coalesce(a.country, ''),
+		       coalesce(a.is_main_office, false)
+		  FROM %[1]q.organizations o
+		  LEFT JOIN %[1]q.organization_addresses a
+		         ON a.organization_id = o.id AND a.removed_at IS NULL
+		 ORDER BY o.name, a.is_main_office DESC, a.created_at, a.id`, schema))
+	if err != nil {
+		return nil, fmt.Errorf("reading the organisations' addresses: %w", err)
+	}
+	defer rows.Close()
+
+	var out []seededWorkplace
+	for rows.Next() {
+		var (
+			name, workplace string
+			address         seededAddress
+		)
+		if err := rows.Scan(&name, &workplace, &address.id, &address.city,
+			&address.country, &address.mainOffice); err != nil {
+			return nil, fmt.Errorf("scanning an organisation's address: %w", err)
+		}
+		if len(out) == 0 || out[len(out)-1].name != name {
+			out = append(out, seededWorkplace{name: name, workplace: workplace})
+		}
+		if address.id != "" {
+			last := &out[len(out)-1]
+			last.addresses = append(last.addresses, address)
+		}
+	}
+	return out, rows.Err()
+}
+
+// reportWorkplaces prints each organisation's kind and its addresses.
+func reportWorkplaces(workplaces []seededWorkplace) {
+	fmt.Println("\norganisations:")
+	for _, w := range workplaces {
+		fmt.Printf("  %-32s %s\n", w.name, w.workplace)
+		for _, a := range w.addresses {
+			label := a.city + ", " + a.country
+			if a.mainOffice {
+				label += " (main office)"
+			}
+			fmt.Printf("    %-30s %s\n", label, a.id)
+		}
+	}
 }
 
 // loadThirdParty gives the stand-in the same cast the database just got.
@@ -205,6 +287,13 @@ func alreadyBuilt(ctx context.Context, pool *pgxpool.Pool, schema string) (bool,
 	return exists, nil
 }
 
+// idSource is one table a developer needs ids from, and the query that reads
+// a label and an id off it.
+type idSource struct {
+	key   string
+	query string
+}
+
 // seededIDs reads back the accounts a developer will reference by hand.
 func seededIDs(ctx context.Context, pool *pgxpool.Pool, schema string) (map[string]string, error) {
 	conn, err := pool.Acquire(ctx)
@@ -218,7 +307,7 @@ func seededIDs(ctx context.Context, pool *pgxpool.Pool, schema string) (map[stri
 	}
 
 	out := map[string]string{}
-	for _, source := range []struct{ key, query string }{
+	for _, source := range []idSource{
 		{"users", `SELECT display_name, id::text FROM users`},
 		// Keyed by USERNAME since ADR-0016: that is what a developer signs in
 		// with, and two seats may share an email.

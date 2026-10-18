@@ -175,10 +175,13 @@ func seedPrincipals(ctx context.Context, conn *pgx.Conn, bindings map[string]str
 		if o.PaymentVerified {
 			paymentAt = &now
 		}
+		if err := checkSeededWorkplace(o); err != nil {
+			return err
+		}
 		if _, err := conn.Exec(ctx,
-			`INSERT INTO organizations (id, name, slug, linkedin_url, verified_at, payment_verified_at)
-			 VALUES ($1, $2, $3, $4, $5, $6)`,
-			o.ID, o.Name, o.Slug, o.LinkedInURL, verifiedAt, paymentAt); err != nil {
+			`INSERT INTO organizations (id, name, slug, linkedin_url, verified_at, payment_verified_at, workplace)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+			o.ID, o.Name, o.Slug, o.LinkedInURL, verifiedAt, paymentAt, o.Workplace); err != nil {
 			return fmt.Errorf("organization %s: %w", o.Key, err)
 		}
 	}
@@ -245,15 +248,46 @@ func seedPrincipals(ctx context.Context, conn *pgx.Conn, bindings map[string]str
 		bindings[h.Key+".id"] = h.ID
 	}
 
+	// Addresses, after the seats: a later address names the owner who added it
+	// (ADR-0024 §8), and that column references hirer_accounts. Each is bound
+	// as {{<org>.address.<binding>}} so a fixture can name it.
+	for _, o := range file.Organizations {
+		owner := ownerOf(file, o.Key)
+		for _, a := range o.Addresses {
+			var addedBy *string
+			if !a.IsMainOffice && owner != "" {
+				// The main office came from the onboarding submission an
+				// administrator approved, so nobody "added" it; every later
+				// address is an owner's act (ADR-0024 decision 10).
+				addedBy = &owner
+			}
+			var postal, street2 *string
+			if a.PostalCode != "" {
+				postal = &a.PostalCode
+			}
+			if a.Street2 != "" {
+				street2 = &a.Street2
+			}
+			if _, err := conn.Exec(ctx,
+				`INSERT INTO organization_addresses
+				   (id, organization_id, country, city, postal_code, street1, street2, is_main_office, added_by)
+				 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+				a.ID, o.ID, a.Country, a.City, postal, a.Street1, street2, a.IsMainOffice, addedBy); err != nil {
+				return fmt.Errorf("organization %s address %s: %w", o.Key, a.Binding, err)
+			}
+			bindings[o.Key+".address."+a.Binding] = a.ID
+		}
+	}
+
 	// One OPEN ROLE per organisation, bound as {{<org key>.role}}.
 	//
-	// A shortlist is FOR a job (ADR-0019 §3), so a round cannot be opened
-	// without one. Seeded rather than created by every fixture because the
-	// existing cases are about shortlists and consent, not about roles — making
+	// Candidates hang off a job (ADR-0023), so nobody can be staged without
+	// one. Seeded rather than created by every fixture because the existing
+	// cases are about staging and consent, not about writing roles — making
 	// each of them create and open a role first would be three steps of
 	// scaffolding before the thing under test.
 	//
-	// Deliberately plain: remote, full time, no countries, no minimums, no pay.
+	// Deliberately plain: remote from anywhere, full time, no minimums, no pay.
 	// A fixture asserting on any of those states its own role instead, so the
 	// defaults here can never be mistaken for the case's subject.
 	for _, o := range file.Organizations {
@@ -270,17 +304,24 @@ func seedPrincipals(ctx context.Context, conn *pgx.Conn, bindings map[string]str
 			continue
 		}
 
+		// ADR-0024: the role holds its place as entries. One remote-anywhere
+		// entry is what every fixture assumes about the seeded role.
 		var roleID string
 		if err := conn.QueryRow(ctx, `
 			INSERT INTO roles
 			    (id, organization_id, title, description, engagement, status,
-			     location, created_by, opened_by, opened_at)
+			     created_by, opened_by, opened_at)
 			VALUES (gen_random_uuid(), $1, 'Backend engineer',
 			        'Seeded so a round has a job to be for.',
-			        'full_time', 'open', 'remote', $2, $2, $3)
+			        'full_time', 'open', $2, $2, $3)
 			RETURNING id`,
 			o.ID, owner, now).Scan(&roleID); err != nil {
 			return fmt.Errorf("organization %s role: %w", o.Key, err)
+		}
+		if _, err := conn.Exec(ctx,
+			`INSERT INTO role_locations (role_id, mode, country, address_id)
+			 VALUES ($1, 'remote', NULL, NULL)`, roleID); err != nil {
+			return fmt.Errorf("organization %s role location: %w", o.Key, err)
 		}
 		bindings[o.Key+".role"] = roleID
 	}
@@ -326,6 +367,44 @@ func seedPrincipals(ctx context.Context, conn *pgx.Conn, bindings map[string]str
 		bindings[a.Key+".id"] = a.ID
 	}
 	return nil
+}
+
+// checkSeededWorkplace refuses seed data the product could never produce: an
+// office organisation without exactly one main office, or a fully remote one
+// with any address (ADR-0024 §Invariants).
+func checkSeededWorkplace(o Organization) error {
+	main := 0
+	for _, a := range o.Addresses {
+		if a.IsMainOffice {
+			main++
+		}
+		if a.Binding == "" || a.ID == "" {
+			return fmt.Errorf("organization %s: every seeded address needs a binding and an id", o.Key)
+		}
+	}
+	switch o.Workplace {
+	case "office":
+		if main != 1 {
+			return fmt.Errorf("organization %s is an office organisation with %d main offices, not 1", o.Key, main)
+		}
+	case "fully_remote":
+		if len(o.Addresses) != 0 {
+			return fmt.Errorf("organization %s is fully remote and has %d addresses", o.Key, len(o.Addresses))
+		}
+	default:
+		return fmt.Errorf("organization %s states workplace %q, not office or fully_remote", o.Key, o.Workplace)
+	}
+	return nil
+}
+
+// ownerOf is the first owner seat of an organisation, or "".
+func ownerOf(file Principals, org string) string {
+	for _, h := range file.Hirers {
+		if h.Organization == org && h.OrgRole == "owner" {
+			return h.ID
+		}
+	}
+	return ""
 }
 
 // seedSkill is one entry in the skill catalogue.

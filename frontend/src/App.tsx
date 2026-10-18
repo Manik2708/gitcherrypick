@@ -28,10 +28,9 @@ import { RegisterPage } from "./pages/Register";
 import { SavedSearchesPage } from "./pages/SavedSearches";
 import { ScorecardPage } from "./pages/Scorecard";
 import { SearchPage } from "./pages/Search";
-import { ShortlistDetailPage } from "./pages/ShortlistDetail";
+import { OfficesPage } from "./pages/Offices";
 import { OpeningsPage } from "./pages/Openings";
 import { RolesPage } from "./pages/Roles";
-import { ShortlistsPage } from "./pages/Shortlists";
 import { SignInPage } from "./pages/SignIn";
 import { TeamPage } from "./pages/Team";
 import { ErrorBoundary } from "./ui/ErrorBoundary";
@@ -132,14 +131,14 @@ function Sidebar() {
             <NavItem to="/roles" icon="bookmark">
               Roles
             </NavItem>
-            <NavItem to="/shortlists" icon="bookmark">
-              Shortlists
-            </NavItem>
             <NavItem to="/saved-searches" icon="list">
               Saved searches
             </NavItem>
             <NavItem to="/team" icon="people">
               Team
+            </NavItem>
+            <NavItem to="/offices" icon="pin">
+              Offices
             </NavItem>
           </>
         ) : null}
@@ -239,10 +238,7 @@ export function App() {
               <Route path="/organisation/verify" element={<OnboardingVerifyPage />} />
               <Route path="/organisation/revise" element={<OnboardingPage mode="revise" />} />
               <Route path="/auth/github/callback" element={<AuthCallbackPage />} />
-              <Route path="/auth/hirer/github/callback" element={<AuthCallbackPage as="hirer" />} />
-              {/* The same GitHub identity can own both kinds of account, so the
-                  path is what says which session to mint. Without this route the
-                  hirer return landed on the 404. */}
+              <Route path="/auth/google/callback" element={<AuthCallbackPage as="google" />} />
 
               <Route path="/s/:token" element={<PublicScorecardPage />} />
 
@@ -329,22 +325,6 @@ export function App() {
                 }
               />
               <Route
-                path="/shortlists"
-                element={
-                  <RequireSession>
-                    <ShortlistsPage />
-                  </RequireSession>
-                }
-              />
-              <Route
-                path="/shortlists/:shortlistId"
-                element={
-                  <RequireSession>
-                    <ShortlistDetailPage />
-                  </RequireSession>
-                }
-              />
-              <Route
                 path="/saved-searches"
                 element={
                   <RequireSession>
@@ -357,6 +337,15 @@ export function App() {
                 element={
                   <RequireSession>
                     <TeamPage />
+                  </RequireSession>
+                }
+              />
+
+              <Route
+                path="/offices"
+                element={
+                  <RequireSession>
+                    <OfficesPage />
                   </RequireSession>
                 }
               />

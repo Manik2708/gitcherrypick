@@ -35,6 +35,14 @@ type Server struct {
 	// a real OAuth app configures its callback once. So the sign-in page
 	// offers both, which is the distinction a person actually has to make.
 	hirerOAuthCallbackURL string
+
+	// googleCallbackURL is the same affordance for Google: where the Google
+	// sign-in page sends a browser back to. Only hirers sign in with Google
+	// (ADR-0002), so there is one door, not two.
+	//
+	// Empty for the fixture suite, which calls the API's Google callback
+	// directly; the page then 404s.
+	googleCallbackURL string
 }
 
 // NewServer builds the router.
@@ -46,6 +54,12 @@ func NewServer(store *Store, selfURL string) *Server {
 func (s *Server) WithOAuthCallback(contributor, hirer string) *Server {
 	s.oauthCallbackURL = strings.TrimSuffix(contributor, "/")
 	s.hirerOAuthCallbackURL = strings.TrimSuffix(hirer, "/")
+	return s
+}
+
+// WithGoogleCallback enables the Google browser sign-in page.
+func (s *Server) WithGoogleCallback(callback string) *Server {
+	s.googleCallbackURL = strings.TrimSuffix(callback, "/")
 	return s
 }
 
@@ -73,6 +87,7 @@ func (s *Server) Handler() http.Handler {
 
 	r.Route("/google", func(r chi.Router) {
 		r.Get("/.well-known/openid-configuration", s.googleDiscovery)
+		r.Get("/o/oauth2/v2/auth", s.googleAuthorize)
 		r.Post("/token", s.googleToken)
 		r.Get("/userinfo", s.googleUserInfo)
 	})

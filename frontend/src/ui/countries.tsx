@@ -29,6 +29,16 @@ export function useCountries() {
 }
 
 /**
+ * A country's name from its code, falling back to the code itself — the same
+ * fallback the server's emails use when the place service cannot answer.
+ */
+export function useCountryNames(): (code: string) => string {
+  const countries = useCountries();
+  const all = countries.data?.countries ?? [];
+  return (code: string) => all.find((c) => c.code === code)?.name ?? code;
+}
+
+/**
  * Whether the provider answered. False means: let them type.
  *
  * `countries` is read defensively rather than trusted. This whole component
@@ -49,12 +59,19 @@ export function CountryPicker({
   help,
   value,
   onChange,
+  error,
+  disabled,
+  blank = "Prefer not to say",
 }: {
   id: string;
   label: string;
   help?: string;
   value: string;
   onChange: (code: string) => void;
+  error?: string | null;
+  disabled?: boolean;
+  /** What the empty option says. */
+  blank?: string;
 }) {
   const countries = useCountries();
   const ok = usable(countries.data, countries.error);
@@ -63,16 +80,18 @@ export function CountryPicker({
     <Field
       label={label}
       htmlFor={id}
-      help={ok ? help : "The country list could not be loaded. Type a two-letter code, such as GB."}
+      help={ok ? help : "List unavailable — type a two-letter code."}
+      error={error}
     >
       {ok ? (
         <select
           className="input"
           id={id}
           value={value}
+          disabled={disabled}
           onChange={(event) => onChange(event.target.value)}
         >
-          <option value="">Prefer not to say</option>
+          <option value="">{blank}</option>
           {(countries.data?.countries ?? []).map((c) => (
             <option key={c.code} value={c.code}>
               {c.name}
@@ -85,6 +104,7 @@ export function CountryPicker({
           id={id}
           maxLength={2}
           value={value}
+          disabled={disabled}
           onChange={(event) => onChange(event.target.value.toUpperCase())}
         />
       )}
@@ -106,12 +126,14 @@ export function CountryList({
   help,
   values,
   onChange,
+  error,
 }: {
   id: string;
   label: string;
   help?: string;
   values: string[];
   onChange: (codes: string[]) => void;
+  error?: string | null;
 }) {
   const countries = useCountries();
   const ok = usable(countries.data, countries.error);
@@ -125,11 +147,8 @@ export function CountryList({
       <Field
         label={label}
         htmlFor={id}
-        help={
-          ok
-            ? help
-            : "The country list could not be loaded. Type two-letter codes separated by commas, such as GB, DE."
-        }
+        help={ok ? help : "List unavailable — type two-letter codes, comma separated."}
+        error={error}
       >
         {ok ? (
           <select

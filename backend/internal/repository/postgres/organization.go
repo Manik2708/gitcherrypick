@@ -330,34 +330,3 @@ func (r *OrganizationRepository) VerifyOrganization(ctx context.Context, t port.
 	}
 	return nil
 }
-
-// Addresses lists an organisation's offices.
-//
-// Main office first, then by city, so a picker's default is the answer most
-// roles want. Written during onboarding (ADR-0017); read by roles, which point
-// at a row rather than retyping one.
-func (r *OrganizationRepository) Addresses(ctx context.Context, id domain.OrganizationID) ([]domain.Address, error) {
-	rows, err := r.db.pool.Query(ctx, `
-		SELECT id, organization_id, country, city, coalesce(postal_code, ''),
-		       street1, coalesce(street2, ''), is_main_office
-		  FROM organization_addresses
-		 WHERE organization_id = $1
-		 ORDER BY is_main_office DESC, city`, string(id))
-	if err != nil {
-		return nil, translate(err, fmt.Sprintf("listing addresses for organization %s", id))
-	}
-	defer rows.Close()
-
-	out := []domain.Address{}
-	for rows.Next() {
-		var a domain.Address
-		var addressID, orgID string
-		if err := rows.Scan(&addressID, &orgID, &a.Country, &a.City,
-			&a.PostalCode, &a.Street1, &a.Street2, &a.IsMainOffice); err != nil {
-			return nil, translate(err, "scanning an address")
-		}
-		a.ID, a.OrganizationID = domain.AddressID(addressID), domain.OrganizationID(orgID)
-		out = append(out, a)
-	}
-	return out, translate(rows.Err(), "listing addresses")
-}

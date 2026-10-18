@@ -20,9 +20,11 @@ import (
 // test that makes the service fail would notice.
 
 const (
-	requestID   = "01920000-0000-7000-8000-00000000ab01"
-	shortlistID = "01920000-0000-7000-8000-0000000c0001"
-	skillID     = "01920000-0000-7000-8000-000000009001"
+	requestID = "01920000-0000-7000-8000-00000000ab01"
+	skillID   = "01920000-0000-7000-8000-000000009001"
+
+	// roleIDConst is the job every candidate endpoint hangs off (ADR-0023).
+	roleIDConst = domain.RoleID("01920000-0000-7000-8000-0000000e0001")
 )
 
 // errBoom is an unremarkable service failure.
@@ -227,64 +229,36 @@ func TestEveryHandlerPropagatesAServiceFailure(t *testing.T) {
 					Return(errBoom)
 			},
 		},
-		"shortlist create": {
-			hirerPrincipal(true), http.MethodPost, "/shortlists",
-			`{"role_id":"01920000-0000-7000-8000-0000000e0001","name":"R","description":"","tentative_result_date":"2026-12-01T00:00:00Z"}`,
-			func(h *harness) {
-				h.shortlists.EXPECT().Create(mock.Anything, mock.Anything, mock.Anything,
-					mock.Anything, mock.Anything, mock.Anything).Return(nil, errBoom)
-			},
-		},
-		"shortlist list": {
-			hirerPrincipal(true), http.MethodGet, "/shortlists", "",
-			func(h *harness) {
-				h.shortlists.EXPECT().List(mock.Anything, mock.Anything, mock.Anything).
-					Return(nil, errBoom)
-			},
-		},
-		"shortlist update": {
-			hirerPrincipal(true), http.MethodPatch, "/shortlists/" + shortlistID, `{"name":"New"}`,
-			func(h *harness) {
-				h.shortlists.EXPECT().Update(mock.Anything, mock.Anything, mock.Anything,
-					mock.Anything, mock.Anything, mock.Anything).Return(nil, errBoom)
-			},
-		},
-		"shortlist close": {
-			hirerPrincipal(true), http.MethodPost, "/shortlists/" + shortlistID + "/close", "",
-			func(h *harness) {
-				h.shortlists.EXPECT().Close(mock.Anything, mock.Anything, mock.Anything).
-					Return(nil, errBoom)
-			},
-		},
-		"shortlist add entry": {
-			hirerPrincipal(true), http.MethodPost, "/shortlists/" + shortlistID + "/entries",
+		"stage a candidate": {
+			hirerPrincipal(true), http.MethodPost, rolePath(roleIDConst) + "/candidates",
 			`{"user_id":"` + aliceID + `","note":""}`,
 			func(h *harness) {
-				h.shortlists.EXPECT().AddEntry(mock.Anything, mock.Anything, mock.Anything,
+				h.roles.EXPECT().Stage(mock.Anything, mock.Anything, mock.Anything,
+					mock.Anything, mock.Anything, mock.Anything).Return(nil, errBoom)
+			},
+		},
+		"unstage a candidate": {
+			hirerPrincipal(true), http.MethodDelete,
+			rolePath(roleIDConst) + "/candidates/" + aliceID, "",
+			func(h *harness) {
+				h.roles.EXPECT().Unstage(mock.Anything, mock.Anything, mock.Anything,
+					mock.Anything, mock.Anything).Return(errBoom)
+			},
+		},
+		"contact the candidates": {
+			hirerPrincipal(true), http.MethodPost, rolePath(roleIDConst) + "/contact",
+			`{"tentative_result_date":"2026-12-01T00:00:00Z"}`,
+			func(h *harness) {
+				h.roles.EXPECT().Contact(mock.Anything, mock.Anything, mock.Anything,
 					mock.Anything, mock.Anything).Return(nil, errBoom)
 			},
 		},
-		"shortlist remove entry": {
-			hirerPrincipal(true), http.MethodDelete,
-			"/shortlists/" + shortlistID + "/entries/" + aliceID, "",
-			func(h *harness) {
-				h.shortlists.EXPECT().RemoveEntry(mock.Anything, mock.Anything, mock.Anything,
-					mock.Anything).Return(errBoom)
-			},
-		},
-		"shortlist confirm": {
-			hirerPrincipal(true), http.MethodPost, "/shortlists/" + shortlistID + "/confirm", "",
-			func(h *harness) {
-				h.shortlists.EXPECT().Confirm(mock.Anything, mock.Anything, mock.Anything).
-					Return(nil, errBoom)
-			},
-		},
-		"shortlist contact requests": {
+		"role contact requests": {
 			hirerPrincipal(true), http.MethodGet,
-			"/shortlists/" + shortlistID + "/contact-requests", "",
+			rolePath(roleIDConst) + "/contact-requests", "",
 			func(h *harness) {
-				h.shortlists.EXPECT().ContactRequests(mock.Anything, mock.Anything, mock.Anything).
-					Return(nil, errBoom)
+				h.roles.EXPECT().ContactRequests(mock.Anything, mock.Anything, mock.Anything,
+					mock.Anything).Return(nil, errBoom)
 			},
 		},
 		"add to roster": {
@@ -448,22 +422,21 @@ func TestMalformedBodiesAreRejectedPerEndpoint(t *testing.T) {
 		method    string
 		path      string
 	}{
-		"set availability":  {contributorPrincipal(), http.MethodPut, "/me/availability"},
-		"claim replace":     {contributorPrincipal(), http.MethodPut, "/claims/" + claimID},
-		"claim skills":      {contributorPrincipal(), http.MethodPost, "/claims/" + claimID + "/skills"},
-		"claim prs":         {contributorPrincipal(), http.MethodPost, "/claims/" + claimID + "/evidence/prs"},
-		"claim projects":    {contributorPrincipal(), http.MethodPost, "/claims/" + claimID + "/evidence/projects"},
-		"reevaluation":      {contributorPrincipal(), http.MethodPost, "/claims/" + claimID + "/reevaluation"},
-		"shortlist create":  {hirerPrincipal(true), http.MethodPost, "/shortlists"},
-		"shortlist update":  {hirerPrincipal(true), http.MethodPatch, "/shortlists/" + shortlistID},
-		"shortlist entries": {hirerPrincipal(true), http.MethodPost, "/shortlists/" + shortlistID + "/entries"},
-		"save search":       {hirerPrincipal(true), http.MethodPost, "/saved-searches"},
-		"add to roster":     {hirerPrincipal(true), http.MethodPost, "/orgs/" + orgID + "/roster"},
-		"sweep":             {adminPrincipal(), http.MethodPost, "/admin/evaluations/sweep"},
-		"admin decide":      {adminPrincipal(), http.MethodPost, "/admin/reevaluations/" + requestID + "/decide"},
-		"redeem start":      {domain.Principal{}, http.MethodPost, "/auth/hirer/redeem/start"},
-		"redeem complete":   {domain.Principal{}, http.MethodPost, "/auth/hirer/redeem/complete"},
-		"verify resend":     {domain.Principal{}, http.MethodPost, "/auth/hirer/verify/resend"},
+		"set availability": {contributorPrincipal(), http.MethodPut, "/me/availability"},
+		"claim replace":    {contributorPrincipal(), http.MethodPut, "/claims/" + claimID},
+		"claim skills":     {contributorPrincipal(), http.MethodPost, "/claims/" + claimID + "/skills"},
+		"claim prs":        {contributorPrincipal(), http.MethodPost, "/claims/" + claimID + "/evidence/prs"},
+		"claim projects":   {contributorPrincipal(), http.MethodPost, "/claims/" + claimID + "/evidence/projects"},
+		"reevaluation":     {contributorPrincipal(), http.MethodPost, "/claims/" + claimID + "/reevaluation"},
+		"stage":            {hirerPrincipal(true), http.MethodPost, rolePath(roleIDConst) + "/candidates"},
+		"contact":          {hirerPrincipal(true), http.MethodPost, rolePath(roleIDConst) + "/contact"},
+		"save search":      {hirerPrincipal(true), http.MethodPost, "/saved-searches"},
+		"add to roster":    {hirerPrincipal(true), http.MethodPost, "/orgs/" + orgID + "/roster"},
+		"sweep":            {adminPrincipal(), http.MethodPost, "/admin/evaluations/sweep"},
+		"admin decide":     {adminPrincipal(), http.MethodPost, "/admin/reevaluations/" + requestID + "/decide"},
+		"redeem start":     {domain.Principal{}, http.MethodPost, "/auth/hirer/redeem/start"},
+		"redeem complete":  {domain.Principal{}, http.MethodPost, "/auth/hirer/redeem/complete"},
+		"verify resend":    {domain.Principal{}, http.MethodPost, "/auth/hirer/verify/resend"},
 	}
 
 	for name, tc := range cases {
@@ -503,8 +476,8 @@ func TestMalformedIDsAcrossTheSurface(t *testing.T) {
 		"scorecard":       {hirerPrincipal(true), http.MethodGet, "/contributors/nope/scorecard"},
 		"saved search":    {hirerPrincipal(true), http.MethodGet, "/saved-searches/nope/results"},
 		"delete search":   {hirerPrincipal(true), http.MethodDelete, "/saved-searches/nope"},
-		"shortlist get":   {hirerPrincipal(true), http.MethodGet, "/shortlists/nope"},
-		"remove entry":    {hirerPrincipal(true), http.MethodDelete, "/shortlists/" + shortlistID + "/entries/nope"},
+		"role candidates": {hirerPrincipal(true), http.MethodGet, "/org-roles/" + orgID + "/roles/nope/candidates"},
+		"unstage":         {hirerPrincipal(true), http.MethodDelete, rolePath(roleIDConst) + "/candidates/nope"},
 		"roster org":      {hirerPrincipal(true), http.MethodPost, "/orgs/nope/roster"},
 		"admin decide":    {adminPrincipal(), http.MethodPost, "/admin/verifications/nope/decide"},
 		"claim reeval":    {contributorPrincipal(), http.MethodPost, "/claims/nope/reevaluation"},
@@ -550,14 +523,14 @@ func TestNotFoundIsNamedPerResource(t *testing.T) {
 			},
 			service.CodeSavedSearchNotFound,
 		},
-		"shortlist entry": {
+		"unstaging somebody who is not on it": {
 			hirerPrincipal(true), http.MethodDelete,
-			"/shortlists/" + shortlistID + "/entries/" + aliceID,
+			rolePath(roleIDConst) + "/candidates/" + aliceID,
 			func(h *harness) {
-				h.shortlists.EXPECT().RemoveEntry(mock.Anything, mock.Anything, mock.Anything,
-					mock.Anything).Return(service.ErrNotFound)
+				h.roles.EXPECT().Unstage(mock.Anything, mock.Anything, mock.Anything,
+					mock.Anything, mock.Anything).Return(service.ErrNotFound)
 			},
-			service.CodeShortlistNotFound,
+			service.CodeRoleNotFound,
 		},
 	}
 
@@ -575,45 +548,30 @@ func TestNotFoundIsNamedPerResource(t *testing.T) {
 }
 
 func TestSuccessfulWritesAcrossTheSurface(t *testing.T) {
-	t.Run("shortlist update", func(t *testing.T) {
+	t.Run("staging, unstaging and reading the answers", func(t *testing.T) {
 		h := newHarness(t)
 		h.signIn("hank-token", hirerPrincipal(true))
-		h.shortlists.EXPECT().Update(mock.Anything, mock.Anything, domain.ShortlistID(shortlistID),
-			mock.Anything, mock.Anything, mock.Anything).
-			Return(&domain.Shortlist{ID: shortlistID, Name: "Renamed"}, nil)
 
-		got := h.do(t, http.MethodPatch, "/shortlists/"+shortlistID, "hank-token", `{"name":"Renamed"}`)
-		require.Equal(t, http.StatusOK, got.Status)
-	})
-
-	t.Run("shortlist list and entries", func(t *testing.T) {
-		h := newHarness(t)
-		h.signIn("hank-token", hirerPrincipal(true))
-		h.shortlists.EXPECT().List(mock.Anything, mock.Anything, mock.Anything).
-			Return([]domain.Shortlist{{ID: shortlistID, Name: "R", Status: "draft"}}, nil)
-		require.Equal(t, http.StatusOK,
-			h.do(t, http.MethodGet, "/shortlists?status=draft", "hank-token", "").Status)
-
-		h.shortlists.EXPECT().AddEntry(mock.Anything, mock.Anything, mock.Anything,
+		h.roles.EXPECT().Stage(mock.Anything, mock.Anything, mock.Anything, mock.Anything,
 			domain.UserID(aliceID), "strong go").
-			Return(&domain.ShortlistEntry{UserID: aliceID, Note: "strong go"}, nil)
+			Return(&domain.RoleCandidate{UserID: aliceID, Note: "strong go"}, nil)
 		require.Equal(t, http.StatusCreated,
-			h.do(t, http.MethodPost, "/shortlists/"+shortlistID+"/entries", "hank-token",
+			h.do(t, http.MethodPost, rolePath(roleIDConst)+"/candidates", "hank-token",
 				`{"user_id":"`+aliceID+`","note":"strong go"}`).Status)
 
-		h.shortlists.EXPECT().RemoveEntry(mock.Anything, mock.Anything, mock.Anything,
+		h.roles.EXPECT().Unstage(mock.Anything, mock.Anything, mock.Anything, mock.Anything,
 			domain.UserID(aliceID)).Return(nil)
 		require.Equal(t, http.StatusNoContent,
-			h.do(t, http.MethodDelete, "/shortlists/"+shortlistID+"/entries/"+aliceID,
+			h.do(t, http.MethodDelete, rolePath(roleIDConst)+"/candidates/"+aliceID,
 				"hank-token", "").Status)
 
-		h.shortlists.EXPECT().ContactRequests(mock.Anything, mock.Anything, mock.Anything).
+		h.roles.EXPECT().ContactRequests(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return([]domain.ContactRequest{{
 				ID: "01920000-0000-7000-8000-00000000f001", Status: "pending",
 				TentativeResultDate: fixedTime(), ExpiresAt: fixedTime(),
 			}}, nil)
 		require.Equal(t, http.StatusOK,
-			h.do(t, http.MethodGet, "/shortlists/"+shortlistID+"/contact-requests",
+			h.do(t, http.MethodGet, rolePath(roleIDConst)+"/contact-requests",
 				"hank-token", "").Status)
 	})
 

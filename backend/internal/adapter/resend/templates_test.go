@@ -21,6 +21,8 @@ var everyKind = []port.NotificationKind{
 	port.NotifyEmailVerification,
 	port.NotifyOnboardingVerification,
 	port.NotifyOnboardingDecided,
+	port.NotifyOfficeRequestApproved,
+	port.NotifyOfficeRequestRejected,
 	port.NotifyVerificationDecided,
 	port.NotifySkillRequestDecided,
 	port.NotifyReevaluationDecided,
@@ -308,4 +310,26 @@ func TestOnboardingMailReadsWithoutACompanyName(t *testing.T) {
 	require.Contains(t, body, "finish listing your organisation")
 	require.NotContains(t, body, "listing  .", "an empty name left a gap in the sentence")
 	require.Contains(t, body, "https://app.example/organisation/verify?token=")
+}
+
+// The office-request answers (ADR-0024 amendment 1 §1.10): the subject names
+// the outcome, the approval names the place, the rejection carries the reason.
+func TestOfficeRequestDecisions(t *testing.T) {
+	r := resend.NewDefaultRenderer("https://app.example")
+
+	subject, body, err := r.Render(port.Notification{
+		Kind: port.NotifyOfficeRequestApproved, Recipient: "a@b.c",
+		Data: map[string]any{"organization": "Tiny Studio", "city": "Porto", "country": "Portugal"},
+	})
+	require.NoError(t, err)
+	require.Equal(t, "Your office address was approved", subject)
+	require.Contains(t, body, "Porto, Portugal")
+
+	subject, body, err = r.Render(port.Notification{
+		Kind: port.NotifyOfficeRequestRejected, Recipient: "a@b.c",
+		Data: map[string]any{"organization": "Tiny Studio", "city": "Lisbon", "reason": "The lease is a mail drop."},
+	})
+	require.NoError(t, err)
+	require.Equal(t, "Your office address was not approved", subject)
+	require.Contains(t, body, "The lease is a mail drop.")
 }

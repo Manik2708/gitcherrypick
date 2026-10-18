@@ -41,14 +41,12 @@ const ROLE_STUB = {
   organization_id: "o1",
   description: "",
   engagement: "full_time",
-  location: "remote",
-  address_id: null,
+  locations: [{ mode: "remote", country: null, address: null }],
   currency: "",
   yearly_ctc: null,
   yearly_base: null,
   hourly_rate: null,
   expected_hours: null,
-  eligible_countries: [],
   min_office_yoe: null,
   min_oss_yoe: null,
   requires_online_test: null,
@@ -124,15 +122,14 @@ describe("the app renders", () => {
     expect(screen.queryByLabelText("Next walkthrough")).toBeNull();
   });
 
-  // The stand-in's picker offers a hirer link for every GitHub identity, and
-  // that return used to land on the SPA's 404 because no route claimed it.
-  it("has a route for the hirer GitHub return, not just the contributor one", () => {
-    mount("/auth/hirer/github/callback?code=e2e-dave&state=s");
+  // A hirer signs in with Google, so its return needs a route of its own.
+  it("has a route for the Google return, not just the GitHub one", () => {
+    mount("/auth/google/callback?code=e2e-hank&state=s");
     // The callback page is what should claim this path — it sits on "Loading
     // your session…" while the exchange runs. The 404 prints the unmatched
     // path in a <code>, so its absence is the assertion that matters.
     expect(screen.getByText("Loading your session…")).toBeTruthy();
-    expect(screen.queryByText("/auth/hirer/github/callback")).toBeNull();
+    expect(screen.queryByText("/auth/google/callback")).toBeNull();
   });
 
   // Removing the skill chip used to fire GET /leaderboard?kind=skill with no
@@ -218,18 +215,20 @@ describe("the app renders", () => {
     expect(await screen.findByText("Ada Okonkwo")).toBeTruthy();
     // Rank is a label, not an index: the second row is #17, not #2.
     expect(screen.getByText("#17")).toBeTruthy();
-    // inactive_hidden is reported beside the toggle that would fill the gaps.
-    expect(screen.getAllByText(/hidden because their availability lapsed/).length).toBe(1);
+    // inactive_hidden is still REPORTED — as a count beside the total, since
+    // the banner that used to say it was dropped. A gap in the rank sequence
+    // with nothing accounting for it reads as a broken filter.
+    expect(screen.getByText(/6 hidden/)).toBeTruthy();
     // A null generalist reads as a dash, never as zero.
     expect(screen.getAllByText("—").length).toBeGreaterThan(0);
 
-    // THE BUG THIS EXISTS TO CATCH. That stub returns no shortlists, so there
+    // THE BUG THIS EXISTS TO CATCH. That stub returns no open roles, so there
     // is nowhere to put anybody — and the Shortlist button used to sit
     // ENABLED beside every result and do nothing at all when pressed, which
     // is indistinguishable from the feature being broken.
     const shortlist = screen.getAllByRole("button", { name: /Shortlist/ })[0];
     expect(shortlist).toHaveProperty("disabled", true);
-    expect(screen.getByText(/no open rounds to shortlist into/)).toBeTruthy();
+    expect(screen.getByText(/no open roles to shortlist into/)).toBeTruthy();
   });
 
   // Three stacked lists put every draft and every closed role between a hirer
@@ -309,6 +308,7 @@ describe("the app renders", () => {
                 contact_status: "accepted",
                 notified_at: "2026-09-01T00:00:00Z",
                 accepted: true,
+                email: "bob@example.com",
               },
             ],
           };
@@ -349,7 +349,24 @@ describe("the app renders", () => {
       target: { value: "nobody" },
     });
     expect(await screen.findByText(/Nobody here matches/)).toBeTruthy();
-    expect(screen.getByText(/only the people already on this role/)).toBeTruthy();
+    expect(screen.getByText(/already on\s+this role/)).toBeTruthy();
+
+    // The address is carried ONLY for somebody who accepted, and it is on the
+    // row rather than a screen away (ADR-0019 amendment 4).
+    fireEvent.change(screen.getByLabelText(/Search candidates on Open one/), {
+      target: { value: "" },
+    });
+    expect(await screen.findByText("bob@example.com")).toBeTruthy();
+
+    // Filtering by stage. Alice is staged, Bob accepted — so ticking Accepted
+    // leaves one of them, and no address belonging to the other appears.
+    fireEvent.click(screen.getByRole("button", { name: "Accepted" }));
+    expect(screen.queryByText("Alice Okafor")).toBeNull();
+    expect(screen.getByText("Bob Nakamura")).toBeTruthy();
+
+    // Untick and both are back: nothing ticked is no filter, not an empty list.
+    fireEvent.click(screen.getByRole("button", { name: "Accepted" }));
+    expect(screen.getByText("Alice Okafor")).toBeTruthy();
   });
 
   it("says why a search found nothing, rather than showing a blank list", async () => {
@@ -381,14 +398,13 @@ describe("the app renders", () => {
   });
 
   // Staging somebody and then searching again used to offer them straight
-  // back: the exclusion only applies when a role is named, and choosing a
-  // round to shortlist INTO never named one — even though a round is opened
-  // for exactly one job.
-  it("naming a round to shortlist into excludes who is already on its role", async () => {
+  // back: the exclusion only applies when a role is named, and choosing where
+  // to shortlist INTO never named one.
+  it("naming the role to shortlist into excludes who is already on it", async () => {
     asHirer();
     const fetchMock = vi.fn(async (url: string) => {
-      const body = url.includes("/shortlists")
-        ? { shortlists: [{ id: "s1", role_id: "r1", name: "Platform hiring", status: "open" }] }
+      const body = url.includes("/org-roles")
+        ? { roles: [{ ...ROLE_STUB, id: "r1", title: "Platform hiring", status: "open" }] }
         : {
             total: 0,
             inactive_hidden: 0,
@@ -406,7 +422,7 @@ describe("the app renders", () => {
 
     mount("/search");
     fireEvent.change(await screen.findByLabelText(/Shortlist into/), {
-      target: { value: "s1" },
+      target: { value: "r1" },
     });
 
     await waitFor(() => {
@@ -415,46 +431,98 @@ describe("the app renders", () => {
     });
   });
 
-  // THE PAGE HAD NO COVERAGE AT ALL, and rendered fine with an empty round —
-  // which is how it shipped reading `entry.user.id` off a response that has
-  // never carried a `user` object. It crashed the moment a round had somebody
-  // on it.
-  it("renders a round that has people on it", async () => {
+  // Going back to no role has to drop the EXCLUSION, not just the highlight.
+  // It used to keep hiding people who were on a round for a role that was no
+  // longer being searched, and the banner went on counting them under "this
+  // role" — on a role with nobody staged at all.
+  it("clearing the role it was filled from stops excluding that role's candidates", async () => {
     asHirer();
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(
-        async () =>
-          new Response(
-            JSON.stringify({
-              id: "s1",
-              role_id: "r1",
-              name: "Platform hiring, Q4",
-              status: "open",
-              tentative_result_date: "2026-12-01",
-              entries: [
-                {
-                  user_id: "u1",
-                  display_name: "Alice Okafor",
-                  notified_at: null,
-                  contact_status: null,
-                  email: null,
-                },
-                {
-                  user_id: "u2",
-                  display_name: "Bob Nakamura",
-                  notified_at: "2026-09-01T00:00:00Z",
-                  contact_status: "accepted",
-                  email: "bob@example.com",
-                },
-              ],
-            }),
-            { status: 200, headers: { "content-type": "application/json" } },
-          ),
-      ),
-    );
+    const fetchMock = vi.fn(async (url: string) => {
+      const body = url.includes("/org-roles")
+        ? { roles: [{ ...ROLE_STUB, id: "r1", title: "Open one", status: "open" }] }
+        : url.includes("/shortlists")
+          ? { shortlists: [] }
+          : {
+              total: 0,
+              inactive_hidden: 0,
+              already_shortlisted: 4,
+              ranked_by: "overall",
+              page: 1,
+              per_page: 20,
+              results: [],
+            };
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
 
-    mount("/shortlists/s1");
+    mount("/search");
+
+    const picker = await screen.findByLabelText(/Start from a role/);
+    fireEvent.change(picker, { target: { value: "r1" } });
+    fireEvent.click(screen.getByRole("button", { name: /^Search$/ }));
+    await waitFor(() => {
+      const calls = fetchMock.mock.calls as unknown as Array<[string]>;
+      expect(calls.some(([url]) => url.includes("for_role=r1"))).toBe(true);
+    });
+
+    fetchMock.mockClear();
+    fireEvent.change(picker, { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: /^Search$/ }));
+
+    await waitFor(() => {
+      const calls = fetchMock.mock.calls as unknown as Array<[string]>;
+      const searches = calls.filter(([url]) => url.includes("/search"));
+      expect(searches.length).toBeGreaterThan(0);
+      expect(searches.every(([url]) => !url.includes("for_role"))).toBe(true);
+    });
+  });
+
+  // The role's own list is where a hirer works now (ADR-0023): who is on the
+  // job, what each of them said, and the button that tells the ones who have
+  // been told nothing.
+  it("renders the people on a role, with the contact step and its acknowledgement", async () => {
+    asHirer();
+    const fetchMock = vi.fn(async (url: string) => {
+      const body = url.includes("/candidates")
+        ? {
+            candidates: [
+              {
+                user_id: "u1",
+                display_name: "Alice Okafor",
+                github_login: "aliceok",
+                note: "Strong retry semantics.",
+                added_by: { id: "h1", username: "maya", display_name: "Maya Renner", active: true },
+                added_at: "2026-09-01T00:00:00Z",
+                notified_at: null,
+                contact_status: "",
+                accepted: false,
+              },
+              {
+                user_id: "u2",
+                display_name: "Bob Nakamura",
+                github_login: "bobn",
+                added_by: { id: "h1", username: "maya", display_name: "Maya Renner", active: true },
+                added_at: "2026-09-01T00:00:00Z",
+                notified_at: "2026-09-02T00:00:00Z",
+                contact_status: "accepted",
+                accepted: true,
+                email: "bob@example.com",
+              },
+            ],
+          }
+        : { roles: [{ ...ROLE_STUB, id: "r1", title: "Open one", status: "open" }] };
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    mount("/roles");
+    fireEvent.click(await screen.findByRole("button", { name: /Who is on it/ }));
 
     expect(await screen.findByText("Alice Okafor")).toBeTruthy();
     expect(screen.getByText("Bob Nakamura")).toBeTruthy();
@@ -465,13 +533,23 @@ describe("the app renders", () => {
       "/contributors/u1",
     );
 
+    // An address appears only once somebody accepted.
+    expect(screen.getByText(/bob@example.com/)).toBeTruthy();
+
     // Removal turns on notified_at, which is the boundary the SERVER
     // enforces: Alice was never told, Bob was.
     expect(screen.getAllByRole("button", { name: /Remove/ }).length).toBe(1);
-    expect(screen.getByText(/Permanent — they have been told/)).toBeTruthy();
 
-    // An address appears only once somebody accepted.
-    expect(screen.getByText(/bob@example.com/)).toBeTruthy();
+    // THE IRREVERSIBLE STEP. It reaches only the person who has been told
+    // nothing, and it stays disabled until a date is given and the warning is
+    // acknowledged.
+    const tell = screen.getByRole("button", { name: /Tell 1/ });
+    expect(tell).toHaveProperty("disabled", true);
+    fireEvent.change(screen.getByLabelText(/expect to have an answer by/), {
+      target: { value: "2026-12-01" },
+    });
+    fireEvent.click(screen.getByLabelText(/cannot be undone/));
+    expect(screen.getByRole("button", { name: /Tell 1/ })).toHaveProperty("disabled", false);
   });
 
   it("renders a contributor's standing, and never prints a null score as zero", async () => {
@@ -602,7 +680,7 @@ describe("the app renders", () => {
     fireEvent.click(screen.getByText("Send me a link"));
 
     expect(await screen.findByText(/is on that organisation/)).toBeTruthy();
-    expect(screen.getByText(/would let anyone with this form discover/)).toBeTruthy();
+    expect(screen.getByText(/do not say whether the address was listed/)).toBeTruthy();
   });
 
   // The username comes from the roster entry. A field for it here would let a
@@ -616,7 +694,7 @@ describe("the app renders", () => {
     mount("/redeem?token=proof");
     expect(await screen.findByText("Set your password")).toBeTruthy();
     expect(screen.queryByLabelText("Username")).toBeNull();
-    expect(screen.getByText(/Your organisation pinned it/)).toBeTruthy();
+    expect(screen.getByText(/your organisation pinned it/)).toBeTruthy();
   });
 
   // A revoked seat is listed, not dropped: a round from two years ago carries
@@ -659,7 +737,7 @@ describe("the app renders", () => {
     mount("/team");
     expect(await screen.findByText("Rita Sandoval")).toBeTruthy();
     expect(screen.getByText("Access revoked")).toBeTruthy();
-    expect(screen.getByText(/still carries their name/)).toBeTruthy();
+    expect(screen.getByText(/old rounds still carry their name/)).toBeTruthy();
   });
 
   // Removal revokes; it never deletes. The button must not promise otherwise.
@@ -748,7 +826,7 @@ describe("the app renders", () => {
 
     expect(await screen.findByText("Check your email")).toBeTruthy();
     expect(screen.getByText(/Nothing has been created yet/)).toBeTruthy();
-    expect(screen.getByText(/the name is not/)).toBeTruthy();
+    expect(screen.getByText(/Nothing has been created yet/)).toBeTruthy();
   });
 
   // The verify screen is where a username IS chosen — and it must not imply an
@@ -958,7 +1036,7 @@ describe("the app renders", () => {
 
     mount("/being-found");
     expect(await screen.findByText(/No hirer ever sees this/)).toBeTruthy();
-    expect(screen.getByText(/could offer exactly that and no more/)).toBeTruthy();
+    expect(screen.getByText(/No hirer ever sees this/)).toBeTruthy();
   });
 
   // The first pull request is ASKED, not read off a claim — a contributor's
@@ -1000,7 +1078,7 @@ describe("the app renders", () => {
     mount("/being-found");
     const first = (await screen.findByLabelText("Your first pull request")) as HTMLInputElement;
     expect(first.readOnly).toBe(false);
-    expect(screen.getByText(/does not have to be one you have claimed here/)).toBeTruthy();
+    expect(screen.getByText(/Once saved it cannot be changed/)).toBeTruthy();
   });
 
   // The picker fails open: a provider that is down must not block the form.
@@ -1041,6 +1119,633 @@ describe("the app renders", () => {
     mount("/being-found");
     const field = (await screen.findByLabelText("Where you are")) as HTMLElement;
     expect(field.tagName).toBe("INPUT");
-    expect(screen.getByText(/Type a two-letter code/)).toBeTruthy();
+    expect(screen.getByText(/type a two-letter code/)).toBeTruthy();
+  });
+
+  /* --- ADR-0024: role locations and organisation addresses -------------- */
+
+  const BENGALURU = {
+    id: "ad1",
+    country: "IN",
+    city: "Bengaluru",
+    postal_code: "560001",
+    street1: "1 MG Road",
+    street2: "Floor 4",
+    is_main_office: true,
+    removed: false,
+  };
+  const AUSTIN = { ...BENGALURU, id: "ad2", country: "US", city: "Austin", is_main_office: false };
+
+  type Reply = { status?: number; body?: unknown };
+
+  /**
+   * A transport answering by the first matching path fragment and method. A
+   * function lets a test answer a write differently from a read.
+   */
+  function routes(table: Array<[string, Reply | ((init: RequestInit | undefined) => Reply)]>) {
+    return vi.fn(async (url: string, init?: RequestInit) => {
+      const hit = table.find(([fragment]) => url.includes(fragment));
+      const reply = hit ? (typeof hit[1] === "function" ? hit[1](init) : hit[1]) : { body: {} };
+      const status = reply.status ?? 200;
+      return new Response(status === 204 ? null : JSON.stringify(reply.body ?? {}), {
+        status,
+        headers: { "content-type": "application/json" },
+      });
+    });
+  }
+
+  const seat = (role: "owner" | "member") => ({
+    seats: [
+      {
+        id: "h1",
+        username: "maya",
+        display_name: "Maya Renner",
+        email: "maya@northfield.example",
+        role,
+        active: true,
+      },
+    ],
+  });
+
+  const COUNTRIES = {
+    countries: [
+      { code: "IN", name: "India" },
+      { code: "US", name: "United States" },
+      { code: "GB", name: "United Kingdom" },
+    ],
+    degraded: false,
+  };
+
+  it("disables Onsite for a fully remote organisation, and says why to any seat", async () => {
+    asHirer();
+    vi.stubGlobal(
+      "fetch",
+      routes([
+        ["/seats", { body: seat("member") }],
+        ["/places/countries", { body: COUNTRIES }],
+        [
+          "/addresses",
+          {
+            body: {
+              workplace: "fully_remote",
+              addresses: [],
+              office_request: {
+                id: "q1",
+                status: "rejected",
+                address: { ...BENGALURU },
+                requested_at: "2026-10-01T00:00:00Z",
+                decided_at: "2026-10-02T00:00:00Z",
+                reason: "The office lease is unsigned.",
+              },
+            },
+          },
+        ],
+        ["/org-roles", { body: { roles: [] } }],
+      ]),
+    );
+
+    mount("/roles");
+    fireEvent.click(await screen.findByRole("button", { name: /Write a role/ }));
+
+    const onsite = await screen.findByRole("checkbox", { name: /Onsite/ });
+    await waitFor(() => expect(onsite).toHaveProperty("disabled", true));
+    expect(
+      screen.getByText(/The office request was not approved: The office lease is unsigned/),
+    ).toBeTruthy();
+    // Remote is always there.
+    expect(screen.getByRole("checkbox", { name: "Remote" })).toHaveProperty("checked", true);
+  });
+
+  it("sends locations, and shows a refusal beside the office it names", async () => {
+    asHirer();
+    const posts: unknown[] = [];
+    const fetchMock = routes([
+      ["/seats", { body: seat("member") }],
+      ["/places/countries", { body: COUNTRIES }],
+      ["/money/currencies", { body: { currencies: [], degraded: true } }],
+      [
+        "/addresses",
+        { body: { workplace: "office", addresses: [BENGALURU, AUSTIN], office_request: null } },
+      ],
+      [
+        "/org-roles",
+        (init) => {
+          if (init?.method !== "POST") return { body: { roles: [] } };
+          posts.push(JSON.parse(String(init.body)));
+          return {
+            status: 422,
+            body: { error: "address_removed", field: "locations", position: 2 },
+          };
+        },
+      ],
+    ]);
+    vi.stubGlobal("fetch", fetchMock);
+
+    mount("/roles");
+    fireEvent.click(await screen.findByRole("button", { name: /Write a role/ }));
+    fireEvent.change(screen.getByLabelText("Title"), { target: { value: "Field engineer" } });
+
+    // Remote in a country, and onsite at one office.
+    fireEvent.click(screen.getByRole("radio", { name: /Only in certain countries/ }));
+    // The picker is a text box until the list arrives; wait for the list.
+    await screen.findByRole("option", { name: "United Kingdom" });
+    fireEvent.change(screen.getByLabelText("Countries"), { target: { value: "GB" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: /Onsite/ }));
+    fireEvent.click(await screen.findByRole("checkbox", { name: /Austin, United States/ }));
+
+    fireEvent.click(screen.getByRole("button", { name: /Save as a draft/ }));
+
+    await waitFor(() => expect(posts.length).toBe(1));
+    const body = posts[0] as Record<string, unknown>;
+    expect(body.locations).toEqual([
+      { mode: "remote", country: "GB" },
+      { mode: "onsite", address_id: "ad2" },
+    ]);
+    // The three retired keys are refused as unknown, so none may be sent.
+    expect(body).not.toHaveProperty("location");
+    expect(body).not.toHaveProperty("address_id");
+    expect(body).not.toHaveProperty("eligible_countries");
+
+    // Position 2 is Austin, so the message sits under Austin.
+    const austin = screen.getByRole("checkbox", { name: /Austin, United States/ });
+    await waitFor(() =>
+      expect(austin.closest("div")?.textContent).toMatch(/That office has been removed/),
+    );
+    const bengaluru = screen.getByRole("checkbox", { name: /Bengaluru, India/ });
+    expect(bengaluru.closest("div")?.textContent).not.toMatch(/removed\./);
+  });
+
+  it("creates and opens a role in one go for a seat that may open", async () => {
+    asHirer();
+    const calls: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      routes([
+        ["/seats", { body: seat("owner") }],
+        ["/addresses", { body: { workplace: "office", addresses: [], office_request: null } }],
+        [
+          "/settings",
+          {
+            body: {
+              role_create_authority: "draft_and_approve",
+              role_update_authority: "draft_and_approve",
+              role_close_authority: "any_hirer",
+            },
+          },
+        ],
+        [
+          "/open",
+          (init) => {
+            calls.push(`${init?.method} open`);
+            return { body: { id: "r9", status: "open" } };
+          },
+        ],
+        [
+          "/org-roles",
+          (init) => {
+            if (init?.method !== "POST") return { body: { roles: [] } };
+            calls.push("POST create");
+            return { status: 201, body: { id: "r9", status: "draft" } };
+          },
+        ],
+      ]),
+    );
+
+    mount("/roles");
+    fireEvent.click(await screen.findByRole("button", { name: /Write a role/ }));
+    fireEvent.change(screen.getByLabelText("Title"), { target: { value: "Platform engineer" } });
+    fireEvent.click(await screen.findByRole("button", { name: /Create and open/ }));
+
+    await waitFor(() => expect(calls).toEqual(["POST create", "POST open"]));
+  });
+
+  it("offers only a draft to a member who may not open", async () => {
+    asHirer();
+    const fetchMock = routes([
+      ["/seats", { body: seat("member") }],
+      ["/addresses", { body: { workplace: "office", addresses: [], office_request: null } }],
+      [
+        "/settings",
+        {
+          body: {
+            role_create_authority: "draft_and_approve",
+            role_update_authority: "draft_and_approve",
+            role_close_authority: "any_hirer",
+          },
+        },
+      ],
+      ["/org-roles", { body: { roles: [] } }],
+    ]);
+    vi.stubGlobal("fetch", fetchMock);
+
+    mount("/roles");
+    fireEvent.click(await screen.findByRole("button", { name: /Write a role/ }));
+    await screen.findByRole("button", { name: /Save as a draft/ });
+    // Absent because the member may not open — not merely because the
+    // settings had not arrived yet.
+    const read = (fragment: string) =>
+      fetchMock.mock.calls.some(([url]) => String(url).includes(fragment));
+    await waitFor(() => expect(read("/settings") && read("/seats")).toBe(true));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(screen.queryByRole("button", { name: /Create and open/ })).toBeNull();
+  });
+
+  it("puts an invalid_role beside the field it names", async () => {
+    asHirer();
+    vi.stubGlobal(
+      "fetch",
+      routes([
+        ["/seats", { body: seat("member") }],
+        ["/addresses", { body: { workplace: "office", addresses: [], office_request: null } }],
+        ["/money/currencies", { body: { currencies: [], degraded: true } }],
+        [
+          "/org-roles",
+          (init) =>
+            init?.method === "POST"
+              ? { status: 422, body: { error: "invalid_role", field: "yearly_base" } }
+              : { body: { roles: [] } },
+        ],
+      ]),
+    );
+
+    mount("/roles");
+    fireEvent.click(await screen.findByRole("button", { name: /Write a role/ }));
+    fireEvent.change(screen.getByLabelText("Title"), { target: { value: "Impossible" } });
+    fireEvent.click(screen.getByRole("button", { name: /Save as a draft/ }));
+
+    const base = screen.getByLabelText("Base a year").closest(".field");
+    await waitFor(() => expect(base?.textContent).toMatch(/no more than the total package/));
+    expect(
+      screen.getByLabelText("Total package a year").closest(".field")?.textContent,
+    ).not.toMatch(/no more than/);
+  });
+
+  it("shows a member the offices and none of the owner's controls", async () => {
+    asHirer();
+    vi.stubGlobal(
+      "fetch",
+      routes([
+        ["/places/countries", { body: COUNTRIES }],
+        ["/seats", { body: seat("member") }],
+        [
+          "/addresses",
+          { body: { workplace: "office", addresses: [BENGALURU, AUSTIN], office_request: null } },
+        ],
+      ]),
+    );
+
+    mount("/offices");
+    expect(await screen.findByText("Bengaluru, India")).toBeTruthy();
+    expect(screen.getByText("Main office")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Remove" })).toBeNull();
+    expect(screen.queryByText("Add an office")).toBeNull();
+    expect(screen.queryByRole("button", { name: /Go fully remote/ })).toBeNull();
+  });
+
+  it("lets an owner remove any office but the main one, naming the roles that block it", async () => {
+    asHirer();
+    vi.stubGlobal(
+      "fetch",
+      routes([
+        ["/places/countries", { body: COUNTRIES }],
+        ["/seats", { body: seat("owner") }],
+        [
+          "/addresses/ad2",
+          {
+            status: 409,
+            body: {
+              error: "address_in_use",
+              roles: [
+                { id: "r1", title: "Austin field engineer", status: "draft" },
+                { id: "r2", title: "Austin support lead", status: "open" },
+              ],
+            },
+          },
+        ],
+        [
+          "/addresses",
+          { body: { workplace: "office", addresses: [BENGALURU, AUSTIN], office_request: null } },
+        ],
+      ]),
+    );
+
+    mount("/offices");
+    await screen.findByText("Austin, United States");
+    // One Remove: Austin's. The main office has none.
+    const remove = await screen.findAllByRole("button", { name: "Remove" });
+    expect(remove.length).toBe(1);
+
+    fireEvent.click(remove[0]!);
+    expect(await screen.findByText("Austin field engineer")).toBeTruthy();
+    expect(screen.getByText("Austin support lead")).toBeTruthy();
+    expect(screen.getByText(/Draft or open roles still use this office/)).toBeTruthy();
+  });
+
+  it("names the onsite roles that stop an organisation going fully remote", async () => {
+    asHirer();
+    vi.stubGlobal(
+      "fetch",
+      routes([
+        ["/places/countries", { body: COUNTRIES }],
+        ["/seats", { body: seat("owner") }],
+        [
+          "/fully-remote",
+          {
+            status: 409,
+            body: {
+              error: "onsite_roles_exist",
+              roles: [{ id: "r2", title: "Austin support lead", status: "open" }],
+            },
+          },
+        ],
+        [
+          "/addresses",
+          { body: { workplace: "office", addresses: [BENGALURU], office_request: null } },
+        ],
+      ]),
+    );
+
+    mount("/offices");
+    const go = await screen.findByRole("button", { name: /Go fully remote/ });
+    expect(go).toHaveProperty("disabled", true);
+    fireEvent.click(screen.getByRole("checkbox", { name: /Remove every address/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Go fully remote/ }));
+
+    expect(await screen.findByText("Austin support lead")).toBeTruthy();
+    expect(screen.getByText(/still onsite/)).toBeTruthy();
+  });
+
+  it("shows every seat a pending office request, and offers no second one", async () => {
+    asHirer();
+    vi.stubGlobal(
+      "fetch",
+      routes([
+        ["/places/countries", { body: COUNTRIES }],
+        ["/seats", { body: seat("owner") }],
+        [
+          "/addresses",
+          {
+            body: {
+              workplace: "fully_remote",
+              addresses: [],
+              office_request: {
+                id: "q1",
+                status: "pending",
+                address: { ...BENGALURU },
+                requested_at: "2026-10-01T00:00:00Z",
+              },
+            },
+          },
+        ],
+      ]),
+    );
+
+    mount("/offices");
+    expect(await screen.findByText(/Office request waiting for review/)).toBeTruthy();
+    expect(screen.queryByText("Ask for an office")).toBeNull();
+  });
+
+  it("lets an owner ask again after a rejection, and shows the reason", async () => {
+    asHirer();
+    const posted: unknown[] = [];
+    vi.stubGlobal(
+      "fetch",
+      routes([
+        ["/places/countries", { body: COUNTRIES }],
+        ["/seats", { body: seat("owner") }],
+        [
+          "/office-request",
+          (init) => {
+            posted.push(JSON.parse(String(init?.body)));
+            return { status: 422, body: { error: "invalid_address", field: "city" } };
+          },
+        ],
+        [
+          "/addresses",
+          {
+            body: {
+              workplace: "fully_remote",
+              addresses: [],
+              office_request: {
+                id: "q1",
+                status: "rejected",
+                address: { ...BENGALURU },
+                requested_at: "2026-10-01T00:00:00Z",
+                decided_at: "2026-10-02T00:00:00Z",
+                reason: "The office lease is unsigned.",
+              },
+            },
+          },
+        ],
+      ]),
+    );
+
+    mount("/offices");
+    expect(await screen.findByText("The office lease is unsigned.")).toBeTruthy();
+    expect(screen.getByText("Ask for an office")).toBeTruthy();
+
+    fireEvent.change(await screen.findByLabelText("Country"), { target: { value: "IN" } });
+    fireEvent.click(screen.getByRole("button", { name: /Send for review/ }));
+
+    await waitFor(() => expect(posted.length).toBe(1));
+    expect(posted[0]).toEqual({
+      country: "IN",
+      city: "",
+      postal_code: "",
+      street1: "",
+      street2: "",
+    });
+    // invalid_address names a top-level field; the message sits under City.
+    await waitFor(() =>
+      expect(screen.getByLabelText("City").closest(".field")?.textContent).toMatch(/Give a city/),
+    );
+  });
+
+  it("disables the address when a company is fully remote, and sends none", async () => {
+    const sent: unknown[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        sent.push(JSON.parse(String(init?.body)));
+        return new Response(null, { status: 202 });
+      }),
+    );
+
+    mount("/organisation");
+    fireEvent.change(screen.getByLabelText("Company name"), { target: { value: "Driftwood" } });
+    fireEvent.change(screen.getByLabelText("Company email"), {
+      target: { value: "hello@driftwood.example" },
+    });
+    fireEvent.change(screen.getByLabelText("City"), { target: { value: "Cardiff" } });
+    fireEvent.change(screen.getByLabelText("Office or fully remote"), {
+      target: { value: "fully_remote" },
+    });
+
+    expect(screen.getByLabelText("City")).toHaveProperty("disabled", true);
+    expect(screen.getByLabelText("Street")).toHaveProperty("disabled", true);
+
+    fireEvent.click(screen.getByText("Send me a confirmation code"));
+    await screen.findByText("Check your email");
+    expect(sent[0]).toMatchObject({ name: "Driftwood", workplace: "fully_remote" });
+    expect(sent[0]).not.toHaveProperty("address");
+  });
+
+  it("puts an onboarding refusal beside the field it names", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ error: "invalid_onboarding", field: "address.street1" }), {
+            status: 422,
+            headers: { "content-type": "application/json" },
+          }),
+      ),
+    );
+
+    mount("/organisation/revise?token=t");
+    fireEvent.change(screen.getByLabelText("Company name"), { target: { value: "Quayside" } });
+    fireEvent.change(screen.getByLabelText("Company email"), {
+      target: { value: "owner@quayside.example" },
+    });
+    fireEvent.change(screen.getByLabelText("Office or fully remote"), {
+      target: { value: "office" },
+    });
+    fireEvent.click(screen.getByText("Send me a confirmation code"));
+
+    await waitFor(() =>
+      expect(screen.getByLabelText("Street").closest(".field")?.textContent).toMatch(
+        /Give the office's street/,
+      ),
+    );
+  });
+
+  it("tells a contributor a city and a country for an opening, never a street", async () => {
+    sessionStorage.setItem("gcp.access", "t");
+    sessionStorage.setItem("gcp.refresh", "r");
+    sessionStorage.setItem(
+      "gcp.principal",
+      JSON.stringify({ id: "u1", display_name: "Ada Okonkwo", principal_type: "contributor" }),
+    );
+    vi.stubGlobal(
+      "fetch",
+      routes([
+        ["/places/countries", { body: COUNTRIES }],
+        [
+          "/openings",
+          {
+            body: {
+              matched: 1,
+              missed: 0,
+              openings: [
+                {
+                  id: "op1",
+                  organization: "Acme Corp",
+                  posted_at: "2026-10-01T00:00:00Z",
+                  bar: {
+                    min_overall_score: null,
+                    min_generalist_score: null,
+                    min_oss_yoe: null,
+                    skills: [],
+                  },
+                  role: {
+                    id: "r1",
+                    title: "Payments engineer",
+                    description: "",
+                    engagement: "full_time",
+                    locations: [
+                      { mode: "remote", country: "IN" },
+                      { mode: "onsite", country: "IN", city: "Bengaluru" },
+                    ],
+                    currency: "",
+                    yearly_ctc: null,
+                    yearly_base: null,
+                    hourly_rate: null,
+                    expected_hours: null,
+                    requires_online_test: null,
+                    max_interview_rounds: null,
+                    avg_days_to_offer: null,
+                    questions: [],
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      ]),
+    );
+
+    mount("/openings");
+    expect(await screen.findByText("Payments engineer")).toBeTruthy();
+    expect(await screen.findByText("Remote in India · Onsite in Bengaluru, India.")).toBeTruthy();
+  });
+
+  it("gives an administrator the office-request queue, a rejection needing a reason", async () => {
+    sessionStorage.setItem("gcp.access", "t");
+    sessionStorage.setItem("gcp.refresh", "r");
+    sessionStorage.setItem(
+      "gcp.principal",
+      JSON.stringify({ id: "ad1", display_name: "Root", principal_type: "admin" }),
+    );
+    const decided: unknown[] = [];
+    vi.stubGlobal(
+      "fetch",
+      routes([
+        [
+          "/decide",
+          (init) => {
+            decided.push(JSON.parse(String(init?.body)));
+            return {
+              body: {
+                id: "q2",
+                status: "rejected",
+                reviewed_at: "2026-10-17T00:00:00Z",
+                reviewed_by: "ad1",
+              },
+            };
+          },
+        ],
+        [
+          "/admin/office-requests",
+          {
+            body: {
+              total: 1,
+              office_requests: [
+                {
+                  id: "q2",
+                  organization: { id: "o2", name: "Tiny Studio" },
+                  address: {
+                    country: "PT",
+                    city: "Lisbon",
+                    postal_code: "1100-053",
+                    street1: "Rua Augusta 100",
+                    street2: "3rd floor",
+                  },
+                  requested_by: "sam",
+                  created_at: "2026-10-17T00:00:00Z",
+                  supersedes: "q1",
+                },
+              ],
+            },
+          },
+        ],
+        ["/admin/onboarding", { body: { total: 0, submissions: [] } }],
+        ["/admin/", { body: { requests: [] } }],
+      ]),
+    );
+
+    mount("/admin");
+    expect(await screen.findByText("Tiny Studio")).toBeTruthy();
+    expect(screen.getByText(/Rua Augusta 100/)).toBeTruthy();
+    expect(screen.getByText("Asked again")).toBeTruthy();
+
+    const reject = screen.getAllByRole("button", { name: "Reject" })[0]!;
+    expect(reject).toHaveProperty("disabled", true);
+    fireEvent.change(screen.getByLabelText("Reason", { selector: "#office-reason-q2" }), {
+      target: { value: "Not a real office." },
+    });
+    fireEvent.click(screen.getAllByRole("button", { name: "Reject" })[0]!);
+    await waitFor(() =>
+      expect(decided).toEqual([{ decision: "rejected", reason: "Not a real office." }]),
+    );
   });
 });

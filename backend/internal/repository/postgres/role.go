@@ -29,7 +29,7 @@ var _ port.RoleRepository = (*RoleRepository)(nil)
 // roleColumns is every column, in the order scanRole reads them.
 const roleColumns = `
 	r.id, r.organization_id, r.title, coalesce(r.description, ''),
-	r.engagement, r.status, r.location, r.address_id,
+	r.engagement, r.status,
 	coalesce(r.currency, ''), r.yearly_ctc, r.yearly_base,
 	r.hourly_rate, r.expected_hours,
 	r.min_office_yoe, r.min_oss_yoe,
@@ -37,13 +37,13 @@ const roleColumns = `
 	r.created_by, r.opened_by, r.opened_at,
 	r.close_requested_by, r.close_requested_at,
 	r.closed_at, r.closed_by, r.close_reason, coalesce(r.close_note, ''),
-	r.supersedes_id, r.created_at, r.updated_at,
+	r.supersedes_id, r.created_at, r.updated_at, r.first_contacted_at,
 	EXISTS (SELECT 1 FROM role_openings o
 	         WHERE o.role_id = r.id
 	           AND o.published_at IS NOT NULL
 	           AND o.withdrawn_at IS NULL)`
 
-// scanRole reads one row. The country list and the questions are separate
+// scanRole reads one row. The locations and the questions are separate
 // reads, because a join against two child tables would multiply the role row
 // and make every scalar arrive several times.
 func scanRole(row interface{ Scan(...any) error }) (*domain.Role, error) {
@@ -52,7 +52,6 @@ func scanRole(row interface{ Scan(...any) error }) (*domain.Role, error) {
 		orgID     string
 		id        string
 		createdBy string
-		addressID *string
 		openedBy  *string
 		closeReqBy,
 		closedBy *string
@@ -60,10 +59,9 @@ func scanRole(row interface{ Scan(...any) error }) (*domain.Role, error) {
 		supersedes *string
 		engagement string
 		status     string
-		location   string
 	)
 	err := row.Scan(&id, &orgID, &out.Title, &out.Description,
-		&engagement, &status, &location, &addressID,
+		&engagement, &status,
 		&out.Currency, &out.YearlyCTC, &out.YearlyBase,
 		&out.HourlyRate, &out.ExpectedHours,
 		&out.MinOfficeYOE, &out.MinOSSYOE,
@@ -71,7 +69,8 @@ func scanRole(row interface{ Scan(...any) error }) (*domain.Role, error) {
 		&createdBy, &openedBy, &out.OpenedAt,
 		&closeReqBy, &out.CloseRequestedAt,
 		&out.ClosedAt, &closedBy, &reason, &out.CloseNote,
-		&supersedes, &out.CreatedAt, &out.UpdatedAt, &out.Advertised)
+		&supersedes, &out.CreatedAt, &out.UpdatedAt, &out.FirstContactedAt,
+		&out.Advertised)
 	if err != nil {
 		return nil, err
 	}
@@ -80,13 +79,8 @@ func scanRole(row interface{ Scan(...any) error }) (*domain.Role, error) {
 	out.OrgID = domain.OrganizationID(orgID)
 	out.Engagement = domain.Engagement(engagement)
 	out.Status = domain.RoleStatus(status)
-	out.Location = domain.RoleLocation(location)
 	out.CreatedBy = domain.HirerID(createdBy)
 
-	if addressID != nil {
-		a := domain.AddressID(*addressID)
-		out.AddressID = &a
-	}
 	if openedBy != nil {
 		h := domain.HirerID(*openedBy)
 		out.OpenedBy = &h
@@ -110,7 +104,7 @@ func scanRole(row interface{ Scan(...any) error }) (*domain.Role, error) {
 	return &out, nil
 }
 
-// ByID reads a role with its countries, questions and hires.
+// ByID reads a role with its locations, questions and hires.
 func (r *RoleRepository) ByID(ctx context.Context, id domain.RoleID) (*domain.Role, error) {
 	return r.byID(ctx, nil, id)
 }
@@ -182,15 +176,10 @@ func (r *RoleRepository) Create(ctx context.Context, t port.Tx, role *domain.Rol
 	return r.byID(ctx, t, role.ID)
 }
 
-// insert writes the role row and its two child lists.
+// insert writes the role row and its child lists.
 func (r *RoleRepository) insert(ctx context.Context, t port.Tx, role *domain.Role, supersedes *domain.RoleID) error {
 	q := r.db.q(t)
 
-	var address *string
-	if role.AddressID != nil {
-		a := string(*role.AddressID)
-		address = &a
-	}
 	var prior *string
 	if supersedes != nil {
 		p := string(*supersedes)
@@ -200,15 +189,15 @@ func (r *RoleRepository) insert(ctx context.Context, t port.Tx, role *domain.Rol
 	_, err := q.Exec(ctx, `
 		INSERT INTO roles
 		    (id, organization_id, title, description, engagement, status,
-		     location, address_id, currency, yearly_ctc, yearly_base,
+		     currency, yearly_ctc, yearly_base,
 		     hourly_rate, expected_hours, min_office_yoe, min_oss_yoe,
 		     requires_online_test, max_interview_rounds, avg_days_to_offer,
 		     created_by, supersedes_id)
 		VALUES ($1, $2, $3, NULLIF($4, ''), $5::role_engagement, 'draft',
-		        $6::role_location, $7, NULLIF($8, ''), $9, $10,
-		        $11, $12, $13, $14, $15, $16, $17, $18, $19)`,
+		        NULLIF($6, ''), $7, $8,
+		        $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
 		string(role.ID), string(role.OrgID), role.Title, role.Description,
-		string(role.Engagement), string(role.Location), address,
+		string(role.Engagement),
 		role.Currency, role.YearlyCTC, role.YearlyBase,
 		role.HourlyRate, role.ExpectedHours, role.MinOfficeYOE, role.MinOSSYOE,
 		role.RequiresOnlineTest, role.MaxInterviewRounds, role.AvgDaysToOffer,
@@ -219,19 +208,36 @@ func (r *RoleRepository) insert(ctx context.Context, t port.Tx, role *domain.Rol
 	return r.writeChildren(ctx, t, role)
 }
 
-// writeChildren replaces the countries and questions attached to a role.
+// writeChildren replaces the location entries and questions of a role.
+//
+// Entries are written here and nowhere else, so they share the role's
+// immutability: create, a draft's update and a revision's successor are the
+// only callers (ADR-0024 decision 4).
 func (r *RoleRepository) writeChildren(ctx context.Context, t port.Tx, role *domain.Role) error {
 	q := r.db.q(t)
 
 	if _, err := q.Exec(ctx,
-		`DELETE FROM role_eligible_countries WHERE role_id = $1`, string(role.ID)); err != nil {
-		return translate(err, "clearing eligible countries")
+		`DELETE FROM role_locations WHERE role_id = $1`, string(role.ID)); err != nil {
+		return translate(err, "clearing role locations")
 	}
-	for _, c := range role.EligibleCountries {
-		if _, err := q.Exec(ctx,
-			`INSERT INTO role_eligible_countries (role_id, country) VALUES ($1, $2)
-			 ON CONFLICT DO NOTHING`, string(role.ID), c); err != nil {
-			return translate(err, "writing an eligible country")
+	for _, l := range role.Locations {
+		var country, address *string
+		if l.Country != "" {
+			c := l.Country
+			country = &c
+		}
+		if l.AddressID != nil {
+			a := string(*l.AddressID)
+			address = &a
+		}
+		// ON CONFLICT: a repeated entry is collapsed, not refused (ADR-0024
+		// decision 3). The service collapses first; this is the backstop.
+		if _, err := q.Exec(ctx, `
+			INSERT INTO role_locations (role_id, mode, country, address_id)
+			VALUES ($1, $2::role_location_mode, $3, $4)
+			ON CONFLICT DO NOTHING`,
+			string(role.ID), string(l.Mode), country, address); err != nil {
+			return translate(err, "writing a role location")
 		}
 	}
 
@@ -264,25 +270,18 @@ func (r *RoleRepository) writeChildren(ctx context.Context, t port.Tx, role *dom
 // already been shown it, and the one place that cannot be forgotten is the
 // statement itself.
 func (r *RoleRepository) UpdateDraft(ctx context.Context, t port.Tx, role *domain.Role) (*domain.Role, error) {
-	var address *string
-	if role.AddressID != nil {
-		a := string(*role.AddressID)
-		address = &a
-	}
-
 	tag, err := r.db.q(t).Exec(ctx, `
 		UPDATE roles
 		   SET title = $2, description = NULLIF($3, ''),
-		       engagement = $4::role_engagement, location = $5::role_location,
-		       address_id = $6, currency = NULLIF($7, ''),
-		       yearly_ctc = $8, yearly_base = $9,
-		       hourly_rate = $10, expected_hours = $11,
-		       min_office_yoe = $12, min_oss_yoe = $13,
-		       requires_online_test = $14, max_interview_rounds = $15,
-		       avg_days_to_offer = $16
+		       engagement = $4::role_engagement, currency = NULLIF($5, ''),
+		       yearly_ctc = $6, yearly_base = $7,
+		       hourly_rate = $8, expected_hours = $9,
+		       min_office_yoe = $10, min_oss_yoe = $11,
+		       requires_online_test = $12, max_interview_rounds = $13,
+		       avg_days_to_offer = $14
 		 WHERE id = $1 AND status = 'draft'`,
 		string(role.ID), role.Title, role.Description,
-		string(role.Engagement), string(role.Location), address, role.Currency,
+		string(role.Engagement), role.Currency,
 		role.YearlyCTC, role.YearlyBase, role.HourlyRate, role.ExpectedHours,
 		role.MinOfficeYOE, role.MinOSSYOE,
 		role.RequiresOnlineTest, role.MaxInterviewRounds, role.AvgDaysToOffer)
@@ -442,68 +441,6 @@ func (r *RoleRepository) HiresOf(ctx context.Context, id domain.RoleID) ([]domai
 	return out, translate(rows.Err(), "reading hires")
 }
 
-// Matching returns open roles a contributor could be approached for.
-//
-// Every predicate FAILS OPEN except the two that must not. A role with no
-// stated countries admits everybody; a contributor who has not said where they
-// are is admitted by any role that hires anywhere; an unstated office-years
-// minimum admits everybody. The exceptions are OSS years, which is verified and
-// therefore excluded when unknown (ADR-0019 §When the fetch fails), and the
-// shapes, which are what the contributor actually asked for.
-func (r *RoleRepository) Matching(ctx context.Context, m port.RoleMatch) ([]domain.Role, error) {
-	if len(m.Shapes) == 0 {
-		// Nothing ticked matches nothing. Returning everything here would show
-		// somebody roles they specifically did not ask for.
-		return []domain.Role{}, nil
-	}
-
-	shapes := make([]string, 0, len(m.Shapes))
-	for _, s := range m.Shapes {
-		shapes = append(shapes, string(s))
-	}
-
-	limit := m.Limit
-	if limit <= 0 || limit > 200 {
-		limit = 50
-	}
-
-	rows, err := r.db.pool.Query(ctx, `
-		SELECT`+roleColumns+`
-		  FROM roles r
-		 WHERE r.status = 'open'
-		   AND r.engagement::text = ANY($1::text[])
-
-		   -- No stated countries means anywhere; an unstated country is not a
-		   -- reason to hide a role that hires anywhere.
-		   AND (NOT EXISTS (SELECT 1 FROM role_eligible_countries c WHERE c.role_id = r.id)
-		        OR ($2 <> '' AND EXISTS (
-		            SELECT 1 FROM role_eligible_countries c
-		             WHERE c.role_id = r.id AND c.country = $2)))
-
-		   -- Self-reported either way, so an unstated figure clears a minimum.
-		   AND (r.min_office_yoe IS NULL OR $3::int IS NULL OR $3::int >= r.min_office_yoe)
-
-		   -- VERIFIED, so an unknown figure does NOT clear a minimum.
-		   AND (r.min_oss_yoe IS NULL OR ($4::int IS NOT NULL AND $4::int >= r.min_oss_yoe))
-
-		   -- Pay filters the CONTRIBUTOR'S view and travels no further
-		   -- (ADR-0018 §5). A role in another currency is not compared, because
-		   -- comparing it would need a rate nobody here has.
-		   AND ($5 = '' OR r.currency IS NULL OR r.currency <> $5
-		        OR (($6::bigint IS NULL OR r.yearly_ctc IS NULL OR r.yearly_ctc >= $6::bigint)
-		        AND ($7::bigint IS NULL OR r.hourly_rate IS NULL OR r.hourly_rate >= $7::bigint)))
-
-		 ORDER BY r.opened_at DESC NULLS LAST, r.created_at DESC
-		 LIMIT $8 OFFSET $9`,
-		shapes, m.Country, m.OfficeYOE, m.OSSYears,
-		m.Currency, m.MinYearly, m.MinHourly, limit, max(m.Offset, 0))
-	if err != nil {
-		return nil, translate(err, "matching roles")
-	}
-	defer rows.Close()
-	return r.collect(ctx, nil, rows, "matching roles")
-}
-
 // collect scans a role result set and hydrates the child lists.
 func (r *RoleRepository) collect(ctx context.Context, t port.Tx, rows interface {
 	Next() bool
@@ -531,7 +468,7 @@ func (r *RoleRepository) collect(ctx context.Context, t port.Tx, rows interface 
 	return out, nil
 }
 
-// hydrate fills in the countries, questions and hires for a set of roles.
+// hydrate fills in the locations, questions and hires for a set of roles.
 //
 // One query per child table for the whole set, not one per role: a list of
 // fifty roles would otherwise be a hundred and fifty round trips.
@@ -545,30 +482,13 @@ func (r *RoleRepository) hydrate(ctx context.Context, t port.Tx, roles []*domain
 	for _, role := range roles {
 		byID[role.ID] = role
 		ids = append(ids, string(role.ID))
-		role.EligibleCountries = []string{}
+		role.Locations = []domain.RoleLocation{}
 		role.Questions = []domain.RoleQuestion{}
 		role.Hires = []domain.RoleHire{}
 	}
 
-	countries, err := r.db.q(t).Query(ctx, `
-		SELECT role_id, country FROM role_eligible_countries
-		 WHERE role_id = ANY($1::uuid[]) ORDER BY country`, ids)
-	if err != nil {
-		return translate(err, "reading eligible countries")
-	}
-	for countries.Next() {
-		var id, c string
-		if err := countries.Scan(&id, &c); err != nil {
-			countries.Close()
-			return translate(err, "scanning an eligible country")
-		}
-		if role := byID[domain.RoleID(id)]; role != nil {
-			role.EligibleCountries = append(role.EligibleCountries, c)
-		}
-	}
-	countries.Close()
-	if err := countries.Err(); err != nil {
-		return translate(err, "reading eligible countries")
+	if err := r.hydrateLocations(ctx, t, byID, ids); err != nil {
+		return err
 	}
 
 	questions, err := r.db.q(t).Query(ctx, `
@@ -665,31 +585,31 @@ func (r *OrgSettingsRepository) Save(ctx context.Context, t port.Tx, s *domain.O
 	return translate(err, fmt.Sprintf("saving settings for organization %s", s.OrgID))
 }
 
-// Candidates lists everybody on a round for this role.
+// Candidates lists everybody on this role.
 //
-// DISTINCT ON the person, not the entry: the same contributor staged on two
-// rounds for one job has been approached once as far as a hirer is concerned,
-// and showing them twice would make a list of six people read as a list of
-// nine approaches.
-//
-// The earliest entry wins the tie, because that is the one that reached them —
-// and its contact request is the one that carries their answer.
+// One row per person by construction now (ADR-0023): the primary key is
+// (role_id, user_id), so the duplicate a round-per-role model could produce —
+// the same contributor staged on two rounds for one job — cannot exist.
 func (r *RoleRepository) Candidates(ctx context.Context, id domain.RoleID) ([]domain.RoleCandidate, error) {
 	rows, err := r.db.pool.Query(ctx, `
-		SELECT DISTINCT ON (e.user_id)
-		       e.user_id, u.display_name, coalesce(gi.github_login, ''),
-		       s.id, s.name,
-		       coalesce(cr.status::text, ''), e.notified_at
-		  FROM shortlist_entries e
-		  JOIN shortlists s ON s.id = e.shortlist_id
-		  JOIN users u ON u.id = e.user_id
-		  LEFT JOIN user_github_identities gi ON gi.user_id = e.user_id
-		  -- The request raised for this person ON THIS ROUND, which is where
-		  -- their answer lives. A left join because a staged entry has none.
+		SELECT c.user_id, u.display_name, coalesce(gi.github_login, ''),
+		       coalesce(c.note, ''), `+hirerRefColumns("author")+`,
+		       c.added_at,
+		       coalesce(cr.status::text, ''), c.notified_at,
+		       -- The address comes off email_released_at, which is stamped
+		       -- when the contributor accepts and never by a decline or an
+		       -- expiry.
+		       CASE WHEN cr.email_released_at IS NOT NULL THEN coalesce(u.email, '') ELSE '' END
+		  FROM role_candidates c
+		  JOIN users u ON u.id = c.user_id
+		  JOIN hirer_accounts author ON author.id = c.added_by
+		  LEFT JOIN user_github_identities gi ON gi.user_id = c.user_id
+		  -- Their answer, if they have been asked. A left join because a
+		  -- staged candidate has no request.
 		  LEFT JOIN contact_requests cr
-		         ON cr.shortlist_id = e.shortlist_id AND cr.user_id = e.user_id
-		 WHERE s.role_id = $1
-		 ORDER BY e.user_id, e.added_at`, string(id))
+		         ON cr.role_id = c.role_id AND cr.user_id = c.user_id
+		 WHERE c.role_id = $1
+		 ORDER BY c.added_at`, string(id))
 	if err != nil {
 		return nil, translate(err, fmt.Sprintf("listing candidates for role %s", id))
 	}
@@ -698,19 +618,99 @@ func (r *RoleRepository) Candidates(ctx context.Context, id domain.RoleID) ([]do
 	out := []domain.RoleCandidate{}
 	for rows.Next() {
 		var (
-			c                 domain.RoleCandidate
-			user, shortlistID string
-			status            string
+			c      domain.RoleCandidate
+			user   string
+			status string
 		)
-		if err := rows.Scan(&user, &c.DisplayName, &c.GitHubLogin,
-			&shortlistID, &c.ShortlistName, &status, &c.NotifiedAt); err != nil {
+		if err := rows.Scan(scanTargets(
+			[]any{&user, &c.DisplayName, &c.GitHubLogin, &c.Note},
+			&c.AddedBy,
+			[]any{&c.AddedAt, &status, &c.NotifiedAt, &c.Email})...); err != nil {
 			return nil, translate(err, "scanning a candidate")
 		}
 		c.UserID = domain.UserID(user)
-		c.ShortlistID = domain.ShortlistID(shortlistID)
 		c.ContactStatus = domain.ContactRequestStatus(status)
 		c.Accepted = c.ContactStatus == domain.ContactAccepted
 		out = append(out, c)
 	}
 	return out, translate(rows.Err(), "listing candidates")
+}
+
+// hydrateLocations reads every entry of a set of roles, with the address each
+// onsite entry points at embedded — removed or not, because a closed role
+// still says where it was (ADR-0024 §Bodies).
+func (r *RoleRepository) hydrateLocations(ctx context.Context, t port.Tx, byID map[domain.RoleID]*domain.Role, ids []string) error {
+	rows, err := r.db.q(t).Query(ctx, `
+		SELECT l.role_id, l.mode, coalesce(l.country, ''), a.id IS NOT NULL,
+		       `+addressColumnsNullable("a")+`
+		  FROM role_locations l
+		  LEFT JOIN organization_addresses a ON a.id = l.address_id
+		 WHERE l.role_id = ANY($1::uuid[])`, ids)
+	if err != nil {
+		return translate(err, "reading role locations")
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var (
+			roleID, mode, country string
+			hasAddress            bool
+			addr                  addressRow
+		)
+		targets := append([]any{&roleID, &mode, &country, &hasAddress}, addr.targets()...)
+		if err := rows.Scan(targets...); err != nil {
+			return translate(err, "scanning a role location")
+		}
+		loc := domain.RoleLocation{Mode: domain.LocationMode(mode), Country: country}
+		if hasAddress {
+			a := addr.domain()
+			loc.AddressID = &a.ID
+			loc.Address = &a
+		}
+		if role := byID[domain.RoleID(roleID)]; role != nil {
+			role.Locations = append(role.Locations, loc)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return translate(err, "reading role locations")
+	}
+	for _, role := range byID {
+		domain.SortLocations(role.Locations)
+	}
+	return nil
+}
+
+// ActiveOnsiteRoles lists the draft and open roles with an onsite entry, at
+// one address or at any, oldest first.
+func (r *RoleRepository) ActiveOnsiteRoles(ctx context.Context, t port.Tx, org domain.OrganizationID, at *domain.AddressID) ([]domain.RoleSummary, error) {
+	var address *string
+	if at != nil {
+		a := string(*at)
+		address = &a
+	}
+	rows, err := r.db.q(t).Query(ctx, `
+		SELECT r.id, r.title, r.status
+		  FROM roles r
+		 WHERE r.organization_id = $1
+		   AND r.status IN ('draft', 'open')
+		   AND EXISTS (SELECT 1 FROM role_locations l
+		                WHERE l.role_id = r.id AND l.mode = 'onsite'
+		                  AND ($2::uuid IS NULL OR l.address_id = $2::uuid))
+		 ORDER BY r.created_at, r.id`, string(org), address)
+	if err != nil {
+		return nil, translate(err, fmt.Sprintf("listing onsite roles of organization %s", org))
+	}
+	defer rows.Close()
+
+	out := []domain.RoleSummary{}
+	for rows.Next() {
+		var id, title, status string
+		if err := rows.Scan(&id, &title, &status); err != nil {
+			return nil, translate(err, "scanning an onsite role")
+		}
+		out = append(out, domain.RoleSummary{
+			ID: domain.RoleID(id), Title: title, Status: domain.RoleStatus(status),
+		})
+	}
+	return out, translate(rows.Err(), "listing onsite roles")
 }

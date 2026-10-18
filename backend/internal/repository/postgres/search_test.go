@@ -720,7 +720,7 @@ func verifyFirstPR(ctx context.Context, t *testing.T, db *postgres.DB, user doma
 // never reach a result count — and what they were hidden FOR is reported
 // separately, because a list that shrinks with no account of why makes a hirer
 // doubt the filter rather than read the result.
-func TestSearchExcludesWhoIsAlreadyOnTheRound(t *testing.T) {
+func TestSearchExcludesWhoIsAlreadyOnTheRole(t *testing.T) {
 	db, ctx := newDB(t), testContext(t)
 	p := newSearchPopulation(ctx, t, db)
 
@@ -729,13 +729,13 @@ func TestSearchExcludesWhoIsAlreadyOnTheRound(t *testing.T) {
 		t.Fatalf("expected alice and bob, got %d", before.Total)
 	}
 
-	round := mustCreateShortlist(ctx, t, db, p.owner, "Platform team")
-	mustAddEntry(ctx, t, db, round.ID, p.alice, p.owner)
+	role := mustCreateOpenRole(ctx, t, db, p.owner)
+	mustStage(ctx, t, db, role.ID, p.alice, p.owner)
 
 	after := mustSearch(ctx, t, db, p.hirer,
-		domain.SearchQuery{Skills: []string{"go"}, ForRole: &round.RoleID})
+		domain.SearchQuery{Skills: []string{"go"}, ForRole: &role.ID})
 	if after.Total != 1 {
-		t.Errorf("alice is already on a round for that role: total = %d", after.Total)
+		t.Errorf("alice is already on that role: total = %d", after.Total)
 	}
 	if after.AlreadyShortlisted != 1 {
 		t.Errorf("the exclusion must be REPORTED, got %d", after.AlreadyShortlisted)
@@ -757,12 +757,13 @@ func TestSearchExcludesWhoIsAlreadyOnTheRound(t *testing.T) {
 		}
 	})
 
-	t.Run("a STAGED entry counts", func(t *testing.T) {
+	t.Run("a STAGED candidate counts", func(t *testing.T) {
 		// Staged is exactly the case worth catching: the hirer put them on the
-		// round ten minutes ago and nobody has been told yet. Waiting for the
-		// confirm would offer them back in the window where it matters most.
+		// job ten minutes ago and nobody has been told yet. Waiting for the
+		// contact step would offer them back in the window where it matters
+		// most.
 		got := mustSearch(ctx, t, db, p.hirer,
-			domain.SearchQuery{Skills: []string{"go"}, ForRole: &round.RoleID})
+			domain.SearchQuery{Skills: []string{"go"}, ForRole: &role.ID})
 		for _, r := range got.Results {
 			if r.UserID == p.alice {
 				t.Error("a staged candidate is still a candidate")
@@ -770,21 +771,20 @@ func TestSearchExcludesWhoIsAlreadyOnTheRound(t *testing.T) {
 		}
 	})
 
-	t.Run("it spans every round for that role", func(t *testing.T) {
-		// One job can be worked over several rounds, and "have I already
-		// approached them for this" is a question about the job.
-		second := mustCreateShortlistFor(ctx, t, db, p.owner, round.RoleID, "Second pass")
-		mustAddEntry(ctx, t, db, second.ID, p.bob, p.owner)
+	t.Run("it covers everybody on the job, whenever they were staged", func(t *testing.T) {
+		// "Have I already approached them for this" is a question about the
+		// job, and now there is only the job to ask it of (ADR-0023).
+		mustStage(ctx, t, db, role.ID, p.bob, p.owner)
 
 		got := mustSearch(ctx, t, db, p.hirer,
-			domain.SearchQuery{Skills: []string{"go"}, ForRole: &round.RoleID})
+			domain.SearchQuery{Skills: []string{"go"}, ForRole: &role.ID})
 		if got.Total != 0 || got.AlreadyShortlisted != 2 {
-			t.Errorf("both are on rounds for this role: total=%d excluded=%d",
+			t.Errorf("both are on this role: total=%d excluded=%d",
 				got.Total, got.AlreadyShortlisted)
 		}
 	})
 
-	t.Run("another role's rounds exclude nobody", func(t *testing.T) {
+	t.Run("another role excludes nobody", func(t *testing.T) {
 		other := mustCreateOpenRole(ctx, t, db, p.owner)
 		got := mustSearch(ctx, t, db, p.hirer,
 			domain.SearchQuery{Skills: []string{"go"}, ForRole: &other.ID})
@@ -800,20 +800,16 @@ func TestRoleCandidatesAreDistinctPeople(t *testing.T) {
 	db, ctx := newDB(t), testContext(t)
 	p := newSearchPopulation(ctx, t, db)
 
-	first := mustCreateShortlist(ctx, t, db, p.owner, "Round one")
-	second := mustCreateShortlistFor(ctx, t, db, p.owner, first.RoleID, "Round two")
+	role := mustCreateOpenRole(ctx, t, db, p.owner)
+	mustStage(ctx, t, db, role.ID, p.alice, p.owner)
+	mustStage(ctx, t, db, role.ID, p.bob, p.owner)
 
-	// Alice is on BOTH rounds for the one job.
-	mustAddEntry(ctx, t, db, first.ID, p.alice, p.owner)
-	mustAddEntry(ctx, t, db, second.ID, p.alice, p.owner)
-	mustAddEntry(ctx, t, db, first.ID, p.bob, p.owner)
-
-	got, err := db.Roles().Candidates(ctx, first.RoleID)
+	got, err := db.Roles().Candidates(ctx, role.ID)
 	if err != nil {
 		t.Fatalf("listing candidates: %v", err)
 	}
 	if len(got) != 2 {
-		t.Fatalf("two people on three entries, got %d rows", len(got))
+		t.Fatalf("expected two people, got %d rows", len(got))
 	}
 
 	for _, c := range got {
@@ -827,6 +823,56 @@ func TestRoleCandidatesAreDistinctPeople(t *testing.T) {
 		}
 		if c.DisplayName == "" {
 			t.Error("a candidate list names people rather than ids")
+		}
+		if c.Email != "" {
+			t.Errorf("%s was never asked, so nothing released their address", c.DisplayName)
+		}
+	}
+}
+
+// The address on a candidate row comes off email_released_at and nothing else
+// (ADR-0019 amendment 4). A decline is an answer, not a release.
+func TestRoleCandidatesCarryOnlyReleasedAddresses(t *testing.T) {
+	db, ctx := newDB(t), testContext(t)
+	p := newSearchPopulation(ctx, t, db)
+
+	// A GitHub sign-in does not always carry an address, and the population
+	// above has none — so the two under test are given one to release.
+	for _, id := range []domain.UserID{p.alice, p.bob} {
+		if _, err := db.Pool().Exec(ctx,
+			`UPDATE users SET email = $2 WHERE id = $1`,
+			string(id), string(id)+"@example.test"); err != nil {
+			t.Fatalf("setting an address: %v", err)
+		}
+	}
+
+	role := mustCreateOpenRole(ctx, t, db, p.owner)
+	mustStage(ctx, t, db, role.ID, p.alice, p.owner)
+	mustStage(ctx, t, db, role.ID, p.bob, p.owner)
+
+	requests := mustContact(ctx, t, db, role.ID, p.owner)
+	if len(requests) != 2 {
+		t.Fatalf("expected a request each, got %d", len(requests))
+	}
+	for _, req := range requests {
+		// Alice agrees to talk; Bob does not.
+		mustRespond(ctx, t, db, req.ID, req.UserID == p.alice)
+	}
+
+	got, err := db.Roles().Candidates(ctx, role.ID)
+	if err != nil {
+		t.Fatalf("listing candidates: %v", err)
+	}
+	for _, c := range got {
+		switch c.UserID {
+		case p.alice:
+			if c.Email == "" {
+				t.Error("an accepted request releases the address")
+			}
+		case p.bob:
+			if c.Email != "" {
+				t.Errorf("a decline released %s's address", c.DisplayName)
+			}
 		}
 	}
 }

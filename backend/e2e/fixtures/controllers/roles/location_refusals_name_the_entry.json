@@ -1,0 +1,501 @@
+{
+  "name": "every way a set of location entries can be wrong has its own code and names the entry",
+  "description": "ADR-0024 decisions 2, 3 and 18, and the role-side rows of its code table.\n\nA set of entries has several ways to be wrong, so each has a code of its own, and every role-side one also carries `field: \"locations\"` and `position` (1-based, amendment 1 §1.6), the entry that failed — so a form can put the words beside the right row instead of re-deriving the rule on the client. Several requests put the bad entry SECOND, behind a valid one, so the position cannot be satisfied by always answering 1.\n\n- `role_location_required`: no entries, absent or empty. A role has at least one, drafts included.\n- `role_location_invalid`: a mode that is not remote or onsite; a remote entry with an address_id; an onsite entry with a country; a country that is not two letters.\n- `onsite_needs_address`: onsite with no address_id.\n- `remote_anywhere_exclusive`: remote-anywhere beside remote-in-a-country.\n- `address_not_found`: an address that is not this organisation's — 422 on a role, and identical for an id that does not exist.\n\nThe three keys the entries replaced are REFUSED, not ignored: the decoder rejects unknown fields and the refusal now names the key (400 invalid_role, field), so a client still sending `eligible_countries` is told exactly that. A value of the wrong type is named the same way. The refusals hold on a draft's PATCH and on revise as on create, and none of them writes anything.\n\nAmendment 1 §1.5 fixes the precedence: `role_location_required` first (field, no position); then each entry in request order — invalid, fully remote, needs address, not found, removed; then `remote_anywhere_exclusive`, naming the LATER of the two clashing entries. Every request here is wrong in one way only, so precedence is exercised only where an entry could fail two rules (onsite with an address AND a country is `role_location_invalid`, which is checked first).",
+  "seed": ["principals"],
+  "steps": [
+    {
+      "_step": "No locations at all — checked before anything else, and with no position because there is no entry. A role has at least one entry, a draft too: roles.location was NOT NULL and this keeps that.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles",
+        "body": {
+          "title": "Platform engineer",
+          "engagement": "full_time"
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "role_location_required",
+          "field": "locations"
+        }
+      }
+    },
+    {
+      "_step": "An empty list is the same refusal. 'Anywhere' is an explicit remote entry, never a blank.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles",
+        "body": {
+          "title": "Platform engineer",
+          "engagement": "full_time",
+          "locations": []
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "role_location_required",
+          "field": "locations"
+        }
+      }
+    },
+    {
+      "_step": "A mode that is neither remote nor onsite. Second in the list, so position 2.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles",
+        "body": {
+          "title": "Platform engineer",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "remote",
+              "country": "IN"
+            },
+            {
+              "mode": "hybrid"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "role_location_invalid",
+          "field": "locations",
+          "position": 2
+        }
+      }
+    },
+    {
+      "_step": "REMOTE NEVER POINTS AT AN ADDRESS (decision 2). A remote entry carrying one is malformed, not quietly stripped.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles",
+        "body": {
+          "title": "Platform engineer",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "remote",
+              "address_id": "{{acme.address.main}}"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "role_location_invalid",
+          "field": "locations",
+          "position": 1
+        }
+      }
+    },
+    {
+      "_step": "ONSITE NAMES NO COUNTRY OF ITS OWN — its country is the address's, and two answers to one question could disagree.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles",
+        "body": {
+          "title": "Platform engineer",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "remote",
+              "country": "GB"
+            },
+            {
+              "mode": "onsite",
+              "address_id": "{{acme.address.main}}",
+              "country": "IN"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "role_location_invalid",
+          "field": "locations",
+          "position": 2
+        }
+      }
+    },
+    {
+      "_step": "A country is two letters. Shape only: the picker comes from the place service, which fails open.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles",
+        "body": {
+          "title": "Platform engineer",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "remote",
+              "country": "IND"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "role_location_invalid",
+          "field": "locations",
+          "position": 1
+        }
+      }
+    },
+    {
+      "_step": "ONSITE ALWAYS POINTS AT AN ADDRESS (decision 2), and saying so is its own code: the fix is to pick an office, not to correct a malformed entry.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles",
+        "body": {
+          "title": "Platform engineer",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "remote",
+              "country": "GB"
+            },
+            {
+              "mode": "onsite"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "onsite_needs_address",
+          "field": "locations",
+          "position": 2
+        }
+      }
+    },
+    {
+      "_step": "REMOTE-ANYWHERE AND REMOTE-IN-A-COUNTRY NEVER SHARE A ROLE (decision 3). 'Anywhere, and also India' says two contradictory things about who it reaches. The refusal names the LATER of the two (amendment 1 §1.5): position 2.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles",
+        "body": {
+          "title": "Platform engineer",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "remote"
+            },
+            {
+              "mode": "remote",
+              "country": "IN"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "remote_anywhere_exclusive",
+          "field": "locations",
+          "position": 2
+        }
+      }
+    },
+    {
+      "_step": "ANOTHER ORGANISATION'S OFFICE. Unknown Ltd's London address is real, and it is not Acme's.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles",
+        "body": {
+          "title": "Platform engineer",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "onsite",
+              "address_id": "{{unverified_org.address.main}}"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "address_not_found",
+          "field": "locations",
+          "position": 1
+        }
+      }
+    },
+    {
+      "_step": "An id nobody holds is answered identically, so a guess confirms nothing about which ids are real.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles",
+        "body": {
+          "title": "Platform engineer",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "remote",
+              "country": "IN"
+            },
+            {
+              "mode": "onsite",
+              "address_id": "01920000-0000-7000-8000-0000000adfff"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "address_not_found",
+          "field": "locations",
+          "position": 2
+        }
+      }
+    },
+    {
+      "_step": "THE OLD KEYS ARE REFUSED, by name. `location` is gone...",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles",
+        "body": {
+          "title": "Platform engineer",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "remote"
+            }
+          ],
+          "location": "remote"
+        }
+      },
+      "expect": {
+        "status": 400,
+        "body": {
+          "error": "invalid_role",
+          "field": "location"
+        }
+      }
+    },
+    {
+      "_step": "...so is `address_id`...",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles",
+        "body": {
+          "title": "Platform engineer",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "remote"
+            }
+          ],
+          "address_id": "{{acme.address.main}}"
+        }
+      },
+      "expect": {
+        "status": 400,
+        "body": {
+          "error": "invalid_role",
+          "field": "address_id"
+        }
+      }
+    },
+    {
+      "_step": "...and `eligible_countries`, removed outright (decision 6). A client still sending it is told exactly which key, instead of the countries being silently dropped.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles",
+        "body": {
+          "title": "Platform engineer",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "remote"
+            }
+          ],
+          "eligible_countries": ["GB"]
+        }
+      },
+      "expect": {
+        "status": 400,
+        "body": {
+          "error": "invalid_role",
+          "field": "eligible_countries"
+        }
+      }
+    },
+    {
+      "_step": "A value of the wrong TYPE is named too: `locations` is a list of entries, and a bare string is not one.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles",
+        "body": {
+          "title": "Platform engineer",
+          "engagement": "full_time",
+          "locations": "remote"
+        }
+      },
+      "expect": {
+        "status": 400,
+        "body": {
+          "error": "invalid_role",
+          "field": "locations"
+        }
+      }
+    },
+    {
+      "_step": "A valid draft, so the same rules can be shown on PATCH.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles",
+        "body": {
+          "title": "Platform engineer",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "remote",
+              "country": "GB"
+            }
+          ]
+        }
+      },
+      "capture": {
+        "draft": "$.id"
+      },
+      "expect": {
+        "status": 201,
+        "body": {
+          "id": "<uuid>",
+          "organization_id": "01920000-0000-7000-8000-00000000b001",
+          "status": "draft",
+          "title": "Platform engineer",
+          "description": "",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "remote",
+              "country": "GB",
+              "address": null
+            }
+          ],
+          "currency": "",
+          "yearly_ctc": null,
+          "yearly_base": null,
+          "hourly_rate": null,
+          "expected_hours": null,
+          "min_office_yoe": null,
+          "min_oss_yoe": null,
+          "requires_online_test": null,
+          "max_interview_rounds": null,
+          "avg_days_to_offer": null,
+          "questions": [],
+          "opened_at": null,
+          "close_requested_at": null,
+          "closed_at": null,
+          "close_reason": null,
+          "hires": [],
+          "advertised": false,
+          "supersedes": null,
+          "created_at": "<timestamp>",
+          "updated_at": "<timestamp>"
+        }
+      }
+    },
+    {
+      "_step": "The same refusal on a draft's PATCH, and the draft keeps the entries it had.",
+      "as": "hank",
+      "request": {
+        "method": "PATCH",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles/{{draft}}",
+        "body": {
+          "title": "Platform engineer",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "remote",
+              "country": "GB"
+            },
+            {
+              "mode": "onsite"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "onsite_needs_address",
+          "field": "locations",
+          "position": 2
+        },
+        "db": {
+          "role_locations": {
+            "where": {
+              "role_id": "{{draft}}"
+            },
+            "count": 1,
+            "all_match": {
+              "mode": "remote",
+              "country": "GB"
+            }
+          }
+        }
+      }
+    },
+    {
+      "_step": "And on revise. Nothing is written: no successor, and the original stays open.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles/{{acme.role}}/revise",
+        "body": {
+          "title": "Backend engineer",
+          "engagement": "full_time",
+          "locations": []
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "role_location_required",
+          "field": "locations"
+        },
+        "db": {
+          "roles": {
+            "where": {
+              "organization_id": "01920000-0000-7000-8000-00000000b001"
+            },
+            "count": 2
+          },
+          "role_locations": {
+            "where": {
+              "role_id": "{{acme.role}}"
+            },
+            "count": 1
+          }
+        }
+      }
+    }
+  ]
+}

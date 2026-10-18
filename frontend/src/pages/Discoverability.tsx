@@ -24,6 +24,8 @@ import {
   useSetAvailability,
 } from "../hooks/contributor";
 import { useWhoAmI } from "../hooks/session";
+import { describeForContributor } from "../logic/roleLocations";
+import { useCountryNames } from "../ui/countries";
 import { ProfileForm } from "../ui/ProfileForm";
 import { ReadinessPanel } from "../ui/Readiness";
 import * as format from "../logic/format";
@@ -49,7 +51,7 @@ import {
 // old design had.
 
 /** The job, as the person being approached sees it. */
-function RoleSummary({ role }: { role: ContactRole }) {
+function RoleSummary({ role, nameOf }: { role: ContactRole; nameOf: (code: string) => string }) {
   const pay =
     role.engagement === "freelance"
       ? role.hourly_rate != null
@@ -71,14 +73,11 @@ function RoleSummary({ role }: { role: ContactRole }) {
   return (
     <div className="ev__body">
       <p className="small">
-        <strong>{role.title}</strong> · {ENGAGEMENT_LABELS[role.engagement]} ·{" "}
-        {role.location === "remote" ? "remote" : "at their office"}
+        <strong>{role.title}</strong> · {ENGAGEMENT_LABELS[role.engagement]}
         {pay ? ` · ${pay}` : ""}
       </p>
       {role.description ? <p className="small muted">{role.description}</p> : null}
-      {role.eligible_countries.length > 0 ? (
-        <p className="field__help">Can hire in {role.eligible_countries.join(", ")}.</p>
-      ) : null}
+      <p className="field__help">{describeForContributor(role.locations, nameOf)}.</p>
       {process.length > 0 ? (
         <p className="field__help">Their process: {process.join(", ")}.</p>
       ) : null}
@@ -96,6 +95,7 @@ export function DiscoverabilityPage() {
   // they just stated, which is worse than not showing it at all.
   const profile = useMyProfile();
   const requests = useMyContactRequests();
+  const nameOf = useCountryNames();
   const respond = useRespondToContact();
   const mint = useMintShareLink();
   const revoke = useRevokeShareLink();
@@ -109,11 +109,7 @@ export function DiscoverabilityPage() {
 
   return (
     <div className="page">
-      <PageHead
-        eyebrow="Visibility"
-        title="Being found"
-        lede="Whether a hirer can see you, what you are looking for, who has asked, and the one link you can publish."
-      />
+      <PageHead eyebrow="Visibility" title="Being found" />
 
       {/* FIRST, because it is the question the page is about. Everything
           below is a field; this is the answer they came for. */}
@@ -142,10 +138,8 @@ export function DiscoverabilityPage() {
         )}
 
         <p className="field__help">
-          Turning this on opens you to everything — remote, contract, freelance, an internship. What
-          you would prefer is below, and it only shapes what you are shown; it never stops a company
-          reaching you. Saying nothing keeps you out of search entirely, and any answer lapses after
-          fifteen days, which hides you by default without touching your scores.
+          Turning this on opens you to everything — remote, contract, freelance, an internship. Any
+          answer lapses after fifteen days.
         </p>
 
         {set.error ? <Failure message={set.error.message} /> : null}
@@ -166,9 +160,8 @@ export function DiscoverabilityPage() {
         />
 
         <Banner icon="warn">
-          Turning it off is an <b>opt-out</b>, not just silence. It removes you from search and from
-          the ranked population, and no hirer toggle reveals you. Your scores are untouched, and
-          turning it back on restores everything.
+          Turning it off removes you from search and from the ranked population. Your scores are
+          untouched, and turning it back on restores everything.
         </Banner>
       </Card>
 
@@ -222,7 +215,7 @@ export function DiscoverabilityPage() {
                       here so a decline can be informed rather than made on
                       suspicion. The process figures are shown to you and to the
                       organisation, and to nobody else. */}
-                  {r.role ? <RoleSummary role={r.role} /> : null}
+                  {r.role ? <RoleSummary role={r.role} nameOf={nameOf} /> : null}
                 </div>
                 <div className="row__right">
                   {r.status === "pending" ? (
@@ -259,9 +252,8 @@ export function DiscoverabilityPage() {
         </div>
 
         <p className="field__help">
-          The only thing on this platform an anonymous visitor can see. It carries your scores and
-          your evidence — never your rank, which is a fact about a pool the reader cannot see, and
-          never your email.
+          The only thing an anonymous visitor can see. It carries your scores and your evidence —
+          never your rank, and never your email.
         </p>
 
         {mint.error ? <Failure message={mint.error.message} /> : null}
@@ -286,8 +278,7 @@ export function DiscoverabilityPage() {
 
         {revoked ? (
           <Banner>
-            Revoked. Anyone holding it now gets the same answer as a link that never existed — the
-            two are deliberately indistinguishable.
+            Revoked. Anyone holding it now gets the same answer as a link that never existed.
           </Banner>
         ) : null}
 

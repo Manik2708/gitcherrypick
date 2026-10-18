@@ -17,15 +17,18 @@ type AdminController struct {
 	evaluation port.EvaluationService
 	onboarding port.OnboardingService
 
+	// workplace decides office requests (ADR-0024 decision 13).
+	workplace port.WorkplaceService
+
 	// clock, because how long a request has waited is measured against the
 	// platform's clock rather than the host's (ADR-0012).
 	clock port.Clock
 }
 
 // NewAdminController wires the review queues.
-func NewAdminController(admin port.AdminService, evaluation port.EvaluationService, onboarding port.OnboardingService, clock port.Clock) *AdminController {
+func NewAdminController(admin port.AdminService, evaluation port.EvaluationService, onboarding port.OnboardingService, workplace port.WorkplaceService, clock port.Clock) *AdminController {
 	return &AdminController{admin: admin, evaluation: evaluation,
-		onboarding: onboarding, clock: clock}
+		onboarding: onboarding, workplace: workplace, clock: clock}
 }
 
 var _ port.Controller = (*AdminController)(nil)
@@ -47,6 +50,13 @@ func (c *AdminController) Routes() (string, http.Handler) {
 	// make one endpoint mean two things.
 	r.Get("/onboarding", c.onboardingQueue)
 	r.Post("/onboarding/{submissionID}/decide", c.decideOnboarding)
+
+	// Office requests are a third pair, for the reason onboarding has its
+	// own: a different table, a different shape — an address and an existing
+	// organisation — and an approval that changes what the organisation is
+	// (ADR-0024 decision 13).
+	r.Get("/office-requests", c.officeRequests)
+	r.Post("/office-requests/{requestID}/decide", c.decideOfficeRequest)
 
 	r.Get("/skill-requests", c.skillRequests)
 	r.Post("/skill-requests/{requestID}/decide", c.decideSkillRequest)
@@ -604,6 +614,10 @@ type onboardingSubmissionBody struct {
 	Phone       string              `json:"phone"`
 	Headcount   string              `json:"headcount"`
 
+	// Workplace is the stated choice, so a reviewer reads "fully remote"
+	// rather than an absence (ADR-0017 amendment 4).
+	Workplace string `json:"workplace"`
+
 	Address *onboardingAddressBody `json:"address"`
 	Owner   onboardingOwnerBody    `json:"owner"`
 
@@ -620,7 +634,7 @@ type onboardingSubmissionBody struct {
 func (c *AdminController) onboardingBody(s port.OnboardingSubmission) onboardingSubmissionBody {
 	out := onboardingSubmissionBody{
 		ID: s.ID, Name: s.Name, Description: s.Description, Email: s.Email,
-		Phone: s.Phone, Headcount: string(s.Headcount),
+		Phone: s.Phone, Headcount: string(s.Headcount), Workplace: string(s.Workplace),
 		Owner: onboardingOwnerBody{
 			Username: s.OwnerUsername, DisplayName: s.OwnerDisplayName,
 		},
@@ -628,10 +642,9 @@ func (c *AdminController) onboardingBody(s port.OnboardingSubmission) onboarding
 		CreatedAt:  s.CreatedAt,
 		AgeHours:   c.clock.Now().Sub(s.CreatedAt).Hours(),
 	}
-	// Null rather than an object of empty strings. "No address given" is a fact
-	// an administrator should read directly — a remote company has none to
-	// give, and it is one of the things they are weighing.
-	if s.Country != "" {
+	// Null exactly when the company said it is fully remote, rather than an
+	// object of empty strings.
+	if s.Workplace == domain.WorkplaceOffice {
 		out.Address = &onboardingAddressBody{
 			Country: s.Country, City: s.City, PostalCode: s.PostalCode,
 			Street1: s.Street1, Street2: s.Street2,
@@ -708,5 +721,73 @@ func (c *AdminController) decideOnboarding(w http.ResponseWriter, r *http.Reques
 		Status:     decisionStatus(approve),
 		ReviewedAt: c.clock.Now(),
 		ReviewedBy: p.Subject(),
+	})
+}
+
+// --- office requests (ADR-0024) ----------------------------------------------
+
+// officeOrganizationBody names the organisation asking.
+type officeOrganizationBody struct {
+	ID   domain.OrganizationID `json:"id"`
+	Name string                `json:"name"`
+}
+
+// officeQueueBody is one undecided request, as an administrator reads it
+// (amendment 1 §1.2). Supersedes names the previous, rejected request, so a
+// reviewer of the second can find the first; omitted when there is none.
+type officeQueueBody struct {
+	ID           domain.OfficeRequestID  `json:"id"`
+	Organization officeOrganizationBody  `json:"organization"`
+	Address      requestedAddressBody    `json:"address"`
+	RequestedBy  string                  `json:"requested_by"`
+	CreatedAt    time.Time               `json:"created_at"`
+	Supersedes   *domain.OfficeRequestID `json:"supersedes,omitempty"`
+}
+
+// officeRequests lists undecided requests, oldest first.
+func (c *AdminController) officeRequests(w http.ResponseWriter, r *http.Request) {
+	p, ok := require(w, r, domain.KindAdmin)
+	if !ok {
+		return
+	}
+	requests, err := c.workplace.OfficeRequests(r.Context(), p)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	out := make([]officeQueueBody, 0, len(requests))
+	for _, q := range requests {
+		out = append(out, officeQueueBody{
+			ID:           q.ID,
+			Organization: officeOrganizationBody{ID: q.OrganizationID, Name: q.OrganizationName},
+			Address:      requestedAddressOf(q),
+			RequestedBy:  q.RequestedBy.Username,
+			CreatedAt:    q.CreatedAt,
+			Supersedes:   q.Supersedes,
+		})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"total": len(out), "office_requests": out})
+}
+
+// decideOfficeRequest approves or rejects one, through the shared decision
+// envelope and the shared decision body (amendment 1 §1.1).
+func (c *AdminController) decideOfficeRequest(w http.ResponseWriter, r *http.Request) {
+	p, id, decision, ok := c.decisionContext(w, r)
+	if !ok {
+		return
+	}
+	approve, _ := decision.approved()
+
+	out, err := c.workplace.DecideOfficeRequest(r.Context(), p,
+		domain.OfficeRequestID(id), approve, decision.justification())
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, verificationDecisionBody{
+		ID:         domain.RequestID(out.ID),
+		Status:     string(out.Status),
+		ReviewedAt: out.ReviewedAt,
+		ReviewedBy: string(out.ReviewedBy),
 	})
 }

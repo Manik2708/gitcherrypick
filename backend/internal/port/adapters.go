@@ -211,8 +211,8 @@ type TokenMinter interface {
 // PlaceService answers what countries exist (ADR-0018 §9).
 //
 // One method, deliberately. A COUNTRY CODE is a closed vocabulary two systems
-// must agree on — it is matched against a role's eligible countries, so "UK"
-// and "GB" being different strings is a bug. A postcode is matched against
+// must agree on — it is matched against a role's remote location entries, so
+// "UK" and "GB" being different strings is a bug. A postcode is matched against
 // nothing, is read by a person and posted to by a courier, and is not looked
 // up at all.
 //
@@ -272,6 +272,13 @@ const (
 	// company: approved and ready to sign in, or refused with a reason and a
 	// way to correct it (ADR-0017 §8).
 	NotifyOnboardingDecided NotificationKind = "onboarding_decided"
+
+	// NotifyOfficeRequestApproved and NotifyOfficeRequestRejected answer the
+	// owner who asked a fully remote organisation's first address to be
+	// reviewed (ADR-0024 amendment 1 §1.10). Two kinds rather than one,
+	// because the two subjects differ.
+	NotifyOfficeRequestApproved NotificationKind = "office_request_approved"
+	NotifyOfficeRequestRejected NotificationKind = "office_request_rejected"
 
 	NotifyVerificationDecided NotificationKind = "verification_decided"
 	NotifySkillRequestDecided NotificationKind = "skill_request_decided"

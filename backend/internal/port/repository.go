@@ -349,12 +349,69 @@ type OrganizationRepository interface {
 	// its own right (ADR-0002). Returns the most recent when both exist.
 	VerificationFor(ctx context.Context, hirer domain.HirerID, org domain.OrganizationID) (*VerificationRequest, error)
 
-	// Addresses lists an organisation's offices.
-	//
-	// Written during onboarding (ADR-0017) and read by roles, which point at a
-	// row rather than retyping one — so correcting an address corrects every
-	// role at it.
+	// Addresses lists an organisation's LIVE addresses: the picker. The main
+	// office first, then in the order they were added (ADR-0024 amendment 1
+	// §1.8).
 	Addresses(ctx context.Context, id domain.OrganizationID) ([]domain.Address, error)
+
+	// AllAddresses lists every address the organisation has ever had,
+	// removed ones included, inside the caller's transaction. A role write
+	// reads it to tell "not this organisation's" from "removed".
+	AllAddresses(ctx context.Context, tx Tx, id domain.OrganizationID) ([]domain.Address, error)
+
+	// Workplace reads whether the organisation has an office, without a lock.
+	Workplace(ctx context.Context, tx Tx, id domain.OrganizationID) (domain.Workplace, error)
+
+	// LockWorkplace locks the organisation's row and reads its kind.
+	//
+	// Every write that depends on the kind takes this lock first — role
+	// create, PATCH, revise and open, address add and remove, office-request
+	// approval and the switch — so an onsite entry and the switch to fully
+	// remote cannot each pass their check and both commit (ADR-0024
+	// §Invariants).
+	LockWorkplace(ctx context.Context, tx Tx, id domain.OrganizationID) (domain.Workplace, error)
+
+	// AddAddress writes a further address, live at once and never the main
+	// office: only an organisation's first address is reviewed (ADR-0024
+	// decision 10).
+	AddAddress(ctx context.Context, tx Tx, a *domain.Address) (*domain.Address, error)
+
+	// RemoveAddress stamps one address removed. A stamp, never a delete.
+	RemoveAddress(ctx context.Context, tx Tx, id domain.AddressID, by domain.HirerID, at time.Time) error
+
+	// GoFullyRemote stamps every live address removed, the main office
+	// included, and makes the organisation fully remote, in the caller's
+	// transaction (ADR-0024 decision 15).
+	GoFullyRemote(ctx context.Context, tx Tx, id domain.OrganizationID, by domain.HirerID, at time.Time) error
+}
+
+// OfficeRequestRepository owns fully remote organisations asking for an
+// office (ADR-0024 decision 13).
+//
+// Append-only. A rejected request stays as it was and a new one is a new row,
+// so a reviewer of the second can see what changed.
+type OfficeRequestRepository interface {
+	// Submit records a request. A second while one is undecided comes back as
+	// ErrConflict.
+	Submit(ctx context.Context, tx Tx, r *domain.OfficeRequest) (*domain.OfficeRequest, error)
+
+	// ByID reads one request, locking it when inside a transaction.
+	ByID(ctx context.Context, tx Tx, id domain.OfficeRequestID) (*domain.OfficeRequest, error)
+
+	// Latest is the organisation's most recent request, or ErrNotFound.
+	Latest(ctx context.Context, org domain.OrganizationID) (*domain.OfficeRequest, error)
+
+	// Queue is every undecided request, oldest first.
+	Queue(ctx context.Context) ([]domain.OfficeRequest, error)
+
+	// Approve writes the address as the main office (added by the requester),
+	// makes the organisation an office one and stamps the request, in the
+	// caller's transaction. A request already decided is ErrConflict.
+	Approve(ctx context.Context, tx Tx, id domain.OfficeRequestID, by domain.AdminID, at time.Time) (*domain.Address, error)
+
+	// Reject stamps the request decided with a reason and no address. A
+	// request already decided is ErrConflict.
+	Reject(ctx context.Context, tx Tx, id domain.OfficeRequestID, by domain.AdminID, reason string, at time.Time) error
 }
 
 // RosterEntry is an organization's standing intent to seat an address.
@@ -398,6 +455,10 @@ type OnboardingSubmission struct {
 	Email       string
 	Phone       string
 	Headcount   domain.HeadcountBand
+
+	// Workplace is the stated choice (ADR-0024 decision 11). An office
+	// submission carries the address below; a fully remote one carries none.
+	Workplace domain.Workplace
 
 	// --- the main office, as submitted -----------------------------------
 	//
@@ -587,14 +648,36 @@ type RoleRepository interface {
 	// transaction, which is the only place it can be held.
 	Close(ctx context.Context, tx Tx, id domain.RoleID, c RoleClosure) (*domain.Role, error)
 
-	// Matching returns open roles this contributor could be approached for.
-	Matching(ctx context.Context, m RoleMatch) ([]domain.Role, error)
+	// ActiveOnsiteRoles lists the organisation's DRAFT and OPEN roles with an
+	// onsite entry — at the given address, or at any when it is nil — oldest
+	// first. They are what blocks removing an address or going fully remote
+	// (ADR-0024 amendment 1 §1.4).
+	ActiveOnsiteRoles(ctx context.Context, tx Tx, org domain.OrganizationID, at *domain.AddressID) ([]domain.RoleSummary, error)
 
-	// Candidates lists everybody on a round for this role.
-	//
-	// One row per PERSON, not per entry: somebody staged on two rounds for
-	// one job has been approached once as far as a hirer is concerned.
+	// Candidates lists everybody on this role — one row per person, which the
+	// primary key (role_id, user_id) makes true by construction (ADR-0023).
 	Candidates(ctx context.Context, id domain.RoleID) ([]domain.RoleCandidate, error)
+
+	// Stage puts somebody on a role and discloses NOTHING.
+	Stage(ctx context.Context, c *domain.RoleCandidate, role domain.RoleID) (*domain.RoleCandidate, error)
+
+	// Unstage is permitted only while notified_at IS NULL. It returns
+	// ErrConflict afterwards: the contributor was told, and that is a fact.
+	Unstage(ctx context.Context, role domain.RoleID, user domain.UserID) error
+
+	// Contact tells exactly the candidates where notified_at IS NULL, writing
+	// every contact request in one transaction and stamping them. This is the
+	// irreversible act, and it is one call because a half-contacted role would
+	// have told some people and not others.
+	Contact(ctx context.Context, tx Tx, role domain.RoleID, by domain.HirerID, resultBy time.Time) ([]domain.ContactRequest, error)
+
+	// ContactRequestsForRole is what each contacted person answered.
+	ContactRequestsForRole(ctx context.Context, role domain.RoleID) ([]domain.ContactRequest, error)
+
+	// OverdueRatios drives the daily flagging job: contacted roles past the
+	// date they promised, over contacted roles. A role nobody was told about
+	// never promised anything, so it does not count.
+	OverdueRatios(ctx context.Context, now time.Time) ([]OverdueOrg, error)
 
 	// HiresOf reports who a role was filled with.
 	HiresOf(ctx context.Context, id domain.RoleID) ([]domain.RoleHire, error)
@@ -618,38 +701,6 @@ type RoleClosure struct {
 	// Staged, unanswered and declined all fail: a company may record hiring
 	// somebody who agreed to talk to it and nobody else.
 	Hires []domain.UserID
-}
-
-// RoleMatch is a contributor's side of the matching query (ADR-0019 §Endpoints).
-//
-// Compensation is in here, and that is the ONE direction it travels: it filters
-// this contributor's view of roles and is never shown to a hirer (ADR-0018 §5).
-type RoleMatch struct {
-	// Country is ISO 3166-1 alpha-2, or empty for somebody who has not said.
-	// Empty does not exclude: it matches roles that hire anywhere.
-	Country string
-
-	// Shapes are the engagements this contributor ticked. Empty matches
-	// NOTHING — a person who has said what they want and wants none of these
-	// is not shown roles they did not ask for.
-	Shapes []domain.Engagement
-
-	// OfficeYOE and OSSYears are nil when unknown. Unknown office years clear
-	// a minimum (self-reported either way); unknown OSS years do NOT, because
-	// the figure is verified and failing open would make any minimum clearable
-	// with a link nobody could check (ADR-0019 §When the fetch fails).
-	OfficeYOE *int
-	OSSYears  *int
-
-	// MinYearly and MinHourly are what the contributor expects, in minor units,
-	// with Currency. A role paying less is kept out of their way. Nil means
-	// they stated nothing, and nothing is filtered.
-	Currency  string
-	MinYearly *int64
-	MinHourly *int64
-
-	Limit  int
-	Offset int
 }
 
 // OpeningRepository owns published adverts (ADR-0020).
@@ -1066,47 +1117,21 @@ type SearchRepository interface {
 	Rank(ctx context.Context, id domain.UserID) (*domain.Rank, error)
 }
 
-// ShortlistRepository owns hiring rounds, staging and confirmation.
-type ShortlistRepository interface {
-	ByID(ctx context.Context, id domain.ShortlistID) (*domain.Shortlist, error)
-	ListByOrganization(ctx context.Context, id domain.OrganizationID, status *domain.ShortlistStatus) ([]domain.Shortlist, error)
-
-	Create(ctx context.Context, s *domain.Shortlist) (*domain.Shortlist, error)
-	Update(ctx context.Context, id domain.ShortlistID, name, description *string, date *time.Time) (*domain.Shortlist, error)
-	Close(ctx context.Context, id domain.ShortlistID) (*domain.Shortlist, error)
-
-	// AddEntry stages a candidate and discloses NOTHING.
-	AddEntry(ctx context.Context, e *domain.ShortlistEntry) (*domain.ShortlistEntry, error)
-
-	// RemoveEntry is permitted only while notified_at IS NULL. It returns
-	// ErrConflict afterwards: the contributor was told, and that is a fact.
-	RemoveEntry(ctx context.Context, id domain.ShortlistID, user domain.UserID) error
-
-	// Confirm notifies exactly the entries where notified_at IS NULL, writing
-	// every contact request in one transaction and stamping the entries. This
-	// is the irreversible act, and it is one call because a partially confirmed
-	// round would have told some people and not others.
-	Confirm(ctx context.Context, tx Tx, id domain.ShortlistID) ([]domain.ContactRequest, error)
-
-	// OverdueRatios drives the daily flagging job: open rounds past their date
-	// over open rounds. A draft never promised anything, so it does not count.
-	OverdueRatios(ctx context.Context, now time.Time) ([]OverdueOrg, error)
-}
-
 // OverdueOrg is one organization's delivery record.
 type OverdueOrg struct {
 	OrganizationID domain.OrganizationID
 	Name           string
-	OpenShortlists int
-	Overdue        int
-	Ratio          float64
+	// OpenRoles is how many of this organization's roles have told somebody
+	// and are still open — the denominator the ratio is over.
+	OpenRoles int
+	Overdue   int
+	Ratio     float64
 }
 
 // ContactRepository owns the consent record.
 type ContactRepository interface {
 	ByID(ctx context.Context, id domain.ContactID) (*domain.ContactRequest, error)
 	ListForUser(ctx context.Context, id domain.UserID, status *domain.ContactRequestStatus) ([]domain.ContactRequest, error)
-	ListForShortlist(ctx context.Context, id domain.ShortlistID) ([]domain.ContactRequest, error)
 
 	// Respond records the answer and, on acceptance, stamps email_released_at.
 	// The email itself is read from users.email; this records that release was

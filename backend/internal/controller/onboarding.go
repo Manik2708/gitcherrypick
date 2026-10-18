@@ -78,22 +78,33 @@ type addressInput struct {
 // password when they prove the address, not here — so a form submitted by
 // anyone cannot name who will own the result (ADR-0017 §2).
 type onboardingRequest struct {
-	Name        string       `json:"name"`
-	Description string       `json:"description"`
-	Email       string       `json:"email"`
-	Phone       string       `json:"phone"`
-	Headcount   string       `json:"headcount"`
-	Address     addressInput `json:"address"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Email       string `json:"email"`
+	Phone       string `json:"phone"`
+	Headcount   string `json:"headcount"`
+
+	// Workplace is "office" or "fully_remote", required (ADR-0024 decision
+	// 11). Whether the address agrees with it is the service's rule.
+	Workplace string `json:"workplace"`
+
+	// Address is a pointer so an absent or null address and one sent with
+	// every part empty both reach the service as "nothing given".
+	Address *addressInput `json:"address"`
 }
 
 func (b onboardingRequest) form() port.OnboardingForm {
-	return port.OnboardingForm{
+	out := port.OnboardingForm{
 		Name: b.Name, Description: b.Description, Email: b.Email,
 		Phone: b.Phone, Headcount: domain.HeadcountBand(b.Headcount),
-		Country: b.Address.Country, City: b.Address.City,
-		PostalCode: b.Address.PostalCode,
-		Street1:    b.Address.Street1, Street2: b.Address.Street2,
+		Workplace: domain.Workplace(b.Workplace),
 	}
+	if b.Address != nil {
+		out.Country, out.City = b.Address.Country, b.Address.City
+		out.PostalCode = b.Address.PostalCode
+		out.Street1, out.Street2 = b.Address.Street1, b.Address.Street2
+	}
+	return out
 }
 
 // onboardingVerifyRequest proves the address and names the owner.

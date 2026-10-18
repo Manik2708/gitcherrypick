@@ -214,8 +214,7 @@ export function ClaimDetailPage() {
       {locked ? (
         <Banner icon="lock">
           A judged claim is frozen for seven days — it unlocks{" "}
-          {format.relativeDays(current.locked_until, now)}. The freeze is what stops a score being
-          re-rolled by resubmitting the same work.
+          {format.relativeDays(current.locked_until, now)}.
         </Banner>
       ) : null}
 
@@ -312,10 +311,7 @@ export function ClaimDetailPage() {
                 {filledSlots(evidenceSlots)} of {MAX_PRS} used
               </span>
             </div>
-            <p className="field__help">
-              Up to five merged pull requests you wrote. Each slot is judged in place, so removing
-              one does not renumber the others.
-            </p>
+            <p className="field__help">Up to five merged pull requests you wrote.</p>
 
             <EvidenceSlots
               slots={evidenceSlots}
@@ -347,7 +343,6 @@ export function ClaimDetailPage() {
             <SkillPicker
               id="skillq"
               label="Search the catalogue"
-              help="Skills are picked from a curated catalogue, never typed freely — otherwise “Go” and “Golang” rank as separate populations."
               chosen={chosen}
               onChange={setChosen}
             />
@@ -422,12 +417,7 @@ export function ClaimDetailPage() {
 
           {preview.loading ? <Loading what="what this would cost" /> : null}
 
-          {preview.data && demotions.length === 0 ? (
-            <Banner>
-              Nothing loses standing. This claim's evidence is not the only thing holding any of
-              your skills up.
-            </Banner>
-          ) : null}
+          {preview.data && demotions.length === 0 ? <Banner>Nothing loses standing.</Banner> : null}
 
           {demotions.length > 0 ? (
             <>

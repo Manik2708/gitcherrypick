@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"html"
 	"regexp"
 	"strings"
 )
@@ -35,6 +36,16 @@ type emailQuery struct {
 	// Subject narrows further, for a case that sends two kinds of message to
 	// one address.
 	Subject string `json:"subject"`
+
+	// Contains and Excludes narrow by the message body. A message counts only
+	// if its HTML holds every Contains string and none of the Excludes ones.
+	//
+	// For a notice whose wording no ADR fixes but whose CONTENT one does — an
+	// office-request rejection carries the administrator's reason (ADR-0024
+	// decision 14); a contact email names a city and never a street (decision
+	// 7). Combined with Count, that is the assertion.
+	Contains []string `json:"contains"`
+	Excludes []string `json:"excludes"`
 
 	// Count is the assertion. A pointer because 0 is the interesting value:
 	// a roster miss must send NOTHING, and "expected no message" is the only
@@ -94,13 +105,17 @@ func readEmail(ctx context.Context, control *Control, bindings map[string]string
 		if query.Subject != "" && message.Subject != query.Subject {
 			continue
 		}
+		if !BodyMatches(message.HTML, query.Contains, query.Excludes) {
+			continue
+		}
 		matches = append(matches, message)
 	}
 
 	if query.Count != nil && len(matches) != *query.Count {
 		return nil, fmt.Errorf(
-			"expected %d message(s) to %s%s, found %d — subjects so far: %s",
-			*query.Count, query.To, describeSubject(query.Subject), len(matches), subjectsOf(sent))
+			"expected %d message(s) to %s%s%s, found %d — subjects so far: %s",
+			*query.Count, query.To, describeSubject(query.Subject),
+			describeBody(query.Contains, query.Excludes), len(matches), subjectsOf(sent))
 	}
 	if len(matches) == 0 {
 		// Nothing to capture from, and nothing to compare. A count of 0 has
@@ -171,4 +186,36 @@ func subjectsOf(sent []SentEmail) string {
 		parts = append(parts, fmt.Sprintf("%s -> %q", strings.Join(message.To, ","), message.Subject))
 	}
 	return strings.Join(parts, "; ")
+}
+
+// BodyMatches applies a READ_EMAIL step's body filters.
+//
+// Against the TEXT a reader sees, not the raw markup. The notifier renders with
+// html/template, which escapes an apostrophe as &#39; — so a fixture asserting
+// the administrator's reason, written as the administrator typed it, would
+// never match the bytes. Unescaping first compares what the recipient reads.
+func BodyMatches(body string, contains, excludes []string) bool {
+	text := html.UnescapeString(body)
+	for _, want := range contains {
+		if !strings.Contains(text, want) {
+			return false
+		}
+	}
+	for _, unwanted := range excludes {
+		if strings.Contains(text, unwanted) {
+			return false
+		}
+	}
+	return true
+}
+
+func describeBody(contains, excludes []string) string {
+	var parts []string
+	if len(contains) > 0 {
+		parts = append(parts, fmt.Sprintf(" containing %q", contains))
+	}
+	if len(excludes) > 0 {
+		parts = append(parts, fmt.Sprintf(" without %q", excludes))
+	}
+	return strings.Join(parts, " and")
 }

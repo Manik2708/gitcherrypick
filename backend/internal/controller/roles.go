@@ -48,11 +48,16 @@ func (c *RoleController) Routes() (string, http.Handler) {
 	r.Post("/{orgID}/roles/{roleID}/open", c.open)
 	r.Post("/{orgID}/roles/{roleID}/close", c.close)
 
+	// WHO IS ON THIS JOB (ADR-0023). Staging discloses nothing; contacting is
+	// the irreversible act, and they are separate calls for that reason.
+	r.Get("/{orgID}/roles/{roleID}/candidates", c.candidates)
+	r.Post("/{orgID}/roles/{roleID}/candidates", c.stage)
+	r.Delete("/{orgID}/roles/{roleID}/candidates/{userID}", c.unstage)
+	r.Post("/{orgID}/roles/{roleID}/contact", c.contact)
+	r.Get("/{orgID}/roles/{roleID}/contact-requests", c.contactRequests)
+
 	// The advert on a role (ADR-0020). Writing the bar and publishing it are
 	// separate, because publishing is the commitment.
-	// Who is already on a round for this role — read before searching again,
-	// and picked from when closing.
-	r.Get("/{orgID}/roles/{roleID}/candidates", c.candidates)
 
 	r.Get("/{orgID}/roles/{roleID}/opening", c.opening)
 	r.Put("/{orgID}/roles/{roleID}/opening", c.saveOpening)
@@ -86,16 +91,16 @@ type roleRequest struct {
 	Description string `json:"description"`
 
 	Engagement string `json:"engagement"`
-	Location   string `json:"location"`
-	AddressID  string `json:"address_id"`
+
+	// Locations replaces location, address_id and eligible_countries, which
+	// are now refused as unknown keys rather than ignored (ADR-0024 §Bodies).
+	Locations []roleLocationRequest `json:"locations"`
 
 	Currency      string `json:"currency"`
 	YearlyCTC     *int64 `json:"yearly_ctc"`
 	YearlyBase    *int64 `json:"yearly_base"`
 	HourlyRate    *int64 `json:"hourly_rate"`
 	ExpectedHours *int   `json:"expected_hours"`
-
-	EligibleCountries []string `json:"eligible_countries"`
 
 	MinOfficeYOE *int `json:"min_office_yoe"`
 	MinOSSYOE    *int `json:"min_oss_yoe"`
@@ -114,22 +119,19 @@ func (b roleRequest) role() domain.Role {
 		Title:              b.Title,
 		Description:        b.Description,
 		Engagement:         domain.Engagement(b.Engagement),
-		Location:           domain.RoleLocation(b.Location),
 		Currency:           b.Currency,
 		YearlyCTC:          b.YearlyCTC,
 		YearlyBase:         b.YearlyBase,
 		HourlyRate:         b.HourlyRate,
 		ExpectedHours:      b.ExpectedHours,
-		EligibleCountries:  b.EligibleCountries,
 		MinOfficeYOE:       b.MinOfficeYOE,
 		MinOSSYOE:          b.MinOSSYOE,
 		RequiresOnlineTest: b.RequiresOnlineTest,
 		MaxInterviewRounds: b.MaxInterviewRounds,
 		AvgDaysToOffer:     b.AvgDaysToOffer,
 	}
-	if b.AddressID != "" {
-		id := domain.AddressID(b.AddressID)
-		out.AddressID = &id
+	for _, l := range b.Locations {
+		out.Locations = append(out.Locations, l.location())
 	}
 	for _, q := range b.Questions {
 		out.Questions = append(out.Questions, domain.RoleQuestion{
@@ -178,18 +180,13 @@ type roleBody struct {
 	Description string `json:"description"`
 	Engagement  string `json:"engagement"`
 
-	Location  string  `json:"location"`
-	AddressID *string `json:"address_id"`
+	Locations []roleLocationBody `json:"locations"`
 
 	Currency      string `json:"currency"`
 	YearlyCTC     *int64 `json:"yearly_ctc"`
 	YearlyBase    *int64 `json:"yearly_base"`
 	HourlyRate    *int64 `json:"hourly_rate"`
 	ExpectedHours *int   `json:"expected_hours"`
-
-	// EligibleCountries EMPTY MEANS ANYWHERE, not "nowhere". A client showing
-	// this must say so, or it will read as a role nobody can take.
-	EligibleCountries []string `json:"eligible_countries"`
 
 	MinOfficeYOE *int `json:"min_office_yoe"`
 	MinOSSYOE    *int `json:"min_oss_yoe"`
@@ -229,11 +226,11 @@ func roleBodyOf(r domain.Role) roleBody {
 	out := roleBody{
 		ID: r.ID, OrgID: r.OrgID, Status: string(r.Status),
 		Title: r.Title, Description: r.Description,
-		Engagement: string(r.Engagement), Location: string(r.Location),
-		Currency: r.Currency, YearlyCTC: r.YearlyCTC, YearlyBase: r.YearlyBase,
+		Engagement: string(r.Engagement),
+		Locations:  roleLocationBodies(r.Locations),
+		Currency:   r.Currency, YearlyCTC: r.YearlyCTC, YearlyBase: r.YearlyBase,
 		HourlyRate: r.HourlyRate, ExpectedHours: r.ExpectedHours,
-		EligibleCountries: r.EligibleCountries,
-		MinOfficeYOE:      r.MinOfficeYOE, MinOSSYOE: r.MinOSSYOE,
+		MinOfficeYOE: r.MinOfficeYOE, MinOSSYOE: r.MinOSSYOE,
 		RequiresOnlineTest: r.RequiresOnlineTest,
 		MaxInterviewRounds: r.MaxInterviewRounds,
 		AvgDaysToOffer:     r.AvgDaysToOffer,
@@ -243,13 +240,6 @@ func roleBodyOf(r domain.Role) roleBody {
 		Advertised: r.Advertised,
 		Supersedes: r.Supersedes,
 		CreatedAt:  r.CreatedAt, UpdatedAt: r.UpdatedAt,
-	}
-	if out.EligibleCountries == nil {
-		out.EligibleCountries = []string{}
-	}
-	if r.AddressID != nil {
-		id := string(*r.AddressID)
-		out.AddressID = &id
 	}
 	if r.CloseReason != nil {
 		reason := string(*r.CloseReason)
@@ -324,8 +314,8 @@ func (c *RoleController) create(w http.ResponseWriter, r *http.Request) {
 	var body roleRequest
 	if err := decode(w, r, &body); err != nil {
 		// 400, not 422: the body could not be READ. 422 is for a body that
-		// parsed and then failed a rule.
-		writeCode(w, http.StatusBadRequest, service.CodeInvalidRole)
+		// parsed and then failed a rule. An unknown or mistyped key is named.
+		writeUndecodable(w, service.CodeInvalidRole, err)
 		return
 	}
 
@@ -349,7 +339,7 @@ func (c *RoleController) update(w http.ResponseWriter, r *http.Request) {
 
 	var body roleRequest
 	if err := decode(w, r, &body); err != nil {
-		writeCode(w, http.StatusBadRequest, service.CodeInvalidRole)
+		writeUndecodable(w, service.CodeInvalidRole, err)
 		return
 	}
 
@@ -378,7 +368,7 @@ func (c *RoleController) revise(w http.ResponseWriter, r *http.Request) {
 
 	var body roleRequest
 	if err := decode(w, r, &body); err != nil {
-		writeCode(w, http.StatusBadRequest, service.CodeInvalidRole)
+		writeUndecodable(w, service.CodeInvalidRole, err)
 		return
 	}
 
@@ -425,7 +415,7 @@ func (c *RoleController) close(w http.ResponseWriter, r *http.Request) {
 
 	var body closeRequest
 	if err := decode(w, r, &body); err != nil {
-		writeCode(w, http.StatusBadRequest, service.CodeInvalidRole)
+		writeUndecodable(w, service.CodeInvalidRole, err)
 		return
 	}
 
@@ -490,6 +480,12 @@ func (c *RoleController) get(w http.ResponseWriter, r *http.Request) {
 		c.writeRoleError(w, err)
 		return
 	}
+	if out == nil {
+		// A service that answers "no error, no role" is a bug, but rendering
+		// it as a panic turns that bug into a 500 with no body at all.
+		writeCode(w, http.StatusNotFound, service.CodeRoleNotFound)
+		return
+	}
 	writeJSON(w, http.StatusOK, roleBodyOf(*out))
 }
 
@@ -515,7 +511,7 @@ func (c *RoleController) saveSettings(w http.ResponseWriter, r *http.Request) {
 
 	var body settingsRequest
 	if err := decode(w, r, &body); err != nil {
-		writeCode(w, http.StatusBadRequest, service.CodeInvalidRole)
+		writeUndecodable(w, service.CodeInvalidRole, err)
 		return
 	}
 
@@ -536,7 +532,31 @@ func (c *RoleController) saveSettings(w http.ResponseWriter, r *http.Request) {
 // role_not_found rather than a bare 404, so a caller can tell a missing role
 // from a missing organisation without reading prose.
 func (c *RoleController) writeRoleError(w http.ResponseWriter, err error) {
+	c.writeRoleErrorFor(w, domain.Principal{}, err)
+}
+
+// writeRoleErrorFor is writeRoleError where the PRINCIPAL is known.
+//
+// A hirer refused for capability is told WHICH of the two verifications is
+// missing (ADR-0002 §5): "you cannot do this" with no account of why sends
+// somebody to support for a fact the platform already knows. Staging and
+// contacting are the paths that reach it, because they are the ones that end
+// in a person being approached.
+func (c *RoleController) writeRoleErrorFor(w http.ResponseWriter, p domain.Principal, err error) {
 	code := service.CodeOf(err)
+	if errorsIsCapability(err) {
+		status, codeOut := statusFor(err)
+		body := map[string]any{"error": codeOut}
+		if message := messages[codeOut]; message != "" {
+			body["message"] = message
+		}
+		if p.Hirer != nil {
+			body["hirer_verified"] = p.Hirer.VerifiedAt != nil
+			body["organization_verified"] = p.Hirer.Organization.IsVerified()
+		}
+		writeDetail(w, status, body)
+		return
+	}
 	switch {
 	case code == service.CodeRoleNotFound, code == service.CodeOpeningNotFound:
 		writeCode(w, http.StatusNotFound, code)
@@ -556,27 +576,6 @@ func (c *RoleController) writeRoleError(w http.ResponseWriter, err error) {
 	}
 }
 
-// roleCandidateBody is somebody already on a round for this role.
-//
-// No email, ever — not even for an accepted request. The hirer who needs it
-// has it from the contact request itself, and a list read in bulk is the wrong
-// place to hand out addresses (ADR-0005 §9).
-type roleCandidateBody struct {
-	UserID      domain.UserID `json:"user_id"`
-	DisplayName string        `json:"display_name"`
-	GitHubLogin string        `json:"github_login,omitempty"`
-
-	ShortlistID   domain.ShortlistID `json:"shortlist_id"`
-	ShortlistName string             `json:"shortlist_name"`
-
-	// Empty while still STAGED — told nothing, and removable.
-	ContactStatus string     `json:"contact_status"`
-	NotifiedAt    *time.Time `json:"notified_at"`
-
-	// Accepted is the only state a hire may be recorded from.
-	Accepted bool `json:"accepted"`
-}
-
 // candidates lists everybody already approached for this role.
 func (c *RoleController) candidates(w http.ResponseWriter, r *http.Request) {
 	p, orgID, ok := c.roleContext(w, r)
@@ -590,18 +589,13 @@ func (c *RoleController) candidates(w http.ResponseWriter, r *http.Request) {
 
 	out, err := c.roles.Candidates(r.Context(), p, orgID, roleID)
 	if err != nil {
-		c.writeRoleError(w, err)
+		c.writeRoleErrorFor(w, p, err)
 		return
 	}
 
-	bodies := make([]roleCandidateBody, 0, len(out))
+	bodies := make([]candidateBody, 0, len(out))
 	for _, x := range out {
-		bodies = append(bodies, roleCandidateBody{
-			UserID: x.UserID, DisplayName: x.DisplayName, GitHubLogin: x.GitHubLogin,
-			ShortlistID: x.ShortlistID, ShortlistName: x.ShortlistName,
-			ContactStatus: string(x.ContactStatus), NotifiedAt: x.NotifiedAt,
-			Accepted: x.Accepted,
-		})
+		bodies = append(bodies, candidateBodyOf(x))
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"candidates": bodies})
 }

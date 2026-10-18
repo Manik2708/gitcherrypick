@@ -6,8 +6,14 @@
 
 import { endpoints } from "../api/endpoints";
 import type {
+  AddressParts,
+  AddressesResponse,
   CloseReason,
-  ConfirmResult,
+  ContactResult,
+  OfficeRequest,
+  OrgAddress,
+  OrgRole,
+  SeatsResponse,
   LeaderboardResponse,
   Opening,
   OpeningBar,
@@ -18,8 +24,6 @@ import type {
   SavedSearch,
   Scorecard,
   SearchResponse,
-  Shortlist,
-  ShortlistSummary,
   VerificationStatus,
 } from "../contract";
 import { useClient, useSession } from "./session";
@@ -124,59 +128,44 @@ export function useLeaderboard(kind: string, skill?: string) {
   );
 }
 
-export function useShortlists() {
-  const client = useClient();
-  return useAsync<{ shortlists: ShortlistSummary[] }>(
-    (signal) => client.get<{ shortlists: ShortlistSummary[] }>(endpoints.shortlists.list(), signal),
-    [client],
-  );
-}
-
-export function useShortlist(id: string | undefined) {
-  const client = useClient();
-  return useAsync<Shortlist>(
-    (signal) => client.get<Shortlist>(endpoints.shortlists.one(id ?? ""), signal),
-    [client, id],
-    Boolean(id),
-  );
-}
-
-export function useCreateShortlist() {
-  const client = useClient();
-  return useAction(
-    (roleId: string, name: string, tentativeResultDate: string, description: string) =>
-      client.post<Shortlist>(endpoints.shortlists.create(), {
-        role_id: roleId,
-        name,
-        description,
-        tentative_result_date: tentativeResultDate,
-      }),
-  );
-}
-
-export function useStageEntry(shortlistId: string) {
+/**
+ * Putting somebody on a job. Discloses NOTHING (ADR-0023).
+ *
+ * The note is private to the organisation: it is why this person is worth the
+ * conversation, and the contributor never sees it.
+ */
+export function useStageCandidate(orgId: string | undefined, roleId: string | undefined) {
   const client = useClient();
   return useAction((userId: string, note = "") =>
-    client.post<unknown>(endpoints.shortlists.entries(shortlistId), { user_id: userId, note }),
+    client.post<RoleCandidate>(endpoints.roles.stage(orgId ?? "", roleId ?? ""), {
+      user_id: userId,
+      note,
+    }),
   );
 }
 
-export function useRemoveEntry(shortlistId: string) {
+/** Only while they have been told nothing. The server enforces it either way. */
+export function useUnstageCandidate(orgId: string | undefined, roleId: string | undefined) {
   const client = useClient();
   return useAction((userId: string) =>
-    client.delete<unknown>(endpoints.shortlists.removeEntry(shortlistId, userId)),
+    client.delete<unknown>(endpoints.roles.unstage(orgId ?? "", roleId ?? "", userId)),
   );
 }
 
-/** Irreversible. Nothing the platform offers takes a confirmation back. */
-export function useConfirmShortlist(shortlistId: string) {
+/**
+ * Telling everybody staged. IRREVERSIBLE — nothing the platform offers takes a
+ * disclosure back.
+ *
+ * The date is the promise each of them is given, and the overdue sweep is
+ * measured against it.
+ */
+export function useContactCandidates(orgId: string | undefined, roleId: string | undefined) {
   const client = useClient();
-  return useAction(() => client.post<ConfirmResult>(endpoints.shortlists.confirm(shortlistId)));
-}
-
-export function useCloseShortlist(shortlistId: string) {
-  const client = useClient();
-  return useAction(() => client.post<unknown>(endpoints.shortlists.close(shortlistId)));
+  return useAction((tentativeResultDate: string) =>
+    client.post<ContactResult>(endpoints.roles.contact(orgId ?? "", roleId ?? ""), {
+      tentative_result_date: tentativeResultDate,
+    }),
+  );
 }
 
 export function useSavedSearches() {
@@ -434,4 +423,67 @@ export function usePublishOpening(orgId: string, roleId: string) {
 export function useWithdrawOpening(orgId: string, roleId: string) {
   const client = useClient();
   return useAction(() => client.post<Opening>(endpoints.roles.withdrawOpening(orgId, roleId)));
+}
+
+/* --- addresses and the organisation's kind (ADR-0024) ---------------------- */
+
+/**
+ * The organisation's live addresses, its kind and any office request.
+ *
+ * Every seat may read it. The role form reads it too: the onsite picker is the
+ * address list, and Onsite is disabled from the same response.
+ */
+export function useAddresses(orgId: string | undefined) {
+  const client = useClient();
+  return useAsync<AddressesResponse>(
+    (signal) => client.get<AddressesResponse>(endpoints.orgs.addresses(orgId ?? ""), signal),
+    [client, orgId],
+    Boolean(orgId),
+  );
+}
+
+/**
+ * This seat's role in the organisation, read off the seat list.
+ *
+ * Undefined while loading or when the seat is not listed. Owner-only controls
+ * are hidden from members; the server refuses them either way.
+ */
+export function useSeatRole(orgId: string | undefined): OrgRole | undefined {
+  const { client, principal } = useSession();
+  const seats = useAsync<SeatsResponse>(
+    (signal) => client.get<SeatsResponse>(endpoints.orgs.seats(orgId ?? ""), signal),
+    [client, orgId],
+    Boolean(orgId),
+  );
+  return seats.data?.seats.find((s) => s.id === principal?.id)?.role;
+}
+
+/** Owners only, and never for a fully remote organisation. Unreviewed. */
+export function useAddAddress(orgId: string) {
+  const client = useClient();
+  return useAction((address: AddressParts) =>
+    client.post<OrgAddress>(endpoints.orgs.addresses(orgId), address),
+  );
+}
+
+/** A stamp. Refused for the main office, and while a draft or open role uses it. */
+export function useRemoveAddress(orgId: string) {
+  const client = useClient();
+  return useAction((addressId: string) =>
+    client.delete<void>(endpoints.orgs.removeAddress(orgId, addressId)),
+  );
+}
+
+/** A fully remote organisation's first address, sent to an administrator. */
+export function useRequestOffice(orgId: string) {
+  const client = useClient();
+  return useAction((address: AddressParts) =>
+    client.post<OfficeRequest>(endpoints.orgs.officeRequest(orgId), address),
+  );
+}
+
+/** Removes every address, main office included. Owners only; no body. */
+export function useGoFullyRemote(orgId: string) {
+  const client = useClient();
+  return useAction(() => client.post<AddressesResponse>(endpoints.orgs.fullyRemote(orgId)));
 }

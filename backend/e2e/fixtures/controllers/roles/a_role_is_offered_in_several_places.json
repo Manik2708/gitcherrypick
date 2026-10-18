@@ -1,0 +1,673 @@
+{
+  "name": "one role is offered remotely in several countries and onsite at two offices",
+  "description": "ADR-0024 decisions 1 to 4, and the hirer bodies of its Implementation.\n\nBefore this, 'remote, or at either office' was three roles, splitting one job's candidates three ways. Now one role holds a SET of entries: here, remote in Germany, remote in India, onsite at the Bengaluru main office and onsite at Austin. Remote is country only — it never points at an address, so a company may offer remote work in Germany where it has no office. Onsite always points at one of the organisation's own addresses and names no country of its own; its country is the address's.\n\nThe request below is deliberately untidy: lower-case 'in', India twice, Austin twice, and the entries out of order. A repeated entry is COLLAPSED, not refused (decision 3) — a form that sends 'India, India' has not made a mistake worth a 422 — and the response is in the one order two reads must agree on: remote first, then by country, then by city. Every hirer entry carries `mode`, `country` and `address`, the address embedded in full.\n\nEntries share the role's immutability (decision 4): written on create, replaced wholesale on a draft's PATCH, carried by open, and changed after opening only by revise — which writes a new role and leaves the original's entries exactly as they were.",
+  "seed": ["principals"],
+  "steps": [
+    {
+      "_step": "Six entries sent, four kept: 'in' and 'IN' are one country, and Austin twice is one office.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles",
+        "body": {
+          "title": "Site reliability engineer",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "onsite",
+              "address_id": "{{acme.address.austin}}"
+            },
+            {
+              "mode": "remote",
+              "country": "in"
+            },
+            {
+              "mode": "onsite",
+              "address_id": "{{acme.address.main}}"
+            },
+            {
+              "mode": "remote",
+              "country": "DE"
+            },
+            {
+              "mode": "remote",
+              "country": "IN"
+            },
+            {
+              "mode": "onsite",
+              "address_id": "{{acme.address.austin}}"
+            }
+          ]
+        }
+      },
+      "capture": {
+        "role": "$.id"
+      },
+      "expect": {
+        "status": 201,
+        "_note": "Remote first (DE, IN), then onsite by country and city (IN Bengaluru, US Austin). The onsite entries' country is null: an onsite entry names no country of its own.",
+        "body": {
+          "id": "<uuid>",
+          "organization_id": "01920000-0000-7000-8000-00000000b001",
+          "status": "draft",
+          "title": "Site reliability engineer",
+          "description": "",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "remote",
+              "country": "DE",
+              "address": null
+            },
+            {
+              "mode": "remote",
+              "country": "IN",
+              "address": null
+            },
+            {
+              "mode": "onsite",
+              "country": null,
+              "address": {
+                "id": "01920000-0000-7000-8000-0000000ad001",
+                "country": "IN",
+                "city": "Bengaluru",
+                "postal_code": "560001",
+                "street1": "1 MG Road",
+                "street2": "Floor 4",
+                "is_main_office": true,
+                "removed": false
+              }
+            },
+            {
+              "mode": "onsite",
+              "country": null,
+              "address": {
+                "id": "01920000-0000-7000-8000-0000000ad002",
+                "country": "US",
+                "city": "Austin",
+                "postal_code": "78701",
+                "street1": "500 W 2nd St",
+                "street2": "Suite 300",
+                "is_main_office": false,
+                "removed": false
+              }
+            }
+          ],
+          "currency": "",
+          "yearly_ctc": null,
+          "yearly_base": null,
+          "hourly_rate": null,
+          "expected_hours": null,
+          "min_office_yoe": null,
+          "min_oss_yoe": null,
+          "requires_online_test": null,
+          "max_interview_rounds": null,
+          "avg_days_to_offer": null,
+          "questions": [],
+          "opened_at": null,
+          "close_requested_at": null,
+          "closed_at": null,
+          "close_reason": null,
+          "hires": [],
+          "advertised": false,
+          "supersedes": null,
+          "created_at": "<timestamp>",
+          "updated_at": "<timestamp>"
+        }
+      }
+    },
+    {
+      "_step": "A second read agrees with the first, entry for entry.",
+      "as": "hank",
+      "request": {
+        "method": "GET",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles/{{role}}"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "id": "<uuid>",
+          "organization_id": "01920000-0000-7000-8000-00000000b001",
+          "status": "draft",
+          "title": "Site reliability engineer",
+          "description": "",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "remote",
+              "country": "DE",
+              "address": null
+            },
+            {
+              "mode": "remote",
+              "country": "IN",
+              "address": null
+            },
+            {
+              "mode": "onsite",
+              "country": null,
+              "address": {
+                "id": "01920000-0000-7000-8000-0000000ad001",
+                "country": "IN",
+                "city": "Bengaluru",
+                "postal_code": "560001",
+                "street1": "1 MG Road",
+                "street2": "Floor 4",
+                "is_main_office": true,
+                "removed": false
+              }
+            },
+            {
+              "mode": "onsite",
+              "country": null,
+              "address": {
+                "id": "01920000-0000-7000-8000-0000000ad002",
+                "country": "US",
+                "city": "Austin",
+                "postal_code": "78701",
+                "street1": "500 W 2nd St",
+                "street2": "Suite 300",
+                "is_main_office": false,
+                "removed": false
+              }
+            }
+          ],
+          "currency": "",
+          "yearly_ctc": null,
+          "yearly_base": null,
+          "hourly_rate": null,
+          "expected_hours": null,
+          "min_office_yoe": null,
+          "min_oss_yoe": null,
+          "requires_online_test": null,
+          "max_interview_rounds": null,
+          "avg_days_to_offer": null,
+          "questions": [],
+          "opened_at": null,
+          "close_requested_at": null,
+          "closed_at": null,
+          "close_reason": null,
+          "hires": [],
+          "advertised": false,
+          "supersedes": null,
+          "created_at": "<timestamp>",
+          "updated_at": "<timestamp>"
+        },
+        "db": {
+          "role_locations": {
+            "where": {
+              "role_id": "{{role}}"
+            },
+            "count": 4
+          }
+        }
+      }
+    },
+    {
+      "_step": "A member reads the same body: the addresses are the organisation's, and every seat sees them.",
+      "as": "dave_hiring",
+      "request": {
+        "method": "GET",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles/{{role}}"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "id": "<uuid>",
+          "organization_id": "01920000-0000-7000-8000-00000000b001",
+          "status": "draft",
+          "title": "Site reliability engineer",
+          "description": "",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "remote",
+              "country": "DE",
+              "address": null
+            },
+            {
+              "mode": "remote",
+              "country": "IN",
+              "address": null
+            },
+            {
+              "mode": "onsite",
+              "country": null,
+              "address": {
+                "id": "01920000-0000-7000-8000-0000000ad001",
+                "country": "IN",
+                "city": "Bengaluru",
+                "postal_code": "560001",
+                "street1": "1 MG Road",
+                "street2": "Floor 4",
+                "is_main_office": true,
+                "removed": false
+              }
+            },
+            {
+              "mode": "onsite",
+              "country": null,
+              "address": {
+                "id": "01920000-0000-7000-8000-0000000ad002",
+                "country": "US",
+                "city": "Austin",
+                "postal_code": "78701",
+                "street1": "500 W 2nd St",
+                "street2": "Suite 300",
+                "is_main_office": false,
+                "removed": false
+              }
+            }
+          ],
+          "currency": "",
+          "yearly_ctc": null,
+          "yearly_base": null,
+          "hourly_rate": null,
+          "expected_hours": null,
+          "min_office_yoe": null,
+          "min_oss_yoe": null,
+          "requires_online_test": null,
+          "max_interview_rounds": null,
+          "avg_days_to_offer": null,
+          "questions": [],
+          "opened_at": null,
+          "close_requested_at": null,
+          "closed_at": null,
+          "close_reason": null,
+          "hires": [],
+          "advertised": false,
+          "supersedes": null,
+          "created_at": "<timestamp>",
+          "updated_at": "<timestamp>"
+        }
+      }
+    },
+    {
+      "_step": "A draft's PATCH REPLACES the set. Remote from anywhere is one entry with no country — 'anywhere' is stated, not inferred from an empty list.",
+      "as": "hank",
+      "request": {
+        "method": "PATCH",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles/{{role}}",
+        "body": {
+          "title": "Site reliability engineer",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "remote"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "id": "<uuid>",
+          "organization_id": "01920000-0000-7000-8000-00000000b001",
+          "status": "draft",
+          "title": "Site reliability engineer",
+          "description": "",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "remote",
+              "country": null,
+              "address": null
+            }
+          ],
+          "currency": "",
+          "yearly_ctc": null,
+          "yearly_base": null,
+          "hourly_rate": null,
+          "expected_hours": null,
+          "min_office_yoe": null,
+          "min_oss_yoe": null,
+          "requires_online_test": null,
+          "max_interview_rounds": null,
+          "avg_days_to_offer": null,
+          "questions": [],
+          "opened_at": null,
+          "close_requested_at": null,
+          "closed_at": null,
+          "close_reason": null,
+          "hires": [],
+          "advertised": false,
+          "supersedes": null,
+          "created_at": "<timestamp>",
+          "updated_at": "<timestamp>"
+        },
+        "db": {
+          "role_locations": {
+            "where": {
+              "role_id": "{{role}}"
+            },
+            "count": 1,
+            "all_match": {
+              "mode": "remote",
+              "country": null,
+              "address_id": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "_step": "And back to two entries: remote in India, onsite in Bengaluru.",
+      "as": "hank",
+      "request": {
+        "method": "PATCH",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles/{{role}}",
+        "body": {
+          "title": "Site reliability engineer",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "onsite",
+              "address_id": "{{acme.address.main}}"
+            },
+            {
+              "mode": "remote",
+              "country": "IN"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "id": "<uuid>",
+          "organization_id": "01920000-0000-7000-8000-00000000b001",
+          "status": "draft",
+          "title": "Site reliability engineer",
+          "description": "",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "remote",
+              "country": "IN",
+              "address": null
+            },
+            {
+              "mode": "onsite",
+              "country": null,
+              "address": {
+                "id": "01920000-0000-7000-8000-0000000ad001",
+                "country": "IN",
+                "city": "Bengaluru",
+                "postal_code": "560001",
+                "street1": "1 MG Road",
+                "street2": "Floor 4",
+                "is_main_office": true,
+                "removed": false
+              }
+            }
+          ],
+          "currency": "",
+          "yearly_ctc": null,
+          "yearly_base": null,
+          "hourly_rate": null,
+          "expected_hours": null,
+          "min_office_yoe": null,
+          "min_oss_yoe": null,
+          "requires_online_test": null,
+          "max_interview_rounds": null,
+          "avg_days_to_offer": null,
+          "questions": [],
+          "opened_at": null,
+          "close_requested_at": null,
+          "closed_at": null,
+          "close_reason": null,
+          "hires": [],
+          "advertised": false,
+          "supersedes": null,
+          "created_at": "<timestamp>",
+          "updated_at": "<timestamp>"
+        }
+      }
+    },
+    {
+      "_step": "Opened. From here the entries are as fixed as the salary.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles/{{role}}/open"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "id": "<uuid>",
+          "organization_id": "01920000-0000-7000-8000-00000000b001",
+          "status": "open",
+          "title": "Site reliability engineer",
+          "description": "",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "remote",
+              "country": "IN",
+              "address": null
+            },
+            {
+              "mode": "onsite",
+              "country": null,
+              "address": {
+                "id": "01920000-0000-7000-8000-0000000ad001",
+                "country": "IN",
+                "city": "Bengaluru",
+                "postal_code": "560001",
+                "street1": "1 MG Road",
+                "street2": "Floor 4",
+                "is_main_office": true,
+                "removed": false
+              }
+            }
+          ],
+          "currency": "",
+          "yearly_ctc": null,
+          "yearly_base": null,
+          "hourly_rate": null,
+          "expected_hours": null,
+          "min_office_yoe": null,
+          "min_oss_yoe": null,
+          "requires_online_test": null,
+          "max_interview_rounds": null,
+          "avg_days_to_offer": null,
+          "questions": [],
+          "opened_at": "<timestamp>",
+          "close_requested_at": null,
+          "closed_at": null,
+          "close_reason": null,
+          "hires": [],
+          "advertised": false,
+          "supersedes": null,
+          "created_at": "<timestamp>",
+          "updated_at": "<timestamp>"
+        }
+      }
+    },
+    {
+      "_step": "An open role's entries cannot be edited — adding a country to an open role is a revision like any other change.",
+      "as": "hank",
+      "request": {
+        "method": "PATCH",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles/{{role}}",
+        "body": {
+          "title": "Site reliability engineer",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "remote"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "status": 409,
+        "body": {
+          "error": "role_is_open"
+        },
+        "db": {
+          "role_locations": {
+            "where": {
+              "role_id": "{{role}}"
+            },
+            "count": 2
+          }
+        }
+      }
+    },
+    {
+      "_step": "The revision writes a NEW role with its own set.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles/{{role}}/revise",
+        "body": {
+          "title": "Site reliability engineer",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "onsite",
+              "address_id": "{{acme.address.austin}}"
+            },
+            {
+              "mode": "remote",
+              "country": "DE"
+            },
+            {
+              "mode": "remote",
+              "country": "IN"
+            }
+          ]
+        }
+      },
+      "capture": {
+        "revision": "$.id"
+      },
+      "expect": {
+        "status": 201,
+        "body": {
+          "id": "<uuid>",
+          "organization_id": "01920000-0000-7000-8000-00000000b001",
+          "status": "draft",
+          "title": "Site reliability engineer",
+          "description": "",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "remote",
+              "country": "DE",
+              "address": null
+            },
+            {
+              "mode": "remote",
+              "country": "IN",
+              "address": null
+            },
+            {
+              "mode": "onsite",
+              "country": null,
+              "address": {
+                "id": "01920000-0000-7000-8000-0000000ad002",
+                "country": "US",
+                "city": "Austin",
+                "postal_code": "78701",
+                "street1": "500 W 2nd St",
+                "street2": "Suite 300",
+                "is_main_office": false,
+                "removed": false
+              }
+            }
+          ],
+          "currency": "",
+          "yearly_ctc": null,
+          "yearly_base": null,
+          "hourly_rate": null,
+          "expected_hours": null,
+          "min_office_yoe": null,
+          "min_oss_yoe": null,
+          "requires_online_test": null,
+          "max_interview_rounds": null,
+          "avg_days_to_offer": null,
+          "questions": [],
+          "opened_at": null,
+          "close_requested_at": null,
+          "closed_at": null,
+          "close_reason": null,
+          "hires": [],
+          "advertised": false,
+          "supersedes": "<uuid>",
+          "created_at": "<timestamp>",
+          "updated_at": "<timestamp>"
+        }
+      }
+    },
+    {
+      "_step": "The original, closed as superseded, still lists exactly the two entries it was opened with.",
+      "as": "hank",
+      "request": {
+        "method": "GET",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles/{{role}}"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "id": "<uuid>",
+          "organization_id": "01920000-0000-7000-8000-00000000b001",
+          "status": "closed",
+          "title": "Site reliability engineer",
+          "description": "",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "remote",
+              "country": "IN",
+              "address": null
+            },
+            {
+              "mode": "onsite",
+              "country": null,
+              "address": {
+                "id": "01920000-0000-7000-8000-0000000ad001",
+                "country": "IN",
+                "city": "Bengaluru",
+                "postal_code": "560001",
+                "street1": "1 MG Road",
+                "street2": "Floor 4",
+                "is_main_office": true,
+                "removed": false
+              }
+            }
+          ],
+          "currency": "",
+          "yearly_ctc": null,
+          "yearly_base": null,
+          "hourly_rate": null,
+          "expected_hours": null,
+          "min_office_yoe": null,
+          "min_oss_yoe": null,
+          "requires_online_test": null,
+          "max_interview_rounds": null,
+          "avg_days_to_offer": null,
+          "questions": [],
+          "opened_at": "<timestamp>",
+          "close_requested_at": null,
+          "closed_at": "<timestamp>",
+          "close_reason": "superseded",
+          "hires": [],
+          "advertised": false,
+          "supersedes": null,
+          "created_at": "<timestamp>",
+          "updated_at": "<timestamp>"
+        },
+        "db": {
+          "role_locations": {
+            "where": {
+              "role_id": "{{revision}}"
+            },
+            "count": 3
+          }
+        }
+      }
+    }
+  ]
+}

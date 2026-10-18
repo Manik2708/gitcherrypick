@@ -20,8 +20,7 @@ export function NotFoundPage() {
           </Link>
         }
       >
-        <code className="mono">{pathname}</code> is not a page on this platform. Your session is
-        fine — it was the link that was wrong.
+        <code className="mono">{pathname}</code> is not a page on this platform.
       </Empty>
     </div>
   );

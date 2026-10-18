@@ -79,11 +79,14 @@
       }
     },
     {
-      "_step": "Verified hirer, UNVERIFIED organization — still refused. Both must be verified (ADR-0002).",
+      "_step": "Verified hirer, UNVERIFIED organization — still refused. Both must be verified (ADR-0002), and the refusal lands on the act that would reach a person: putting somebody on a job.",
       "as": "pending_pat",
       "request": {
-        "method": "GET",
-        "path": "/shortlists"
+        "method": "POST",
+        "path": "/org-roles/{{unverified_org.id}}/roles/{{unverified_org.role}}/candidates",
+        "body": {
+          "user_id": "01920000-0000-7000-8000-00000000a001"
+        }
       },
       "expect": {
         "status": 403,

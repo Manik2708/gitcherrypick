@@ -24,7 +24,10 @@ func TestRoleIsCreatedAsADraft(t *testing.T) {
 	hirer := mustRegister(ctx, t, db, "hank@acme.com", "Hank", "Acme", "acme")
 
 	role := mustCreateRole(ctx, t, db, hirer, func(r *domain.Role) {
-		r.EligibleCountries = []string{"GB", "DE"}
+		r.Locations = []domain.RoleLocation{
+			{Mode: domain.ModeRemote, Country: "GB"},
+			{Mode: domain.ModeRemote, Country: "DE"},
+		}
 		r.Questions = []domain.RoleQuestion{{Question: "Do you need a visa?"}}
 	})
 
@@ -34,8 +37,9 @@ func TestRoleIsCreatedAsADraft(t *testing.T) {
 	if role.OpenedBy != nil || role.OpenedAt != nil {
 		t.Error("a draft carries no signature")
 	}
-	if len(role.EligibleCountries) != 2 {
-		t.Errorf("eligible countries = %v", role.EligibleCountries)
+	// Read back ordered remote first, then by country (ADR-0024 §1.7).
+	if len(role.Locations) != 2 || role.Locations[0].Country != "DE" || role.Locations[1].Country != "GB" {
+		t.Errorf("locations = %+v", role.Locations)
 	}
 	if len(role.Questions) != 1 || role.Questions[0].Position != 0 {
 		t.Errorf("questions = %+v", role.Questions)
@@ -89,7 +93,7 @@ func TestReviseSupersedesAndClosesInOneAct(t *testing.T) {
 	ctc := int64(95_000_00)
 	next := domain.Role{
 		OrgID: hirer.OrganizationID, Title: "Backend engineer",
-		Engagement: domain.EngagementFullTime, Location: domain.LocationRemote,
+		Engagement: domain.EngagementFullTime, Locations: anywhere(),
 		Currency: "GBP", YearlyCTC: &ctc, CreatedBy: hirer.ID,
 	}
 
@@ -215,104 +219,6 @@ func TestCloseRecordsWhyAndWho(t *testing.T) {
 	})
 }
 
-// Matching is where a contributor's own profile decides what they are shown
-// (ADR-0019 §Endpoints). The two asymmetries are the point: an unstated office
-// figure clears a minimum because it is self-reported either way, and unknown
-// OSS years do NOT, because that figure is verified.
-func TestMatchingFailsOpenExceptWhereItMustNot(t *testing.T) {
-	db, ctx := newDB(t), testContext(t)
-	hirer := mustRegister(ctx, t, db, "hank@acme.com", "Hank", "Acme", "acme")
-
-	three := 3
-	anywhere := mustCreateRole(ctx, t, db, hirer, nil)
-	mustOpen(ctx, t, db, anywhere.ID, hirer)
-
-	ukOnly := mustCreateRole(ctx, t, db, hirer, func(r *domain.Role) {
-		r.EligibleCountries = []string{"GB"}
-	})
-	mustOpen(ctx, t, db, ukOnly.ID, hirer)
-
-	experienced := mustCreateRole(ctx, t, db, hirer, func(r *domain.Role) {
-		r.MinOSSYOE = &three
-	})
-	mustOpen(ctx, t, db, experienced.ID, hirer)
-
-	full := []domain.Engagement{domain.EngagementFullTime}
-	has := func(roles []domain.Role, id domain.RoleID) bool {
-		for _, r := range roles {
-			if r.ID == id {
-				return true
-			}
-		}
-		return false
-	}
-
-	t.Run("no stated country sees roles that hire anywhere", func(t *testing.T) {
-		out, err := db.Roles().Matching(ctx, port.RoleMatch{Shapes: full})
-		if err != nil {
-			t.Fatalf("matching: %v", err)
-		}
-		if !has(out, anywhere.ID) {
-			t.Error("a role with no restriction must reach somebody who has not said where they are")
-		}
-		if has(out, ukOnly.ID) {
-			t.Error("a UK-only role must not reach somebody whose country is unknown")
-		}
-	})
-
-	t.Run("unknown open-source years do not clear a minimum", func(t *testing.T) {
-		// Fail-CLOSED, deliberately and against the grain of this codebase:
-		// failing open would make any minimum clearable with a link nobody
-		// could check.
-		out, err := db.Roles().Matching(ctx, port.RoleMatch{Shapes: full, Country: "GB"})
-		if err != nil {
-			t.Fatalf("matching: %v", err)
-		}
-		if has(out, experienced.ID) {
-			t.Error("a verified minimum must not be cleared by an unknown figure")
-		}
-		if !has(out, ukOnly.ID) {
-			t.Error("a UK contributor should see a UK role")
-		}
-	})
-
-	t.Run("enough verified years clears it", func(t *testing.T) {
-		five := 5
-		out, err := db.Roles().Matching(ctx, port.RoleMatch{
-			Shapes: full, Country: "GB", OSSYears: &five,
-		})
-		if err != nil {
-			t.Fatalf("matching: %v", err)
-		}
-		if !has(out, experienced.ID) {
-			t.Error("five years should clear a minimum of three")
-		}
-	})
-
-	t.Run("nothing ticked matches nothing", func(t *testing.T) {
-		// A person who said what they want and wants none of these should not
-		// be shown roles they did not ask for.
-		out, err := db.Roles().Matching(ctx, port.RoleMatch{})
-		if err != nil {
-			t.Fatalf("matching: %v", err)
-		}
-		if len(out) != 0 {
-			t.Errorf("expected nothing, got %d roles", len(out))
-		}
-	})
-
-	t.Run("a draft matches nobody", func(t *testing.T) {
-		draft := mustCreateRole(ctx, t, db, hirer, nil)
-		out, err := db.Roles().Matching(ctx, port.RoleMatch{Shapes: full})
-		if err != nil {
-			t.Fatalf("matching: %v", err)
-		}
-		if has(out, draft.ID) {
-			t.Error("a draft is not a commitment and must not be shown")
-		}
-	})
-}
-
 // Settings default rather than requiring a row, so nothing needs backfilling
 // and an organisation that never opens the screen behaves like one that opened
 // it and changed nothing.
@@ -371,7 +277,7 @@ func mustCreateRole(ctx context.Context, t *testing.T, db *postgres.DB, hirer *d
 
 	in := domain.Role{
 		OrgID: hirer.OrganizationID, Title: "Backend engineer",
-		Engagement: domain.EngagementFullTime, Location: domain.LocationRemote,
+		Engagement: domain.EngagementFullTime, Locations: anywhere(),
 		CreatedBy: hirer.ID,
 	}
 	if shape != nil {
@@ -428,4 +334,9 @@ func mustClose(ctx context.Context, t *testing.T, db *postgres.DB, id domain.Rol
 		t.Fatalf("closing a role: %v", err)
 	}
 	return out
+}
+
+// anywhere is the one remote-anywhere entry most tests' roles need.
+func anywhere() []domain.RoleLocation {
+	return []domain.RoleLocation{{Mode: domain.ModeRemote}}
 }

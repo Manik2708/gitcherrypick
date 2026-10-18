@@ -11,7 +11,7 @@ import (
 
 // DB assertions cover state the API does not return — link status, standing,
 // cooldown tier, and above all the things whose absence is the point: that a
-// failed validation enqueued nothing, that staging a shortlist entry wrote no
+// failed validation enqueued nothing, that staging a candidate wrote no
 // contact request.
 //
 // A snapshot of a response body cannot express "and nothing else happened",

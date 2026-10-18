@@ -16,7 +16,7 @@ import (
 	"github.com/Manik2708/gitcherrypick/backend/internal/service"
 )
 
-func TestShortlistCapabilityRefusalCarriesTheDetail(t *testing.T) {
+func TestStagingCapabilityRefusalCarriesTheDetail(t *testing.T) {
 	// Same rule as search: a hirer refused for capability is told WHICH of the
 	// two verifications is missing.
 	h := newHarness(t)
@@ -25,12 +25,12 @@ func TestShortlistCapabilityRefusalCarriesTheDetail(t *testing.T) {
 	p.Hirer.Organization.VerifiedAt = &now // the org is verified; the person is not
 
 	h.signIn("hank-token", p)
-	h.shortlists.EXPECT().Create(mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+	h.roles.EXPECT().Stage(mock.Anything, mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything).Return(nil,
 		service.Coded(service.ErrNotCapable, service.CodeHiringCapability, "seat unverified"))
 
-	got := h.do(t, http.MethodPost, "/shortlists", "hank-token",
-		`{"role_id":"01920000-0000-7000-8000-0000000e0001","name":"R","description":"","tentative_result_date":"2026-12-01T00:00:00Z"}`)
+	got := h.do(t, http.MethodPost, rolePath(roleIDConst)+"/candidates", "hank-token",
+		`{"user_id":"`+aliceID+`","note":""}`)
 	require.Equal(t, http.StatusForbidden, got.Status)
 
 	var body struct {
@@ -44,13 +44,13 @@ func TestShortlistCapabilityRefusalCarriesTheDetail(t *testing.T) {
 	require.True(t, body.OrganizationVerified)
 }
 
-func TestShortlistVerificationRefusalCarriesItsMessage(t *testing.T) {
+func TestHiringVerificationRefusalCarriesItsMessage(t *testing.T) {
 	h := newHarness(t)
 	h.signIn("hank-token", hirerPrincipal(false))
-	h.shortlists.EXPECT().List(mock.Anything, mock.Anything, mock.Anything).
+	h.roles.EXPECT().Candidates(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(nil, service.Coded(service.ErrForbidden, service.CodeVerificationNeeded, "pending"))
 
-	got := h.do(t, http.MethodGet, "/shortlists", "hank-token", "")
+	got := h.do(t, http.MethodGet, rolePath(roleIDConst)+"/candidates", "hank-token", "")
 	require.Equal(t, http.StatusForbidden, got.Status)
 
 	var body errorResponse

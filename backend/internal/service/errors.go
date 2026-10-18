@@ -220,6 +220,14 @@ const (
 	// CodeRoleNotFound is an opening that is not this organisation's.
 	CodeRoleNotFound = "role_not_found"
 
+	// CodeRoleClosed is a withdrawn job. It takes nobody new and contacts
+	// nobody, because both would tell somebody about an opening that is gone.
+	CodeRoleClosed = "role_closed"
+
+	// CodeRoleNotOpen is a draft somebody tried to contact people about. A
+	// draft is not a commitment (ADR-0019 §4).
+	CodeRoleNotOpen = "role_not_open"
+
 	// CodeRoleImmutable is an attempt to edit a role that has been opened.
 	// A change writes a successor instead (ADR-0019 §13).
 	CodeRoleImmutable = "role_is_open"
@@ -247,6 +255,30 @@ const (
 	CodeReasonRequired         = "reason_required"
 	CodeUnknownRubricVersion   = "unknown_rubric_version"
 	CodeRubricVersionUnchanged = "rubric_version_unchanged"
+
+	// Where a role's work is, and an organisation's addresses (ADR-0024).
+	// Each carries its own code because a set of entries has several ways to
+	// be wrong and each has a different fix. The role-side ones carry
+	// field "locations" and the 1-based position of the entry.
+	CodeRoleLocationRequired    = "role_location_required"
+	CodeRoleLocationInvalid     = "role_location_invalid"
+	CodeOnsiteNeedsAddress      = "onsite_needs_address"
+	CodeRemoteAnywhereExclusive = "remote_anywhere_exclusive"
+	CodeAddressNotFound         = "address_not_found"
+	CodeAddressRemoved          = "address_removed"
+	CodeInvalidAddress          = "invalid_address"
+	CodeAddressInUse            = "address_in_use"
+	CodeMainOfficeNotRemovable  = "main_office_not_removable"
+	CodeOrganizationFullyRemote = "organization_fully_remote"
+	CodeOfficeRequestPending    = "office_request_pending"
+	CodeOrganizationHasOffice   = "organization_has_office"
+	CodeOnsiteRolesExist        = "onsite_roles_exist"
+
+	// CodeInvalidOnboarding is the onboarding form, with the field it is
+	// about. It replaces the invalid_claim a bare ErrInvalid used to fall
+	// through to — a contributor's noun, told to a company (ADR-0024
+	// decision 17).
+	CodeInvalidOnboarding = "invalid_onboarding"
 
 	// Bad request (400).
 	CodeInvalidID    = "invalid_id"

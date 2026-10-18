@@ -723,101 +723,88 @@ func TestSavedSearchLifecycle(t *testing.T) {
 	require.Equal(t, http.StatusNoContent, deleted.Status)
 }
 
-// --- /shortlists -------------------------------------------------------------
+// --- candidates on a role ----------------------------------------------------
 
-func TestShortlistConfirmReportsWhatItSent(t *testing.T) {
-	// A second confirm must be SEEN to have sent nothing, or a hirer is left
+func TestContactReportsWhatItSent(t *testing.T) {
+	// A second press must be SEEN to have sent nothing, or a hirer is left
 	// wondering whether they emailed everyone twice.
 	h := newHarness(t)
 	h.signIn("hank-token", hirerPrincipal(true))
 
-	shortlistID := domain.ShortlistID("01920000-0000-7000-8000-0000000c0001")
-	h.shortlists.EXPECT().Confirm(mock.Anything, mock.Anything, shortlistID).
-		Return(&port.ConfirmResult{
-			Shortlist:       &domain.Shortlist{ID: shortlistID, Name: "Round 1"},
+	roleID := domain.RoleID("01920000-0000-7000-8000-0000000e0001")
+	h.roles.EXPECT().Contact(mock.Anything, mock.Anything, domain.OrganizationID(orgID), roleID, mock.Anything).
+		Return(&port.ContactResult{
+			Role:            &domain.Role{ID: roleID, Title: "Backend engineer", Status: domain.RoleOpen},
 			Notified:        0,
 			AlreadyNotified: 3,
 		}, nil)
+	h.roles.EXPECT().Candidates(mock.Anything, mock.Anything, domain.OrganizationID(orgID), roleID).
+		Return(nil, nil)
 
-	got := h.do(t, http.MethodPost, "/shortlists/"+string(shortlistID)+"/confirm", "hank-token", "")
+	got := h.do(t, http.MethodPost, rolePath(roleID)+"/contact", "hank-token",
+		`{"tentative_result_date":"`+fixedTime().Add(30*24*time.Hour).Format(time.RFC3339)+`"}`)
 	require.Equal(t, http.StatusOK, got.Status)
 
 	var body struct {
-		Notified        int `json:"notified"`
-		AlreadyNotified int `json:"already_notified"`
+		Notified        int  `json:"notified"`
+		AlreadyNotified int  `json:"already_notified"`
+		Irreversible    bool `json:"irreversible"`
 	}
 	got.decode(t, &body)
 	require.Zero(t, body.Notified)
 	require.Equal(t, 3, body.AlreadyNotified)
+	require.True(t, body.Irreversible)
 }
 
-func TestNotifiedEntryIsNotRemovable(t *testing.T) {
-	// Deleting it would destroy the record of a disclosure that happened
+func TestContactedCandidateIsNotRemovable(t *testing.T) {
+	// Deleting them would destroy the record of a disclosure that happened
 	// (ADR-0008 §3a). The rule lives on the REMOVAL, not on the read: the
-	// round detail reports who is on the list and what they said, and a
+	// candidate list reports who is on the job and what they said, and a
 	// `removable` flag there would be a second place for the same rule to
 	// disagree with itself.
 	h := newHarness(t)
 	h.signIn("hank-token", hirerPrincipal(true))
 
-	shortlistID := domain.ShortlistID("01920000-0000-7000-8000-0000000c0001")
+	roleID := domain.RoleID("01920000-0000-7000-8000-0000000e0001")
 	notified := fixedTime()
-	h.shortlists.EXPECT().RemoveEntry(mock.Anything, mock.Anything, shortlistID, domain.UserID(aliceID)).
+	h.roles.EXPECT().Unstage(mock.Anything, mock.Anything, domain.OrganizationID(orgID), roleID, domain.UserID(aliceID)).
 		Return(service.Coded(service.ErrConflict, service.CodeEntryAlreadyNotified,
-			"this contributor has been told; the entry stays").
+			"this contributor has been told; they stay on the role").
 			WithDetail(map[string]any{"notified_at": notified}))
 
-	got := h.do(t, http.MethodDelete,
-		"/shortlists/"+string(shortlistID)+"/entries/"+aliceID, "hank-token", "")
+	got := h.do(t, http.MethodDelete, rolePath(roleID)+"/candidates/"+aliceID, "hank-token", "")
 	require.Equal(t, http.StatusConflict, got.Status)
 	require.Equal(t, "entry_already_notified", got.errorCode(t))
 }
 
-func TestAnotherOrganizationsShortlistIsNotFound(t *testing.T) {
+func TestAnotherOrganizationsRoleIsNotFound(t *testing.T) {
 	// A competitor must not be able to confirm that an id belongs to somebody.
 	h := newHarness(t)
 	h.signIn("hank-token", hirerPrincipal(true))
 
-	shortlistID := domain.ShortlistID("01920000-0000-7000-8000-0000000c0009")
-	h.shortlists.EXPECT().Get(mock.Anything, mock.Anything, shortlistID).
-		Return(nil, service.ErrNotFound)
+	roleID := domain.RoleID("01920000-0000-7000-8000-0000000e0009")
+	h.roles.EXPECT().Candidates(mock.Anything, mock.Anything, domain.OrganizationID(orgID), roleID).
+		Return(nil, service.Coded(service.ErrNotFound, service.CodeRoleNotFound, "no such role"))
 
-	got := h.do(t, http.MethodGet, "/shortlists/"+string(shortlistID), "hank-token", "")
+	got := h.do(t, http.MethodGet, rolePath(roleID)+"/candidates", "hank-token", "")
 	require.Equal(t, http.StatusNotFound, got.Status)
-	require.Equal(t, service.CodeShortlistNotFound, got.errorCode(t))
+	require.Equal(t, service.CodeRoleNotFound, got.errorCode(t))
 }
 
-func TestAddEntryRejectsAMalformedTarget(t *testing.T) {
+func TestStagingRejectsAMalformedTarget(t *testing.T) {
 	h := newHarness(t)
 	h.signIn("hank-token", hirerPrincipal(true))
 
-	shortlistID := domain.ShortlistID("01920000-0000-7000-8000-0000000c0001")
-	got := h.do(t, http.MethodPost, "/shortlists/"+string(shortlistID)+"/entries", "hank-token",
+	roleID := domain.RoleID("01920000-0000-7000-8000-0000000e0001")
+	got := h.do(t, http.MethodPost, rolePath(roleID)+"/candidates", "hank-token",
 		`{"user_id":"not-a-uuid","note":""}`)
 	require.Equal(t, http.StatusBadRequest, got.Status)
 	require.Equal(t, service.CodeInvalidID, got.errorCode(t))
 }
 
-func TestShortlistCreateAndClose(t *testing.T) {
-	h := newHarness(t)
-	h.signIn("hank-token", hirerPrincipal(true))
-
-	shortlistID := domain.ShortlistID("01920000-0000-7000-8000-0000000c0001")
-	date := fixedTime().Add(30 * 24 * time.Hour)
-
-	// The round names the job it is for (ADR-0019 §3).
-	roleID := domain.RoleID("01920000-0000-7000-8000-0000000e0001")
-	h.shortlists.EXPECT().Create(mock.Anything, mock.Anything, roleID, "Round 1", "Backend hires", date).
-		Return(&domain.Shortlist{ID: shortlistID, RoleID: roleID, Name: "Round 1", Status: "draft"}, nil)
-	created := h.do(t, http.MethodPost, "/shortlists", "hank-token",
-		`{"role_id":"`+string(roleID)+`","name":"Round 1","description":"Backend hires",`+
-			`"tentative_result_date":"`+date.Format(time.RFC3339)+`"}`)
-	require.Equal(t, http.StatusCreated, created.Status)
-
-	h.shortlists.EXPECT().Close(mock.Anything, mock.Anything, shortlistID).
-		Return(&domain.Shortlist{ID: shortlistID, Status: "closed"}, nil)
-	closed := h.do(t, http.MethodPost, "/shortlists/"+string(shortlistID)+"/close", "hank-token", "")
-	require.Equal(t, http.StatusOK, closed.Status)
+// rolePath is the org-scoped prefix every role endpoint sits under.
+func rolePath(id domain.RoleID) string {
+	return "/org-roles/" + orgID + "/roles/" + string(id)
 }
 
 // --- /orgs -------------------------------------------------------------------

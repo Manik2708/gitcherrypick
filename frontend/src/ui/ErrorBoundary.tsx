@@ -31,10 +31,6 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
       <div className="page page--narrow">
         <Notice title="Something broke on this screen">
           <p>{error.message}</p>
-          <p>
-            This is a bug in the client, not a refusal from the server — nothing you did caused it
-            and nothing was saved incorrectly.
-          </p>
           <Button variant="ghost" size="sm" onClick={() => this.setState({ error: null })}>
             Try this screen again
           </Button>

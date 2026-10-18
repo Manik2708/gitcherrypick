@@ -26,8 +26,7 @@ import {
   useRoles,
   useSaveSearch,
   useSearch,
-  useShortlists,
-  useStageEntry,
+  useStageCandidate,
 } from "../hooks/hirer";
 import type { SearchFilters } from "../hooks/hirer";
 import { applyRole } from "../logic/roleFilters";
@@ -209,13 +208,11 @@ export function SearchPage() {
   const save = useSaveSearch();
 
   // Staging discloses nothing, so it is safe to offer straight from a row. The
-  // irreversible step lives on the round itself (ADR-0008 §3a).
-  const rounds = useShortlists();
+  // irreversible step lives on the job itself (ADR-0023): you stage here and
+  // press Contact there, which is the whole of the two-phase design.
   const [target, setTarget] = useState("");
-  const stage = useStageEntry(target);
+  const stage = useStageCandidate(org.id, target);
   const [staged, setStaged] = useState<string[]>([]);
-
-  const openRounds = (rounds.data?.shortlists ?? []).filter((r) => r.status !== "closed");
 
   function apply(next: SearchFilters) {
     setApplied(next);
@@ -244,6 +241,8 @@ export function SearchPage() {
   }
 
   const data = results.data;
+  const excludedRole = openRoles.find((r) => r.id === applied.forRole);
+
   const perPage = applied.perPage ?? 20;
   const pages = data ? pageCount(data.total, data.per_page || perPage) : 1;
   const page = applied.page ?? 1;
@@ -253,7 +252,6 @@ export function SearchPage() {
       <PageHead
         eyebrow="Discovery"
         title="Search the pool"
-        lede="Every score here rests on merged pull requests a model has read. Filter the ranking, then read the evidence before you commit a round to anyone."
         actions={
           <Link className="btn btn--ghost" to="/leaderboard">
             View the full board
@@ -291,7 +289,7 @@ export function SearchPage() {
                 <Field
                   label="Start from a role"
                   htmlFor="from_role"
-                  help="Fills in the countries, the minimums and the shape of work, and stops offering people already on a round for it. Change anything you like afterwards."
+                  help="Fills the filters from the role. Change anything afterwards."
                 >
                   <select
                     className="input"
@@ -301,7 +299,17 @@ export function SearchPage() {
                       const id = event.target.value;
                       setFromRole(id);
                       const role = openRoles.find((r) => r.id === id);
-                      if (role) setDraft(applyRole(draft, role));
+                      if (role) {
+                        setDraft(applyRole(draft, role));
+                        return;
+                      }
+                      // GOING BACK TO NO ROLE DROPS THE EXCLUSION. The filled
+                      // filters stay — they are yours once filled — but
+                      // for_role is not a filter: leaving it set went on
+                      // hiding people who are on a round for a role you are
+                      // no longer searching, and the banner went on counting
+                      // them under "this role".
+                      setDraft({ ...draft, forRole: undefined });
                     }}
                   >
                     <option value="">Choose a role…</option>
@@ -335,11 +343,7 @@ export function SearchPage() {
             ) : null}
 
             <div className="fgroup">
-              <Field
-                label="Find someone by name"
-                htmlFor="q"
-                help="A name lookup also surfaces contributors who have gone quiet — you already know they exist."
-              >
+              <Field label="Find someone by name" htmlFor="q">
                 <div className="search-input">
                   <Icon name="search" size="sm" />
                   <input
@@ -362,7 +366,7 @@ export function SearchPage() {
               <SkillPicker
                 id="skills"
                 label="Add a skill"
-                help="Only primary standing — five distinct merged PRs — is searchable. A skill with four is visible on the scorecard and never in this list."
+                help="Primary standing only — five distinct merged PRs."
                 chosen={draft.skills ?? []}
                 onChange={(skills) => setDraft({ ...draft, skills })}
               />
@@ -388,7 +392,7 @@ export function SearchPage() {
               <NumberField
                 id="min_generalist_score"
                 label="Minimum generalist score"
-                help="Breadth, unbounded. Setting this orders the list by generalist."
+                help="Breadth. Orders the list by generalist."
                 max={220}
                 value={draft.minGeneralistScore}
                 onChange={(v) => setDraft({ ...draft, minGeneralistScore: v })}
@@ -419,8 +423,7 @@ export function SearchPage() {
                 <span className="switch" aria-hidden="true" />
               </label>
               <p className="field__help">
-                This reveals people who went quiet. It never reveals anyone who said they are not
-                looking — that is an opt-out, and no toggle undoes it.
+                This reveals people who went quiet, never anyone who said they are not looking.
               </p>
             </div>
 
@@ -433,7 +436,7 @@ export function SearchPage() {
               <Field
                 label="Years in a job, at least"
                 htmlFor="office_yoe"
-                help="Their own figure, not something we checked. Leaving it blank asks nothing; setting it also drops anybody who has not said."
+                help="Their own figure, not something we checked."
               >
                 <input
                   className="input"
@@ -456,7 +459,7 @@ export function SearchPage() {
               <Field
                 label="Years in open source, at least"
                 htmlFor="oss_yoe"
-                help="We check this one: it is dated from when their first pull request was written, not from when somebody got round to merging it. Anybody we could not verify is left out rather than let through."
+                help="Dated from their first pull request."
               >
                 <input
                   className="input"
@@ -491,10 +494,7 @@ export function SearchPage() {
 
             <div className="fgroup">
               <p className="eyebrow">What they would take</p>
-              <p className="field__help">
-                Any of these matches. Somebody is available for the shapes they ticked and for
-                nothing else, so this composes with availability rather than replacing it.
-              </p>
+              <p className="field__help">Any of these matches.</p>
               {SHAPE_CHOICES.map(([value, label]) => (
                 <Checkbox
                   key={value}
@@ -560,46 +560,22 @@ export function SearchPage() {
             <Failure message={results.error.message} onRetry={results.reload} />
           ) : null}
 
-          {/* Said plainly rather than left to be noticed. A list that shrank
+          {/* Said plainly rather than left to be noticed: a list that shrank
               with no account of why makes a hirer doubt the filter instead of
-              reading the result — the same reason the lapsed-availability
-              banner below exists. */}
+              reading the result. The lapsed-availability count is carried in
+              the results head instead, beside the total, with the filter above
+              as the way to include them. */}
           {data?.already_shortlisted ? (
             <Banner>
-              <b>
-                {data.already_shortlisted}{" "}
-                {data.already_shortlisted === 1 ? "person is" : "people are"} not shown because they
-                are already on a round for this role.
-              </b>{" "}
-              They keep their place in the global ranking, so the numbers below skip theirs.
-            </Banner>
-          ) : null}
-
-          {data && data.inactive_hidden > 0 ? (
-            <Banner>
-              <b>
-                {data.inactive_hidden}{" "}
-                {data.inactive_hidden === 1 ? "contributor is" : "contributors are"} hidden because
-                their availability lapsed.
-              </b>{" "}
-              They keep their place in the global ranking, so the numbers below skip theirs.{" "}
-              <Button
-                variant="quiet"
-                size="sm"
-                onClick={() => {
-                  setDraft({ ...draft, includeInactive: true });
-                  apply({ ...draft, includeInactive: true, page: 1 });
-                }}
-              >
-                Show them
-              </Button>
+              {data.already_shortlisted}{" "}
+              {data.already_shortlisted === 1 ? "person is" : "people are"} not shown — already on a
+              round for {excludedRole ? <b>{excludedRole.title}</b> : "this role"}.
             </Banner>
           ) : null}
 
           {data && applied.q?.trim() ? (
             <Banner tone="info" icon="search">
-              Name lookup: quiet profiles are included, because you are looking for somebody you
-              already know exists.
+              Name lookup: quiet profiles are included.
             </Banner>
           ) : null}
 
@@ -607,24 +583,18 @@ export function SearchPage() {
               sits enabled beside every result with nowhere to put anybody, and
               pressing it does nothing at all — which is indistinguishable from
               the feature being broken. */}
-          {data && openRounds.length === 0 ? (
+          {data && openRoles.length === 0 ? (
             <Card>
               <Banner icon="info">
-                <b>You have no open rounds to shortlist into.</b> A round is opened for a particular
-                job, so start from <Link to="/roles">a role</Link> and then{" "}
-                <Link to="/shortlists">open a round</Link> for it. You can search meanwhile —
-                nothing here is lost.
+                <b>You have no open roles to shortlist into.</b> Write one on{" "}
+                <Link to="/roles">the roles page</Link> and open it first.
               </Banner>
             </Card>
           ) : null}
 
-          {data && openRounds.length > 0 ? (
+          {data && openRoles.length > 0 ? (
             <Card>
-              <Field
-                label="Shortlist into"
-                htmlFor="target"
-                help="Pick one before shortlisting anybody. Staging tells nobody; confirming does, and that cannot be undone."
-              >
+              <Field label="Shortlist into" htmlFor="target">
                 <select
                   className="select"
                   id="target"
@@ -633,27 +603,25 @@ export function SearchPage() {
                     const id = event.target.value;
                     setTarget(id);
 
-                    // CHOOSING A ROUND IMPLIES ITS JOB. A round is opened for
-                    // one role, so the people already on a round for that role
-                    // are exactly the people this hirer has already
-                    // approached for it — and offering them again on the next
+                    // CHOOSING THE JOB IS CHOOSING THE EXCLUSION. The people
+                    // already on it are exactly the people this hirer has
+                    // approached for it, and offering them again on the next
                     // search is the waste the exclusion exists to remove.
                     //
                     // Applied straight away rather than waiting for Search:
                     // the population just changed, and a list that still holds
                     // somebody you have just staged reads as the staging not
                     // having worked.
-                    const round = openRounds.find((r) => r.id === id);
-                    const next = { ...draft, forRole: round?.role_id, page: 1 };
+                    const next = { ...draft, forRole: id || undefined, page: 1 };
                     setDraft(next);
-                    setFromRole(round?.role_id ?? "");
+                    setFromRole(id);
                     apply(next);
                   }}
                 >
-                  <option value="">— choose a round —</option>
-                  {openRounds.map((round) => (
-                    <option key={round.id} value={round.id}>
-                      {round.name}
+                  <option value="">— choose a role —</option>
+                  {openRoles.map((role) => (
+                    <option key={role.id} value={role.id}>
+                      {role.title}
                     </option>
                   ))}
                 </select>

@@ -2,6 +2,8 @@
 
 import { endpoints } from "../api/endpoints";
 import type {
+  AdminDecision,
+  OfficeRequestQueueResponse,
   OnboardingQueueResponse,
   ReevaluationRequest,
   SkillRequest,
@@ -50,6 +52,26 @@ export function useDecideOnboarding() {
   const client = useClient();
   return useAction((id: string, approve: boolean, reason: string) =>
     client.post<unknown>(endpoints.admin.decideOnboarding(id), {
+      decision: approve ? "approved" : "rejected",
+      reason,
+    }),
+  );
+}
+
+/** Fully remote organisations asking for an office (ADR-0024 decision 13). */
+export function useOfficeRequestQueue() {
+  const client = useClient();
+  return useAsync<OfficeRequestQueueResponse>(
+    (signal) => client.get<OfficeRequestQueueResponse>(endpoints.admin.officeRequests(), signal),
+    [client],
+  );
+}
+
+/** Approving makes the address the main office. A rejection needs a reason. */
+export function useDecideOfficeRequest() {
+  const client = useClient();
+  return useAction((id: string, approve: boolean, reason: string) =>
+    client.post<AdminDecision>(endpoints.admin.decideOfficeRequest(id), {
       decision: approve ? "approved" : "rejected",
       reason,
     }),

@@ -17,9 +17,10 @@ export const endpoints = {
     githubStart: () => "/auth/github/start",
     githubCallback: (code: string, state: string) =>
       `/auth/github/callback?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`,
-    hirerGithubStart: () => "/auth/hirer/github/start",
-    hirerGithubCallback: (code: string, state: string) =>
-      `/auth/hirer/github/callback?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`,
+    // A GET, unlike the GitHub starts: that is how the API mounts it (ADR-0002).
+    googleStart: () => "/auth/google/start",
+    googleCallback: (code: string, state: string) =>
+      `/auth/google/callback?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`,
     hirerLogin: () => "/auth/hirer/login",
 
     // Redeeming a roster entry: the second way a hirer account comes to exist
@@ -78,17 +79,6 @@ export const endpoints = {
     savedSearchResults: (id: string) => `/saved-searches/${encodeURIComponent(id)}/results`,
     deleteSavedSearch: (id: string) => `/saved-searches/${encodeURIComponent(id)}`,
   },
-  shortlists: {
-    list: () => "/shortlists",
-    create: () => "/shortlists",
-    one: (id: string) => `/shortlists/${encodeURIComponent(id)}`,
-    close: (id: string) => `/shortlists/${encodeURIComponent(id)}/close`,
-    confirm: (id: string) => `/shortlists/${encodeURIComponent(id)}/confirm`,
-    entries: (id: string) => `/shortlists/${encodeURIComponent(id)}/entries`,
-    removeEntry: (id: string, userId: string) =>
-      `/shortlists/${encodeURIComponent(id)}/entries/${encodeURIComponent(userId)}`,
-    contactRequests: (id: string) => `/shortlists/${encodeURIComponent(id)}/contact-requests`,
-  },
   skills: {
     search: (q: string) => `/skills?q=${encodeURIComponent(q)}`,
     request: () => "/skill-requests",
@@ -103,12 +93,24 @@ export const endpoints = {
     sweep: () => "/admin/evaluations/sweep",
     onboarding: () => "/admin/onboarding",
     decideOnboarding: (id: string) => `/admin/onboarding/${encodeURIComponent(id)}/decide`,
+
+    // A fully remote organisation asking for an office (ADR-0024 decision 13).
+    officeRequests: () => "/admin/office-requests",
+    decideOfficeRequest: (id: string) => `/admin/office-requests/${encodeURIComponent(id)}/decide`,
   },
   orgs: {
     roster: (orgId: string) => `/orgs/${encodeURIComponent(orgId)}/roster`,
     removeRosterEntry: (orgId: string, entryId: string) =>
       `/orgs/${encodeURIComponent(orgId)}/roster/${encodeURIComponent(entryId)}`,
     seats: (orgId: string) => `/orgs/${encodeURIComponent(orgId)}/seats`,
+
+    // Addresses and the organisation's kind (ADR-0024). The GET is also where
+    // a client learns whether the organisation is fully remote.
+    addresses: (orgId: string) => `/orgs/${encodeURIComponent(orgId)}/addresses`,
+    removeAddress: (orgId: string, addressId: string) =>
+      `/orgs/${encodeURIComponent(orgId)}/addresses/${encodeURIComponent(addressId)}`,
+    officeRequest: (orgId: string) => `/orgs/${encodeURIComponent(orgId)}/office-request`,
+    fullyRemote: (orgId: string) => `/orgs/${encodeURIComponent(orgId)}/fully-remote`,
   },
 
   // Openings (ADR-0019). Mounted at /org-roles rather than /orgs because the
@@ -133,6 +135,17 @@ export const endpoints = {
       `/org-roles/${encodeURIComponent(orgId)}/roles/${encodeURIComponent(id)}/open`,
     close: (orgId: string, id: string) =>
       `/org-roles/${encodeURIComponent(orgId)}/roles/${encodeURIComponent(id)}/close`,
+
+    // WHO IS ON THE JOB (ADR-0023). Staging discloses nothing; contacting is
+    // the irreversible act, and they are separate calls for that reason.
+    stage: (orgId: string, id: string) =>
+      `/org-roles/${encodeURIComponent(orgId)}/roles/${encodeURIComponent(id)}/candidates`,
+    unstage: (orgId: string, id: string, userId: string) =>
+      `/org-roles/${encodeURIComponent(orgId)}/roles/${encodeURIComponent(id)}/candidates/${encodeURIComponent(userId)}`,
+    contact: (orgId: string, id: string) =>
+      `/org-roles/${encodeURIComponent(orgId)}/roles/${encodeURIComponent(id)}/contact`,
+    contactRequests: (orgId: string, id: string) =>
+      `/org-roles/${encodeURIComponent(orgId)}/roles/${encodeURIComponent(id)}/contact-requests`,
 
     settings: (orgId: string) => `/org-roles/${encodeURIComponent(orgId)}/settings`,
 

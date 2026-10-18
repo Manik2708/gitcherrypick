@@ -111,6 +111,12 @@ stable and reviewable:
 | Opaque token (refresh, share link, invitation) | `<token>`     |
 | `duration_ms`, `input_tokens`, `output_tokens` | `<number>`    |
 
+`<unpinned>` is different in kind: it matches **any** value, null included, as long as the
+key is present. It marks a value the binding ADR does not specify, so a fixture can assert
+everything a decision _does_ pin without the integration-tester inventing the rest. Every
+use is a design gap reported to the Planner, named in the fixture's `description`, and is
+replaced by the real shape once decided. It must never stand in for a value an ADR states.
+
 **Scores are never normalised.** They are the thing under test, and a rubric change that
 moves them must show up as a failing snapshot — that is the point of pinning them.
 
@@ -128,6 +134,12 @@ Every external dependency is an interface (ADR-0001), so the suite runs against 
 **AI** — `steps[].fake.ai` supplies the judgement the model would have returned, in the
 exact ADR-0007 contract shape. This is how disqualification, the quality floor, and
 per-skill shares are tested deterministically.
+
+**Mail** — a `READ_EMAIL` step reads what the real notifier delivered. Its body names
+`to`, and optionally `subject`, `contains` and `excludes` (lists of strings the HTML must
+and must not hold) and `count`. The body filters exist for notices whose wording no ADR
+fixes but whose content one does — a rejection carries the reason; a contact email names a
+city and never a street.
 
 **Clock** — `steps[].fake.clock` sets or advances time, which is the only way to test the
 7-day claim lock, the 15-day availability expiry, lease expiry, and the escalating
@@ -150,46 +162,57 @@ code does whatever it currently does, which is not a test.
 38 cases covering **all specified endpoints**. Each names the decision it pins, so a
 change to that decision has an obvious place to fail.
 
-| Case                                               | Pins                                                                            |
-| -------------------------------------------------- | ------------------------------------------------------------------------------- |
-| **auth/**github_oauth_signup_and_login             | The only path that creates a contributor; state binding; identity ≠ login       |
-| **auth/**hirer_email_and_google_login              | Two hirer entry points, one account; no cross-type credential reuse             |
-| **auth/**admin_login_and_logout                    | No OAuth path to an admin; logout revokes the family, not the token             |
-| **auth/**refresh_rotation_and_reuse_detection      | Replaying a spent token revokes the whole family — including the current holder |
-| **auth/**unverified_hirer_cannot_hire              | Registration ≠ hiring capability; verification is the real gate                 |
-| **auth/**share_link_is_the_only_public_surface     | Full gating, and the one thing a contributor may publish                        |
-| **orgs/**roster_is_owners_only                     | Org self-administers seats; capability is inherited, never earned individually  |
-| **orgs/**redemption_proves_the_address             | A roster is an allowlist, not a credential; the inbox is the proof              |
-| **orgs/**onboarding_creates_nothing_until_approved | The public form creates nothing; approval creates company, address and owner    |
-| **claims/**submit_valid_five_prs                   | Happy path, and the outbox property                                             |
-| **claims/**submit_invalid_evidence                 | Every failure named, nothing enqueued                                           |
-| **claims/**submit_pair_conflict                    | `(user, PR, skill)` uniqueness; same PR for another skill is fine               |
-| **claims/**edit_draft_and_lock_conflict            | PUT is an atomic replace; version conflicts; the lock closes the endpoint       |
-| **claims/**withdraw_warns_before_demoting          | Warn, then demote immediately; pairs released                                   |
-| **claims/**seven_day_lock                          | Per claim, not per account; unchanged evidence refused by fingerprint           |
-| **claims/**pr_review_claim_inverts_authorship      | Reviewer role, not author; projects refused                                     |
-| **claims/**ai_suggested_skills                     | Suggestions contribute nothing until accepted; the model never promotes         |
-| **claims/**claim_reads_are_owner_scoped            | 404 not 403, so the endpoint is not an existence oracle                         |
-| **evaluation/**disqualified_typo_scores_zero       | Typo scores 0 not 18; standing drops to four                                    |
-| **evaluation/**quality_floor_and_conversation_zero | Floor catches what the grounds miss; no discussion → 0                          |
-| **evaluation/**secondary_share_and_promotion       | Linear share, uncapped; automatic promotion at five                             |
-| **evaluation/**partial_enrichment_and_idempotency  | One unreachable PR doesn't fail the claim; redelivery is free                   |
-| **discovery/**search_gates_and_exclusions          | Global ranking, filtered — gaps where inactive people sit; not_looking excluded |
-| **discovery/**leaderboard_and_scorecard_gating     | Three board kinds; three scorecard gates; hirer view ≠ public view              |
-| **discovery/**contact_request_requires_consent     | Staging discloses nothing; confirm does; payment label shown                    |
-| **discovery/**shortlist_lifecycle                  | Stage privately, confirm irreversibly; once shortlisted, never removed          |
-| **discovery/**saved_searches                       | Filter keys are the query parameters; gates evaluate as the caller              |
-| **me/**self_reads                                  | Own rank only — no neighbours; rank is global and survives lapsing              |
-| **me/**compensation_never_reaches_a_hirer          | ADR-0018 §2 on seven hirer-facing surfaces, before and after acceptance         |
-| **me/**profile_matchable_needs_both_halves         | A live window with no shape matches nothing; needs_attention ≠ !matchable       |
-| **me/**profile_put_replaces_and_first_pr_is_fixed  | PUT is a total replace; the first PR is write-once, the latest is not           |
-| **me/**profile_money_is_exact_and_validated        | Minor units, exact through bigint; every bad field named above the database     |
-| **places/**country_picker_is_public                | No account behind the picker, and degraded:false against a live provider        |
-| **skills/**catalogue_and_requests                  | Aliases resolve but aren't claimable; dedupe before the queue                   |
-| **admin/**verification_and_overdue_flagging        | Alternative evidence path; flag at 80%, never block                             |
-| **admin/**reevaluation_cooldown_escalates          | 28→56→112→224→365; acceptance never counts against you                          |
-| **admin/**skill_request_queue                      | The only way the catalogue grows; slug collisions refused against aliases too   |
-| **admin/**evaluations_sweep                        | A rubric bump empties search until it drains; half-swept must not be searchable |
+| Case                                                  | Pins                                                                            |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------- |
+| **auth/**github_oauth_signup_and_login                | The only path that creates a contributor; state binding; identity ≠ login       |
+| **auth/**hirer_email_and_google_login                 | Two hirer entry points, one account; no cross-type credential reuse             |
+| **auth/**admin_login_and_logout                       | No OAuth path to an admin; logout revokes the family, not the token             |
+| **auth/**refresh_rotation_and_reuse_detection         | Replaying a spent token revokes the whole family — including the current holder |
+| **auth/**unverified_hirer_cannot_hire                 | Registration ≠ hiring capability; verification is the real gate                 |
+| **auth/**share_link_is_the_only_public_surface        | Full gating, and the one thing a contributor may publish                        |
+| **orgs/**roster_is_owners_only                        | Org self-administers seats; capability is inherited, never earned individually  |
+| **orgs/**redemption_proves_the_address                | A roster is an allowlist, not a credential; the inbox is the proof              |
+| **orgs/**onboarding_creates_nothing_until_approved    | The public form creates nothing; approval creates company, address and owner    |
+| **orgs/**onboarding_states_whether_there_is_an_office | `workplace` is required; `invalid_onboarding` names its field on both routes    |
+| **orgs/**addresses_are_kept_by_owners                 | Every seat lists; owners add and stamp; the main office is not removable        |
+| **orgs/**an_address_in_use_is_not_removed             | Draft or open use blocks removal; a closed role still renders the address       |
+| **orgs/**a_fully_remote_organisation_has_no_office    | No address, none added, no onsite entry                                         |
+| **orgs/**an_office_request_is_reviewed                | First address is reviewed; nothing changes until approval; reject, ask again    |
+| **orgs/**going_fully_remote_and_back                  | Owners only, blocked by onsite roles, every address stamped; back is reviewed   |
+| **roles/**a_role_is_offered_in_several_places         | A set of entries; collapsed, ordered, immutable once open                       |
+| **roles/**location_refusals_name_the_entry            | One code per way an entry is wrong, with `field` and `index`                    |
+| **roles/**every_role_refusal_names_its_field          | Every `invalid_role` carries `field`                                            |
+| **roles/**a_contributor_is_told_a_city_never_a_street | City and country, never a street — in the body and the email                    |
+| **openings/**reach_is_read_per_location_entry         | Any one entry admits; onsite admits everybody; shape read per entry             |
+| **claims/**submit_valid_five_prs                      | Happy path, and the outbox property                                             |
+| **claims/**submit_invalid_evidence                    | Every failure named, nothing enqueued                                           |
+| **claims/**submit_pair_conflict                       | `(user, PR, skill)` uniqueness; same PR for another skill is fine               |
+| **claims/**edit_draft_and_lock_conflict               | PUT is an atomic replace; version conflicts; the lock closes the endpoint       |
+| **claims/**withdraw_warns_before_demoting             | Warn, then demote immediately; pairs released                                   |
+| **claims/**seven_day_lock                             | Per claim, not per account; unchanged evidence refused by fingerprint           |
+| **claims/**pr_review_claim_inverts_authorship         | Reviewer role, not author; projects refused                                     |
+| **claims/**ai_suggested_skills                        | Suggestions contribute nothing until accepted; the model never promotes         |
+| **claims/**claim_reads_are_owner_scoped               | 404 not 403, so the endpoint is not an existence oracle                         |
+| **evaluation/**disqualified_typo_scores_zero          | Typo scores 0 not 18; standing drops to four                                    |
+| **evaluation/**quality_floor_and_conversation_zero    | Floor catches what the grounds miss; no discussion → 0                          |
+| **evaluation/**secondary_share_and_promotion          | Linear share, uncapped; automatic promotion at five                             |
+| **evaluation/**partial_enrichment_and_idempotency     | One unreachable PR doesn't fail the claim; redelivery is free                   |
+| **discovery/**search_gates_and_exclusions             | Global ranking, filtered — gaps where inactive people sit; not_looking excluded |
+| **discovery/**leaderboard_and_scorecard_gating        | Three board kinds; three scorecard gates; hirer view ≠ public view              |
+| **discovery/**contact_request_requires_consent        | Staging discloses nothing; confirm does; payment label shown                    |
+| **discovery/**shortlist_lifecycle                     | Stage privately, confirm irreversibly; once shortlisted, never removed          |
+| **discovery/**saved_searches                          | Filter keys are the query parameters; gates evaluate as the caller              |
+| **me/**self_reads                                     | Own rank only — no neighbours; rank is global and survives lapsing              |
+| **me/**compensation_never_reaches_a_hirer             | ADR-0018 §2 on seven hirer-facing surfaces, before and after acceptance         |
+| **me/**profile_matchable_needs_both_halves            | A live window with no shape matches nothing; needs_attention ≠ !matchable       |
+| **me/**profile_put_replaces_and_first_pr_is_fixed     | PUT is a total replace; the first PR is write-once, the latest is not           |
+| **me/**profile_money_is_exact_and_validated           | Minor units, exact through bigint; every bad field named above the database     |
+| **places/**country_picker_is_public                   | No account behind the picker, and degraded:false against a live provider        |
+| **skills/**catalogue_and_requests                     | Aliases resolve but aren't claimable; dedupe before the queue                   |
+| **admin/**verification_and_overdue_flagging           | Alternative evidence path; flag at 80%, never block                             |
+| **admin/**reevaluation_cooldown_escalates             | 28→56→112→224→365; acceptance never counts against you                          |
+| **admin/**skill_request_queue                         | The only way the catalogue grows; slug collisions refused against aliases too   |
+| **admin/**evaluations_sweep                           | A rubric bump empties search until it drains; half-swept must not be searchable |
 
 ## Validation
 

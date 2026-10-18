@@ -1,0 +1,788 @@
+{
+  "name": "a fully remote organisation asks for an office, and an administrator decides",
+  "description": "ADR-0024 decisions 13 and 14, and the office-request routes on both sides.\n\nOnly an organisation's FIRST address is reviewed by a person (decision 10). For a company onboarded fully remote, the first one arrives here: an owner submits it, it waits for an administrator, and NOTHING CHANGES until approval — the organisation stays fully remote, lists no address, adds none, and posts no onsite entry. One request may wait at a time, and a pending one cannot be withdrawn or changed.\n\nA REJECTION leaves the organisation fully remote, emails the requesting owner the reason, and any owner may ask again AT ONCE — a new row, no limit, no wait. An APPROVAL, in one transaction, writes the address as the main office (added by the owner who asked), makes the organisation an office one, and stamps the request; the owner is emailed then too. From that moment it is indistinguishable from a company onboarded with an office: further addresses are added unreviewed, and roles take onsite entries. An organisation that already has an office cannot ask.\n\nThe administrator's queue is its own pair of routes, refused to a hirer. A rejection without a reason is `reason_required`, the code every administrator rejection already uses, and a decided request cannot be decided again (409).\n\nPinned by amendment 1: the decide body is the shared `{\"decision\", \"reason\"}` and answers the shared decision body (§1.1); deciding twice is `409 request_already_decided` naming the standing decision; the queue is `{total, office_requests}`, undecided, oldest first, a resubmission naming what it `supersedes` (§1.2); the 201 and `office_request` are one object, which after a rejection carries `decided_at` and the `reason`, and is null once approved (§1.3); each decision emails the requesting owner once, by subject (§1.10), the approval naming the city and the country by name from the place service. A malformed request id is 400 invalid_id; an undecodable body or an unknown decision is 422 invalid_state, the shared decide handler's answer (the Planner's correction to §1.1).",
+  "seed": ["principals"],
+  "steps": [
+    {
+      "_step": "The same body as POST …/addresses, refused the same way.",
+      "as": "sam_studio",
+      "request": {
+        "method": "POST",
+        "path": "/orgs/01920000-0000-7000-8000-00000000b002/office-request",
+        "body": {
+          "country": "ES",
+          "postal_code": "28013",
+          "street1": "Calle Mayor 10",
+          "street2": "3rd floor"
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "invalid_address",
+          "field": "city"
+        },
+        "db": {
+          "organization_office_requests": {
+            "count": 0
+          }
+        }
+      }
+    },
+    {
+      "_step": "THE OWNER ASKS. 201 with the request.",
+      "as": "sam_studio",
+      "request": {
+        "method": "POST",
+        "path": "/orgs/01920000-0000-7000-8000-00000000b002/office-request",
+        "body": {
+          "country": "ES",
+          "city": "Madrid",
+          "postal_code": "28013",
+          "street1": "Calle Mayor 10",
+          "street2": "3rd floor"
+        }
+      },
+      "capture": {
+        "first_request": "$.id"
+      },
+      "expect": {
+        "status": 201,
+        "body": {
+          "id": "<uuid>",
+          "status": "pending",
+          "address": {
+            "country": "ES",
+            "city": "Madrid",
+            "postal_code": "28013",
+            "street1": "Calle Mayor 10",
+            "street2": "3rd floor"
+          },
+          "requested_at": "<timestamp>"
+        },
+        "db": {
+          "organization_office_requests": {
+            "where": {
+              "organization_id": "01920000-0000-7000-8000-00000000b002"
+            },
+            "count": 1,
+            "all_match": {
+              "requested_by": "01920000-0000-7000-8000-00000000c003",
+              "city": "Madrid",
+              "decided_at": null,
+              "address_id": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "_step": "WHILE IT WAITS, NOTHING CHANGES. Still fully remote, still no address — and the request is visible, which is what lets the client say one is waiting instead of offering the form again.",
+      "as": "sam_studio",
+      "request": {
+        "method": "GET",
+        "path": "/orgs/01920000-0000-7000-8000-00000000b002/addresses"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "workplace": "fully_remote",
+          "addresses": [],
+          "office_request": {
+            "id": "<uuid>",
+            "status": "pending",
+            "address": {
+              "country": "ES",
+              "city": "Madrid",
+              "postal_code": "28013",
+              "street1": "Calle Mayor 10",
+              "street2": "3rd floor"
+            },
+            "requested_at": "<timestamp>"
+          }
+        }
+      }
+    },
+    {
+      "_step": "One at a time. Two waiting would give an administrator two addresses and no way to know which was meant.",
+      "as": "sam_studio",
+      "request": {
+        "method": "POST",
+        "path": "/orgs/01920000-0000-7000-8000-00000000b002/office-request",
+        "body": {
+          "country": "ES",
+          "city": "Barcelona",
+          "postal_code": "08002",
+          "street1": "Carrer de Ferran 1",
+          "street2": "Local 2"
+        }
+      },
+      "expect": {
+        "status": 409,
+        "body": {
+          "error": "office_request_pending"
+        },
+        "db": {
+          "organization_office_requests": {
+            "where": {
+              "organization_id": "01920000-0000-7000-8000-00000000b002"
+            },
+            "count": 1
+          }
+        }
+      }
+    },
+    {
+      "_step": "The owner route is still closed while the request waits...",
+      "as": "sam_studio",
+      "request": {
+        "method": "POST",
+        "path": "/orgs/01920000-0000-7000-8000-00000000b002/addresses",
+        "body": {
+          "country": "ES",
+          "city": "Barcelona",
+          "postal_code": "08002",
+          "street1": "Carrer de Ferran 1",
+          "street2": "Local 2"
+        }
+      },
+      "expect": {
+        "status": 409,
+        "body": {
+          "error": "organization_fully_remote"
+        }
+      }
+    },
+    {
+      "_step": "...and so is an onsite entry (the same inference as orgs/a_fully_remote_organisation_has_no_office).",
+      "as": "sam_studio",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b002/roles",
+        "body": {
+          "title": "Madrid designer",
+          "engagement": "contract",
+          "locations": [
+            {
+              "mode": "onsite",
+              "address_id": "01920000-0000-7000-8000-0000000adfff"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "organization_fully_remote",
+          "field": "locations",
+          "position": 1
+        }
+      }
+    },
+    {
+      "_step": "THE ADMINISTRATOR'S SIDE. A hirer reads nothing of the queue...",
+      "as": "hank",
+      "request": {
+        "method": "GET",
+        "path": "/admin/office-requests"
+      },
+      "expect": {
+        "status": 403,
+        "body": {
+          "error": "admin_required"
+        }
+      }
+    },
+    {
+      "_step": "...and decides nothing.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/admin/office-requests/{{first_request}}/decide",
+        "body": {
+          "decision": "approved"
+        }
+      },
+      "expect": {
+        "status": 403,
+        "body": {
+          "error": "admin_required"
+        },
+        "db": {
+          "organization_office_requests": {
+            "where": {
+              "organization_id": "01920000-0000-7000-8000-00000000b002"
+            },
+            "count": 1,
+            "all_match": {
+              "decided_at": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "_step": "The administrator's queue: undecided requests, oldest first, naming the organisation and the owner who asked. No `supersedes`: this is a first request.",
+      "as": "root",
+      "request": {
+        "method": "GET",
+        "path": "/admin/office-requests"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "total": 1,
+          "office_requests": [
+            {
+              "id": "<uuid>",
+              "organization": {
+                "id": "01920000-0000-7000-8000-00000000b002",
+                "name": "Tiny Studio"
+              },
+              "address": {
+                "country": "ES",
+                "city": "Madrid",
+                "postal_code": "28013",
+                "street1": "Calle Mayor 10",
+                "street2": "3rd floor"
+              },
+              "requested_by": "sam",
+              "created_at": "<timestamp>"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "_step": "A rejection without a reason is one the company cannot act on.",
+      "as": "root",
+      "request": {
+        "method": "POST",
+        "path": "/admin/office-requests/{{first_request}}/decide",
+        "body": {
+          "decision": "rejected"
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "reason_required",
+          "message": "A rejection must carry a reason."
+        },
+        "db": {
+          "organization_office_requests": {
+            "where": {
+              "organization_id": "01920000-0000-7000-8000-00000000b002"
+            },
+            "count": 1,
+            "all_match": {
+              "decided_at": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "_step": "A malformed request id is 400 invalid_id — a typo, not a request that does not exist.",
+      "as": "root",
+      "request": {
+        "method": "POST",
+        "path": "/admin/office-requests/not-a-uuid/decide",
+        "body": {
+          "decision": "approved"
+        }
+      },
+      "expect": {
+        "status": 400,
+        "body": {
+          "error": "invalid_id"
+        }
+      }
+    },
+    {
+      "_step": "A body that does not decode is 422 invalid_state, the shared decide handler's answer.",
+      "as": "root",
+      "request": {
+        "method": "POST",
+        "path": "/admin/office-requests/{{first_request}}/decide",
+        "body": {
+          "decision": true
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "invalid_state"
+        }
+      }
+    },
+    {
+      "_step": "A decision other than approved or rejected is refused, never defaulted — a typo must not reject a company's office.",
+      "as": "root",
+      "request": {
+        "method": "POST",
+        "path": "/admin/office-requests/{{first_request}}/decide",
+        "body": {
+          "decision": "maybe",
+          "reason": "Unsure."
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "invalid_state"
+        },
+        "db": {
+          "organization_office_requests": {
+            "where": {
+              "organization_id": "01920000-0000-7000-8000-00000000b002"
+            },
+            "count": 1,
+            "all_match": {
+              "decided_at": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "_step": "REJECTED. Stamped decided with no address; the organisation is untouched.",
+      "as": "root",
+      "request": {
+        "method": "POST",
+        "path": "/admin/office-requests/{{first_request}}/decide",
+        "body": {
+          "decision": "rejected",
+          "reason": "The lease is in a director's own name, not the company's."
+        }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "id": "<uuid>",
+          "status": "rejected",
+          "reviewed_at": "<timestamp>",
+          "reviewed_by": "<uuid>"
+        },
+        "db": {
+          "organization_office_requests": {
+            "where": {
+              "organization_id": "01920000-0000-7000-8000-00000000b002"
+            },
+            "count": 1,
+            "all_match": {
+              "address_id": null,
+              "decision_reason": "The lease is in a director's own name, not the company's."
+            },
+            "none_match": {
+              "decided_at": null,
+              "decided_by": null
+            }
+          },
+          "organizations": {
+            "where": {
+              "id": "01920000-0000-7000-8000-00000000b002"
+            },
+            "count": 1,
+            "all_match": {
+              "workplace": "fully_remote"
+            }
+          },
+          "organization_addresses": {
+            "where": {
+              "organization_id": "01920000-0000-7000-8000-00000000b002"
+            },
+            "count": 0
+          }
+        }
+      }
+    },
+    {
+      "_step": "The requesting owner is emailed THE REASON — one message for one decision.",
+      "as": "system",
+      "request": {
+        "method": "READ_EMAIL",
+        "path": "/",
+        "body": {
+          "to": "sam@tinystudio.example",
+          "subject": "Your office address was not approved",
+          "contains": ["The lease is in a director's own name, not the company's."],
+          "count": 1
+        }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "to": "sam@tinystudio.example",
+          "subject": "Your office address was not approved",
+          "html": "<string>",
+          "token": "<string>"
+        }
+      }
+    },
+    {
+      "_step": "A decided request cannot be decided again — a 409, as for an onboarding submission.",
+      "as": "root",
+      "request": {
+        "method": "POST",
+        "path": "/admin/office-requests/{{first_request}}/decide",
+        "body": {
+          "decision": "approved"
+        }
+      },
+      "expect": {
+        "status": 409,
+        "body": {
+          "error": "request_already_decided",
+          "status": "rejected"
+        },
+        "db": {
+          "organization_addresses": {
+            "where": {
+              "organization_id": "01920000-0000-7000-8000-00000000b002"
+            },
+            "count": 0
+          }
+        }
+      }
+    },
+    {
+      "_step": "Still fully remote, still no address — and the latest request reads REJECTED, with when and why, so the reason is on the screen and not only in an inbox (amendment 1 §1.3).",
+      "as": "sam_studio",
+      "request": {
+        "method": "GET",
+        "path": "/orgs/01920000-0000-7000-8000-00000000b002/addresses"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "workplace": "fully_remote",
+          "addresses": [],
+          "office_request": {
+            "id": "<uuid>",
+            "status": "rejected",
+            "address": {
+              "country": "ES",
+              "city": "Madrid",
+              "postal_code": "28013",
+              "street1": "Calle Mayor 10",
+              "street2": "3rd floor"
+            },
+            "requested_at": "<timestamp>",
+            "decided_at": "<timestamp>",
+            "reason": "The lease is in a director's own name, not the company's."
+          }
+        }
+      }
+    },
+    {
+      "_step": "AND IT MAY ASK AGAIN AT ONCE: a new row, so the administrator can see what changed. No limit and no wait.",
+      "as": "sam_studio",
+      "request": {
+        "method": "POST",
+        "path": "/orgs/01920000-0000-7000-8000-00000000b002/office-request",
+        "body": {
+          "country": "ES",
+          "city": "Barcelona",
+          "postal_code": "08002",
+          "street1": "Carrer de Ferran 1",
+          "street2": "Local 2"
+        }
+      },
+      "capture": {
+        "second_request": "$.id"
+      },
+      "expect": {
+        "status": 201,
+        "body": {
+          "id": "<uuid>",
+          "status": "pending",
+          "address": {
+            "country": "ES",
+            "city": "Barcelona",
+            "postal_code": "08002",
+            "street1": "Carrer de Ferran 1",
+            "street2": "Local 2"
+          },
+          "requested_at": "<timestamp>"
+        },
+        "db": {
+          "organization_office_requests": {
+            "where": {
+              "organization_id": "01920000-0000-7000-8000-00000000b002"
+            },
+            "count": 2
+          }
+        }
+      }
+    },
+    {
+      "_step": "Only the undecided one is queued, and it names the rejected request it SUPERSEDES, so the administrator can read what changed.",
+      "as": "root",
+      "request": {
+        "method": "GET",
+        "path": "/admin/office-requests"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "total": 1,
+          "office_requests": [
+            {
+              "id": "<uuid>",
+              "organization": {
+                "id": "01920000-0000-7000-8000-00000000b002",
+                "name": "Tiny Studio"
+              },
+              "address": {
+                "country": "ES",
+                "city": "Barcelona",
+                "postal_code": "08002",
+                "street1": "Carrer de Ferran 1",
+                "street2": "Local 2"
+              },
+              "requested_by": "sam",
+              "created_at": "<timestamp>",
+              "supersedes": "<uuid>"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "_step": "APPROVED. One transaction: the main office, the kind, the stamp.",
+      "as": "root",
+      "request": {
+        "method": "POST",
+        "path": "/admin/office-requests/{{second_request}}/decide",
+        "body": {
+          "decision": "approved"
+        }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "id": "<uuid>",
+          "status": "approved",
+          "reviewed_at": "<timestamp>",
+          "reviewed_by": "<uuid>"
+        },
+        "db": {
+          "organization_addresses": {
+            "where": {
+              "organization_id": "01920000-0000-7000-8000-00000000b002"
+            },
+            "count": 1,
+            "all_match": {
+              "is_main_office": true,
+              "city": "Barcelona",
+              "added_by": "01920000-0000-7000-8000-00000000c003",
+              "removed_at": null
+            }
+          },
+          "organizations": {
+            "where": {
+              "id": "01920000-0000-7000-8000-00000000b002"
+            },
+            "count": 1,
+            "all_match": {
+              "workplace": "office"
+            }
+          },
+          "organization_office_requests": {
+            "where": {
+              "id": "{{second_request}}"
+            },
+            "count": 1,
+            "none_match": {
+              "decided_at": null,
+              "address_id": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "_step": "The requesting owner is emailed on approval too: one message, naming the city and the country by NAME, from the place service — not the code.",
+      "as": "system",
+      "request": {
+        "method": "READ_EMAIL",
+        "path": "/",
+        "body": {
+          "to": "sam@tinystudio.example",
+          "subject": "Your office address was approved",
+          "contains": ["Barcelona", "Spain"],
+          "count": 1
+        }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "to": "sam@tinystudio.example",
+          "subject": "Your office address was approved",
+          "html": "<string>",
+          "token": "<string>"
+        }
+      }
+    },
+    {
+      "_step": "The queue is empty.",
+      "as": "root",
+      "request": {
+        "method": "GET",
+        "path": "/admin/office-requests"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "total": 0,
+          "office_requests": []
+        }
+      }
+    },
+    {
+      "_step": "An office organisation, with its main office — and `office_request` is null again: once approved, the address is in `addresses`.",
+      "as": "sam_studio",
+      "request": {
+        "method": "GET",
+        "path": "/orgs/01920000-0000-7000-8000-00000000b002/addresses"
+      },
+      "capture": {
+        "studio_main": "$.addresses[0].id"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "workplace": "office",
+          "addresses": [
+            {
+              "id": "<uuid>",
+              "country": "ES",
+              "city": "Barcelona",
+              "postal_code": "08002",
+              "street1": "Carrer de Ferran 1",
+              "street2": "Local 2",
+              "is_main_office": true,
+              "removed": false
+            }
+          ],
+          "office_request": null
+        }
+      }
+    },
+    {
+      "_step": "Further addresses are now added by an owner, unreviewed.",
+      "as": "sam_studio",
+      "request": {
+        "method": "POST",
+        "path": "/orgs/01920000-0000-7000-8000-00000000b002/addresses",
+        "body": {
+          "country": "ES",
+          "city": "Madrid",
+          "postal_code": "28013",
+          "street1": "Calle Mayor 10",
+          "street2": "3rd floor"
+        }
+      },
+      "expect": {
+        "status": 201,
+        "body": {
+          "id": "<uuid>",
+          "country": "ES",
+          "city": "Madrid",
+          "postal_code": "28013",
+          "street1": "Calle Mayor 10",
+          "street2": "3rd floor",
+          "is_main_office": false,
+          "removed": false
+        }
+      }
+    },
+    {
+      "_step": "And roles take onsite entries.",
+      "as": "sam_studio",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b002/roles",
+        "body": {
+          "title": "Barcelona designer",
+          "engagement": "contract",
+          "locations": [
+            {
+              "mode": "onsite",
+              "address_id": "{{studio_main}}"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "status": 201,
+        "body": {
+          "id": "<uuid>",
+          "organization_id": "01920000-0000-7000-8000-00000000b002",
+          "status": "draft",
+          "title": "Barcelona designer",
+          "description": "",
+          "engagement": "contract",
+          "locations": [
+            {
+              "mode": "onsite",
+              "country": null,
+              "address": {
+                "id": "<uuid>",
+                "country": "ES",
+                "city": "Barcelona",
+                "postal_code": "08002",
+                "street1": "Carrer de Ferran 1",
+                "street2": "Local 2",
+                "is_main_office": true,
+                "removed": false
+              }
+            }
+          ],
+          "currency": "",
+          "yearly_ctc": null,
+          "yearly_base": null,
+          "hourly_rate": null,
+          "expected_hours": null,
+          "min_office_yoe": null,
+          "min_oss_yoe": null,
+          "requires_online_test": null,
+          "max_interview_rounds": null,
+          "avg_days_to_offer": null,
+          "questions": [],
+          "opened_at": null,
+          "close_requested_at": null,
+          "closed_at": null,
+          "close_reason": null,
+          "hires": [],
+          "advertised": false,
+          "supersedes": null,
+          "created_at": "<timestamp>",
+          "updated_at": "<timestamp>"
+        }
+      }
+    },
+    {
+      "_step": "An organisation with an office cannot ask for one.",
+      "as": "sam_studio",
+      "request": {
+        "method": "POST",
+        "path": "/orgs/01920000-0000-7000-8000-00000000b002/office-request",
+        "body": {
+          "country": "ES",
+          "city": "Madrid",
+          "postal_code": "28013",
+          "street1": "Calle Mayor 10",
+          "street2": "3rd floor"
+        }
+      },
+      "expect": {
+        "status": 409,
+        "body": {
+          "error": "organization_has_office"
+        }
+      }
+    }
+  ]
+}

@@ -197,3 +197,28 @@ tested, and reachable by no product flow. They are deliberately **not** deleted 
 Removing a verification mechanism is a decision for the Planner, and three repository tests
 now construct the unverified state explicitly — through a `mustUnverify` helper that says
 why — rather than pretending a flow still produces it.
+
+### 4. An organisation says whether it has an office (ADR-0024)
+
+Not raised during implementation like the three above: decided by the owner in RFC-0024 and
+recorded in [ADR-0024](ADR-0024-role-locations.md).
+
+- **§3 and §10.** Onboarding asks `workplace`: `office` or `fully_remote`, required. An
+  office submission must carry country, city and street; a fully remote one carries no part
+  of an address. `ck_onboarding_address` is replaced by `ck_onboarding_workplace_address`,
+  and `organizations` gains `workplace`. Approval is keyed on the choice: an office
+  organisation gets its main office with the organisation and the owner seat, a fully remote
+  one gets no address. The admin queue body gains `workplace`.
+- **Refusals.** `POST /organizations` and `POST /organizations/revise` answer
+  `invalid_onboarding` with `field` (`name`, `email`, `headcount`, `workplace`,
+  `address.country`, `address.city`, `address.street1`, `address`), replacing the
+  `invalid_claim` a bare `ErrInvalid` fell through to.
+- **More addresses.** Owners add further addresses unreviewed and remove them as a stamp;
+  only an organisation's first address is reviewed by a person. Consequence "one row per
+  organisation until roles exist" no longer holds.
+- **The kind can change.** A fully remote organisation may ask for an office through an
+  office request an administrator decides, with its own routes — the reasoning of
+  amendment 1 applies again. An office organisation's owner may make it fully remote while
+  no draft or open role has an onsite entry, which removes every address, main office
+  included. `uq_org_main_office` counts only live rows.
+- **Unchanged.** An address is still not verification evidence.

@@ -188,6 +188,19 @@ func (s *Store) GitHubCode(code string) (GitHubGrant, bool) {
 	return grant, ok
 }
 
+// GoogleGrants returns every loaded Google authorization code, for the
+// development sign-in page — the one reader that needs the whole cast.
+func (s *Store) GoogleGrants() map[string]GoogleGrant {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	out := make(map[string]GoogleGrant, len(s.state.Google.OAuthCodes))
+	for code, grant := range s.state.Google.OAuthCodes {
+		out[code] = grant
+	}
+	return out
+}
+
 // GoogleCode looks up a Google authorization code.
 func (s *Store) GoogleCode(code string) (GoogleGrant, bool) {
 	s.mu.RLock()

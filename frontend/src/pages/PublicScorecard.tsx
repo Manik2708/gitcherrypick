@@ -36,10 +36,7 @@ export function PublicScorecardPage() {
   if (card.error || !card.data) {
     return (
       <div className="page page--narrow">
-        <Empty title="Not found">
-          This link does not lead anywhere. It may have been revoked, or it may never have existed —
-          we answer both the same way on purpose.
-        </Empty>
+        <Empty title="Not found">This link does not lead anywhere.</Empty>
       </div>
     );
   }

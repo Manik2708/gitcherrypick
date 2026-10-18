@@ -3,11 +3,9 @@
 // The code is single-use, so the exchange fires exactly once — a re-run in
 // StrictMode or on a re-render would spend it and fail the second time.
 //
-// Two arrivals land here, because a GitHub identity can be either kind of
-// account and only the path taken says which: /auth/github/callback mints a
-// contributor session, /auth/hirer/github/callback a hiring one. The API keeps
-// them as separate endpoints for the same reason, so `as` picks which to call
-// rather than the page guessing from the response.
+// Two arrivals land here: /auth/github/callback mints a contributor session,
+// /auth/google/callback a hiring one. `as` picks which exchange to call rather
+// than the page guessing from the response.
 
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -18,7 +16,7 @@ import { ApiError } from "../api/http";
 import { useSession } from "../hooks/session";
 import { Empty, Loading } from "../ui/primitives";
 
-export function AuthCallbackPage({ as = "contributor" }: { as?: "contributor" | "hirer" }) {
+export function AuthCallbackPage({ as = "contributor" }: { as?: "contributor" | "google" }) {
   const [params] = useSearchParams();
   const { client, adopt } = useSession();
   const navigate = useNavigate();
@@ -42,15 +40,15 @@ export function AuthCallbackPage({ as = "contributor" }: { as?: "contributor" | 
     }
 
     const exchange =
-      as === "hirer"
-        ? endpoints.auth.hirerGithubCallback(code, state)
+      as === "google"
+        ? endpoints.auth.googleCallback(code, state)
         : endpoints.auth.githubCallback(code, state);
 
     client
       .get<SessionResponse>(exchange)
       .then((session) => {
         adopt(principalOf(session), tokensOf(session));
-        navigate(as === "hirer" ? "/search" : "/", { replace: true });
+        navigate(as === "contributor" ? "/" : "/search", { replace: true });
       })
       .catch((cause: unknown) => {
         const message = cause instanceof Error ? cause.message : "That sign-in did not complete.";

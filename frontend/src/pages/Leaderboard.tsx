@@ -29,11 +29,7 @@ export function LeaderboardPage() {
 
   return (
     <div className="page">
-      <PageHead
-        eyebrow="Standing"
-        title="The boards"
-        lede="Ranked over the whole scored population under one rubric version. Nobody is hidden; those who went quiet are marked."
-      />
+      <PageHead eyebrow="Standing" title="The boards" />
 
       <Card>
         <div className="segmented" role="tablist">
@@ -54,7 +50,6 @@ export function LeaderboardPage() {
           <SkillPicker
             id="skill"
             label="Which skill?"
-            help="The same catalogue the search filters use — a board exists per skill, not per spelling."
             chosen={skill ? [skill] : []}
             // One board at a time, so the last pick replaces rather than adds.
             onChange={(next) => setSkill(next[next.length - 1] ?? "")}

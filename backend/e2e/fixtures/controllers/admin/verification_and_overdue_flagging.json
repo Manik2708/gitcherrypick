@@ -1,6 +1,6 @@
 {
   "name": "manual verification, alternative evidence, and overdue-shortlist flagging",
-  "description": "ADR-0002: verification is manual, targets 48 hours, and must be satisfiable by a small firm with no company domain or LinkedIn page — a three-person studio hiring a contractor is exactly the customer the alternative-evidence path exists for. A scheme only large companies can pass would exclude most freelance hiring.\n\nREWRITTEN FOR ADR-0017 §7. POST /auth/hirer/register no longer creates an organisation: it is the INDEPENDENT hirer's route, someone hiring on their own account, and the request it queues names the HIRER rather than a company. A company now arrives through POST /organizations, which creates nothing until an administrator approves it (see orgs/onboarding_creates_nothing_until_approved). So this case holds the other half of the split: registration creates a seat with no organisation, the queue shows a hirer-scoped request with no organisation attached, and approving it verifies the person alone. A body still carrying an `organization` object is refused outright rather than silently ignored — every body here decodes with DisallowUnknownFields, and a client with a stale field must be told its request did nothing rather than left believing it founded a company.\n\nAlso ADR-0005: an organization with 80% or more of its open shortlists past their tentative date is flagged. Nothing is blocked — blocking would punish a hirer for a candidate's silence as readily as for their own neglect.\n\nUpdated for RFC-0008 §3a. The overdue ratio counts CONFIRMED rounds only: a draft promised nothing to anyone, so counting it would flag an organization for failing to deliver on a search it never announced. Each round here is therefore confirmed before the clock advances, and Round D is deliberately left as a draft to prove a draft cannot be overdue.",
+  "description": "ADR-0002: verification is manual, targets 48 hours, and must be satisfiable by a small firm with no company domain or LinkedIn page — a three-person studio hiring a contractor is exactly the customer the alternative-evidence path exists for. A scheme only large companies can pass would exclude most freelance hiring.\n\nREWRITTEN FOR ADR-0017 §7. POST /auth/hirer/register no longer creates an organisation: it is the INDEPENDENT hirer's route, someone hiring on their own account, and the request it queues names the HIRER rather than a company. A company now arrives through POST /organizations, which creates nothing until an administrator approves it (see orgs/onboarding_creates_nothing_until_approved). So this case holds the other half of the split: registration creates a seat with no organisation, the queue shows a hirer-scoped request with no organisation attached, and approving it verifies the person alone. A body still carrying an `organization` object is refused outright rather than silently ignored — every body here decodes with DisallowUnknownFields, and a client with a stale field must be told its request did nothing rather than left believing it founded a company.\n\nAlso ADR-0005: an organization with 80% or more of its open shortlists past their tentative date is flagged. Nothing is blocked — blocking would punish a hirer for a candidate's silence as readily as for their own neglect.\n\nUpdated for RFC-0008 §3a, and again for ADR-0008 amendment 4. The overdue ratio counts CONFIRMED rounds only — first_confirmed_at is not null: a round nobody was told about promised nothing to anyone, so counting it would flag an organization for failing to deliver on a search it never announced. Each round here is therefore confirmed before the clock advances, and Round D is deliberately left unconfirmed to prove that an unannounced round cannot be overdue. It is OPEN like every other round now that there is no draft status; what keeps it out of the ratio is the missing confirm stamp, which is the fact that was always doing the work.\n\nREWRITTEN FOR ADR-0024. A role no longer has one `location`, an `address_id` and a list of `eligible_countries`: it holds a set of location entries — remote from anywhere, remote within a named country, or onsite at one of the organisation's addresses. The hirer reads every entry with `mode`, `country` and `address`; a contributor reads a country (or null for anywhere) and, for onsite, a city — never a street. The three old keys are gone from every request and response. Every role written here is remote from anywhere: `{\"mode\": \"remote\"}` in the request, one entry with null country and null address in the response.",
   "seed": ["principals", "catalogue"],
   "steps": [
     {
@@ -344,89 +344,11 @@
       }
     },
     {
-      "_step": "Acme opens three shortlists, then time passes.",
+      "_step": "Acme promises three different dates on three jobs, then time passes.",
       "as": "hank",
       "request": {
         "method": "POST",
-        "path": "/shortlists",
-        "body": {
-          "role_id": "{{acme.role}}",
-          "name": "Round A",
-          "tentative_result_date": "2026-08-20"
-        }
-      },
-      "expect": {
-        "status": 201,
-        "body": {
-          "id": "<uuid>",
-          "role_id": "<uuid>",
-          "name": "Round A",
-          "status": "draft",
-          "tentative_result_date": "2026-08-20",
-          "created_at": "<timestamp>"
-        }
-      },
-      "capture": {
-        "shortlist_a_id": "$.id"
-      }
-    },
-    {
-      "as": "hank",
-      "request": {
-        "method": "POST",
-        "path": "/shortlists",
-        "body": {
-          "role_id": "{{acme.role}}",
-          "name": "Round B",
-          "tentative_result_date": "2026-08-22"
-        }
-      },
-      "expect": {
-        "status": 201,
-        "body": {
-          "id": "<uuid>",
-          "role_id": "<uuid>",
-          "name": "Round B",
-          "status": "draft",
-          "tentative_result_date": "2026-08-22",
-          "created_at": "<timestamp>"
-        }
-      },
-      "capture": {
-        "shortlist_b_id": "$.id"
-      }
-    },
-    {
-      "as": "hank",
-      "request": {
-        "method": "POST",
-        "path": "/shortlists",
-        "body": {
-          "role_id": "{{acme.role}}",
-          "name": "Round C",
-          "tentative_result_date": "2026-12-01"
-        }
-      },
-      "expect": {
-        "status": 201,
-        "body": {
-          "id": "<uuid>",
-          "role_id": "<uuid>",
-          "name": "Round C",
-          "status": "draft",
-          "tentative_result_date": "2026-12-01",
-          "created_at": "<timestamp>"
-        }
-      },
-      "capture": {
-        "shortlist_c_id": "$.id"
-      }
-    },
-    {
-      "as": "hank",
-      "request": {
-        "method": "POST",
-        "path": "/shortlists/{{shortlist_a_id}}/entries",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles/{{acme.role}}/candidates",
         "body": {
           "user_id": "01920000-0000-7000-8000-00000000a001"
         }
@@ -434,21 +356,19 @@
       "expect": {
         "status": 201,
         "body": {
-          "shortlist_id": "<uuid>",
-          "user": {
-            "id": "01920000-0000-7000-8000-00000000a001",
-            "display_name": "Alice Okafor",
-            "github_login": "<string>"
-          },
-          "note": null,
+          "user_id": "01920000-0000-7000-8000-00000000a001",
+          "display_name": "Alice Okafor",
+          "github_login": "<string>",
           "added_by": {
             "id": "01920000-0000-7000-8000-00000000c001",
             "username": "hank",
             "display_name": "Hank Rivera",
             "active": true
           },
+          "added_at": "<timestamp>",
           "notified_at": null,
-          "added_at": "<timestamp>"
+          "contact_status": "",
+          "accepted": false
         }
       }
     },
@@ -456,19 +376,21 @@
       "as": "hank",
       "request": {
         "method": "POST",
-        "path": "/shortlists/{{shortlist_a_id}}/confirm",
-        "body": {}
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles/{{acme.role}}/contact",
+        "body": {
+          "tentative_result_date": "2026-08-20"
+        }
       },
       "expect": {
         "status": 200,
         "body": {
-          "id": "<uuid>",
+          "role_id": "<uuid>",
           "status": "open",
           "notified": 1,
           "already_notified": 0,
           "irreversible": true,
-          "first_confirmed_at": "<timestamp>",
-          "entries": [
+          "first_contacted_at": "<timestamp>",
+          "contacted": [
             {
               "user_id": "01920000-0000-7000-8000-00000000a001",
               "display_name": "Alice Okafor",
@@ -483,29 +405,56 @@
       "as": "hank",
       "request": {
         "method": "POST",
-        "path": "/shortlists/{{shortlist_b_id}}/entries",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles",
         "body": {
-          "user_id": "01920000-0000-7000-8000-00000000a002"
+          "title": "Platform engineer",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "remote"
+            }
+          ]
         }
+      },
+      "capture": {
+        "role_b": "$.id"
       },
       "expect": {
         "status": 201,
         "body": {
-          "shortlist_id": "<uuid>",
-          "user": {
-            "id": "01920000-0000-7000-8000-00000000a002",
-            "display_name": "Bob Nakamura",
-            "github_login": "<string>"
-          },
-          "note": null,
-          "added_by": {
-            "id": "01920000-0000-7000-8000-00000000c001",
-            "username": "hank",
-            "display_name": "Hank Rivera",
-            "active": true
-          },
-          "notified_at": null,
-          "added_at": "<timestamp>"
+          "id": "<uuid>",
+          "organization_id": "01920000-0000-7000-8000-00000000b001",
+          "status": "draft",
+          "title": "Platform engineer",
+          "description": "",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "remote",
+              "country": null,
+              "address": null
+            }
+          ],
+          "currency": "",
+          "yearly_ctc": null,
+          "yearly_base": null,
+          "hourly_rate": null,
+          "expected_hours": null,
+          "min_office_yoe": null,
+          "min_oss_yoe": null,
+          "requires_online_test": null,
+          "max_interview_rounds": null,
+          "avg_days_to_offer": null,
+          "questions": [],
+          "opened_at": null,
+          "close_requested_at": null,
+          "closed_at": null,
+          "close_reason": null,
+          "hires": [],
+          "advertised": false,
+          "supersedes": null,
+          "created_at": "<timestamp>",
+          "updated_at": "<timestamp>"
         }
       }
     },
@@ -513,19 +462,94 @@
       "as": "hank",
       "request": {
         "method": "POST",
-        "path": "/shortlists/{{shortlist_b_id}}/confirm",
-        "body": {}
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles/{{role_b}}/open"
       },
       "expect": {
         "status": 200,
         "body": {
           "id": "<uuid>",
+          "organization_id": "01920000-0000-7000-8000-00000000b001",
+          "status": "open",
+          "title": "Platform engineer",
+          "description": "",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "remote",
+              "country": null,
+              "address": null
+            }
+          ],
+          "currency": "",
+          "yearly_ctc": null,
+          "yearly_base": null,
+          "hourly_rate": null,
+          "expected_hours": null,
+          "min_office_yoe": null,
+          "min_oss_yoe": null,
+          "requires_online_test": null,
+          "max_interview_rounds": null,
+          "avg_days_to_offer": null,
+          "questions": [],
+          "opened_at": "<timestamp>",
+          "close_requested_at": null,
+          "closed_at": null,
+          "close_reason": null,
+          "hires": [],
+          "advertised": false,
+          "supersedes": null,
+          "created_at": "<timestamp>",
+          "updated_at": "<timestamp>"
+        }
+      }
+    },
+    {
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles/{{role_b}}/candidates",
+        "body": {
+          "user_id": "01920000-0000-7000-8000-00000000a002"
+        }
+      },
+      "expect": {
+        "status": 201,
+        "body": {
+          "user_id": "01920000-0000-7000-8000-00000000a002",
+          "display_name": "Bob Nakamura",
+          "github_login": "<string>",
+          "added_by": {
+            "id": "01920000-0000-7000-8000-00000000c001",
+            "username": "hank",
+            "display_name": "Hank Rivera",
+            "active": true
+          },
+          "added_at": "<timestamp>",
+          "notified_at": null,
+          "contact_status": "",
+          "accepted": false
+        }
+      }
+    },
+    {
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles/{{role_b}}/contact",
+        "body": {
+          "tentative_result_date": "2026-08-22"
+        }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "role_id": "<uuid>",
           "status": "open",
           "notified": 1,
           "already_notified": 0,
           "irreversible": true,
-          "first_confirmed_at": "<timestamp>",
-          "entries": [
+          "first_contacted_at": "<timestamp>",
+          "contacted": [
             {
               "user_id": "01920000-0000-7000-8000-00000000a002",
               "display_name": "Bob Nakamura",
@@ -540,29 +564,56 @@
       "as": "hank",
       "request": {
         "method": "POST",
-        "path": "/shortlists/{{shortlist_c_id}}/entries",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles",
         "body": {
-          "user_id": "01920000-0000-7000-8000-00000000a004"
+          "title": "Data engineer",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "remote"
+            }
+          ]
         }
+      },
+      "capture": {
+        "role_c": "$.id"
       },
       "expect": {
         "status": 201,
         "body": {
-          "shortlist_id": "<uuid>",
-          "user": {
-            "id": "01920000-0000-7000-8000-00000000a004",
-            "display_name": "Dave Whitfield",
-            "github_login": "<string>"
-          },
-          "note": null,
-          "added_by": {
-            "id": "01920000-0000-7000-8000-00000000c001",
-            "username": "hank",
-            "display_name": "Hank Rivera",
-            "active": true
-          },
-          "notified_at": null,
-          "added_at": "<timestamp>"
+          "id": "<uuid>",
+          "organization_id": "01920000-0000-7000-8000-00000000b001",
+          "status": "draft",
+          "title": "Data engineer",
+          "description": "",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "remote",
+              "country": null,
+              "address": null
+            }
+          ],
+          "currency": "",
+          "yearly_ctc": null,
+          "yearly_base": null,
+          "hourly_rate": null,
+          "expected_hours": null,
+          "min_office_yoe": null,
+          "min_oss_yoe": null,
+          "requires_online_test": null,
+          "max_interview_rounds": null,
+          "avg_days_to_offer": null,
+          "questions": [],
+          "opened_at": null,
+          "close_requested_at": null,
+          "closed_at": null,
+          "close_reason": null,
+          "hires": [],
+          "advertised": false,
+          "supersedes": null,
+          "created_at": "<timestamp>",
+          "updated_at": "<timestamp>"
         }
       }
     },
@@ -570,19 +621,94 @@
       "as": "hank",
       "request": {
         "method": "POST",
-        "path": "/shortlists/{{shortlist_c_id}}/confirm",
-        "body": {}
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles/{{role_c}}/open"
       },
       "expect": {
         "status": 200,
         "body": {
           "id": "<uuid>",
+          "organization_id": "01920000-0000-7000-8000-00000000b001",
+          "status": "open",
+          "title": "Data engineer",
+          "description": "",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "remote",
+              "country": null,
+              "address": null
+            }
+          ],
+          "currency": "",
+          "yearly_ctc": null,
+          "yearly_base": null,
+          "hourly_rate": null,
+          "expected_hours": null,
+          "min_office_yoe": null,
+          "min_oss_yoe": null,
+          "requires_online_test": null,
+          "max_interview_rounds": null,
+          "avg_days_to_offer": null,
+          "questions": [],
+          "opened_at": "<timestamp>",
+          "close_requested_at": null,
+          "closed_at": null,
+          "close_reason": null,
+          "hires": [],
+          "advertised": false,
+          "supersedes": null,
+          "created_at": "<timestamp>",
+          "updated_at": "<timestamp>"
+        }
+      }
+    },
+    {
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles/{{role_c}}/candidates",
+        "body": {
+          "user_id": "01920000-0000-7000-8000-00000000a004"
+        }
+      },
+      "expect": {
+        "status": 201,
+        "body": {
+          "user_id": "01920000-0000-7000-8000-00000000a004",
+          "display_name": "Dave Whitfield",
+          "github_login": "<string>",
+          "added_by": {
+            "id": "01920000-0000-7000-8000-00000000c001",
+            "username": "hank",
+            "display_name": "Hank Rivera",
+            "active": true
+          },
+          "added_at": "<timestamp>",
+          "notified_at": null,
+          "contact_status": "",
+          "accepted": false
+        }
+      }
+    },
+    {
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles/{{role_c}}/contact",
+        "body": {
+          "tentative_result_date": "2026-12-01"
+        }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "role_id": "<uuid>",
           "status": "open",
           "notified": 1,
           "already_notified": 0,
           "irreversible": true,
-          "first_confirmed_at": "<timestamp>",
-          "entries": [
+          "first_contacted_at": "<timestamp>",
+          "contacted": [
             {
               "user_id": "01920000-0000-7000-8000-00000000a004",
               "display_name": "Dave Whitfield",
@@ -627,21 +753,51 @@
       }
     },
     {
-      "_step": "Closing the in-date round leaves 2 of 2 overdue — 100%, over the threshold.",
+      "_step": "Closing the in-date job leaves 2 of 2 overdue — 100%, over the threshold.",
       "as": "hank",
       "request": {
         "method": "POST",
-        "path": "/shortlists/{{shortlist_c_id}}/close",
-        "body": {}
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles/{{role_c}}/close",
+        "body": {
+          "reason": "not_needed"
+        }
       },
       "expect": {
         "status": 200,
         "body": {
           "id": "<uuid>",
+          "organization_id": "01920000-0000-7000-8000-00000000b001",
           "status": "closed",
+          "title": "Data engineer",
+          "description": "",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "remote",
+              "country": null,
+              "address": null
+            }
+          ],
+          "currency": "",
+          "yearly_ctc": null,
+          "yearly_base": null,
+          "hourly_rate": null,
+          "expected_hours": null,
+          "min_office_yoe": null,
+          "min_oss_yoe": null,
+          "requires_online_test": null,
+          "max_interview_rounds": null,
+          "avg_days_to_offer": null,
+          "questions": [],
+          "opened_at": "<timestamp>",
+          "close_requested_at": null,
           "closed_at": "<timestamp>",
-          "name": "Round C",
-          "entry_count": 1
+          "close_reason": "not_needed",
+          "hires": [],
+          "advertised": false,
+          "supersedes": null,
+          "created_at": "<timestamp>",
+          "updated_at": "<timestamp>"
         }
       }
     },
@@ -669,30 +825,58 @@
       }
     },
     {
-      "_step": "Flagged, not blocked. Hank can still open another round — and this one stays a DRAFT, so it never enters the ratio no matter how far past its date it drifts.",
+      "_step": "Flagged, not blocked. Hank can still write another job — and this one is never contacted, so it never enters the ratio no matter how far past its date it drifts.",
       "as": "hank",
       "request": {
         "method": "POST",
-        "path": "/shortlists",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles",
         "body": {
-          "role_id": "{{acme.role}}",
-          "name": "Round D",
-          "tentative_result_date": "2026-10-01"
+          "title": "Round D",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "remote"
+            }
+          ]
         }
       },
       "expect": {
         "status": 201,
         "body": {
           "id": "<uuid>",
-          "role_id": "<uuid>",
-          "name": "Round D",
+          "organization_id": "01920000-0000-7000-8000-00000000b001",
           "status": "draft",
-          "tentative_result_date": "2026-10-01",
-          "created_at": "<timestamp>"
+          "title": "Round D",
+          "description": "",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "remote",
+              "country": null,
+              "address": null
+            }
+          ],
+          "currency": "",
+          "yearly_ctc": null,
+          "yearly_base": null,
+          "hourly_rate": null,
+          "expected_hours": null,
+          "min_office_yoe": null,
+          "min_oss_yoe": null,
+          "requires_online_test": null,
+          "max_interview_rounds": null,
+          "avg_days_to_offer": null,
+          "questions": [],
+          "opened_at": null,
+          "close_requested_at": null,
+          "closed_at": null,
+          "close_reason": null,
+          "hires": [],
+          "advertised": false,
+          "supersedes": null,
+          "created_at": "<timestamp>",
+          "updated_at": "<timestamp>"
         }
-      },
-      "capture": {
-        "shortlist_d_id": "$.id"
       }
     }
   ]

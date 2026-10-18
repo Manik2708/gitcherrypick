@@ -568,16 +568,36 @@ func TestOrganizationRepositoryVerify(t *testing.T) {
 //
 // Kept under the old name and signature so the forty call sites below read the
 // same. What changed is which door they go through, and that is the point.
+//
+// The company is FULLY REMOTE: it states that and gives no address (ADR-0024
+// decision 11). A test that needs an office uses mustRegisterOffice.
 func mustRegister(ctx context.Context, t *testing.T, db *postgres.DB, email, name, orgName, orgSlug string) *domain.Hirer {
 	t.Helper()
+	return mustOnboard(ctx, t, db, email, name, port.OnboardingSubmission{
+		Name: orgName, Email: email, Workplace: domain.WorkplaceFullyRemote,
+	}, orgSlug)
+}
 
+// mustRegisterOffice onboards a company WITH an office, whose approval writes
+// its main office in Bengaluru.
+func mustRegisterOffice(ctx context.Context, t *testing.T, db *postgres.DB, email, name, orgName, orgSlug string) *domain.Hirer {
+	t.Helper()
+	return mustOnboard(ctx, t, db, email, name, port.OnboardingSubmission{
+		Name: orgName, Email: email, Workplace: domain.WorkplaceOffice,
+		Country: "IN", City: "Bengaluru", PostalCode: "560001", Street1: "1 MG Road",
+	}, orgSlug)
+}
+
+// mustOnboard submits, proves and approves one company.
+func mustOnboard(ctx context.Context, t *testing.T, db *postgres.DB, email, name string, in port.OnboardingSubmission, orgSlug string) *domain.Hirer {
+	t.Helper()
+
+	orgName := in.Name
 	username := usernameFrom(email)
 	var submission *port.OnboardingSubmission
 	if err := db.InTx(ctx, func(ctx context.Context, tx port.Tx) error {
 		var err error
-		submission, err = db.Onboarding().Submit(ctx, tx, &port.OnboardingSubmission{
-			Name: orgName, Email: email,
-		})
+		submission, err = db.Onboarding().Submit(ctx, tx, &in)
 		return err
 	}); err != nil {
 		t.Fatalf("submitting %q: %v", orgName, err)

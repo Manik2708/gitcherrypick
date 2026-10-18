@@ -99,6 +99,12 @@ const PATHS: Record<string, ReactNode> = {
       <path d="M12 13.8V9.2M12 9.2c0-2.6 1.7-4.6 4.3-5.2M12 9.2C12 6.6 10.3 4.6 7.7 4" />
     </>
   ),
+  pin: (
+    <>
+      <path d="M12 20.5s-6.5-6-6.5-10.8a6.5 6.5 0 0 1 13 0c0 4.8-6.5 10.8-6.5 10.8Z" />
+      <circle cx="12" cy="9.7" r="2.3" />
+    </>
+  ),
   people: (
     <>
       <circle cx="9" cy="8" r="3.4" />
@@ -258,11 +264,14 @@ export function Field({
   label,
   help,
   htmlFor,
+  error,
   children,
 }: {
   label: string;
   help?: ReactNode;
   htmlFor?: string;
+  /** A refusal naming this control (ADR-0024 decision 16), shown under it. */
+  error?: string | null;
   children: ReactNode;
 }) {
   return (
@@ -272,8 +281,17 @@ export function Field({
       </label>
       {children}
       {help ? <p className="field__help">{help}</p> : null}
+      <FieldError message={error} />
     </div>
   );
+}
+
+/** A refusal beside the control it names, for controls that are not a Field. */
+export function FieldError({ message }: { message?: string | null }) {
+  if (!message) return null;
+  // Not an alert: the form's own Failure announces the refusal, and two
+  // assertive regions for one answer read it twice.
+  return <p className="field__error">{message}</p>;
 }
 
 /**

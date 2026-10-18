@@ -31,6 +31,17 @@ const (
 	PlaceholderNumber    = "<number>"
 	PlaceholderString    = "<string>"
 
+	// PlaceholderUnpinned matches ANY value, null included, but the key must
+	// still be present.
+	//
+	// It is not a convenience. It marks a value the binding ADR does not
+	// specify, so that a stage-3 fixture can assert everything the decision
+	// DOES pin without the integration-tester inventing the rest. Every use is
+	// a design gap reported to the Planner, and is replaced by the real shape
+	// once the Planner has decided it. A fixture must never use it for a value
+	// the ADR states.
+	PlaceholderUnpinned = "<unpinned>"
+
 	// PlaceholderAuthorizeURL matches a provider's authorization endpoint.
 	//
 	// The HOST is configuration, not behaviour: the suite redirects every
@@ -159,6 +170,8 @@ func matchScalar(path, want string, got any) bool {
 	case PlaceholderString:
 		_, ok := got.(string)
 		return ok
+	case PlaceholderUnpinned:
+		return true
 	case PlaceholderAuthorizeURL:
 		s, ok := got.(string)
 		return ok && isAuthorizeURL(s)

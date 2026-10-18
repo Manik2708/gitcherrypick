@@ -40,6 +40,86 @@ func (_m *RoleRepository) EXPECT() *RoleRepository_Expecter {
 	return &RoleRepository_Expecter{mock: &_m.Mock}
 }
 
+// ActiveOnsiteRoles provides a mock function for the type RoleRepository
+func (_mock *RoleRepository) ActiveOnsiteRoles(ctx context.Context, tx port.Tx, org domain.OrganizationID, at *domain.AddressID) ([]domain.RoleSummary, error) {
+	ret := _mock.Called(ctx, tx, org, at)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ActiveOnsiteRoles")
+	}
+
+	var r0 []domain.RoleSummary
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, port.Tx, domain.OrganizationID, *domain.AddressID) ([]domain.RoleSummary, error)); ok {
+		return returnFunc(ctx, tx, org, at)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, port.Tx, domain.OrganizationID, *domain.AddressID) []domain.RoleSummary); ok {
+		r0 = returnFunc(ctx, tx, org, at)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]domain.RoleSummary)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, port.Tx, domain.OrganizationID, *domain.AddressID) error); ok {
+		r1 = returnFunc(ctx, tx, org, at)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// RoleRepository_ActiveOnsiteRoles_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ActiveOnsiteRoles'
+type RoleRepository_ActiveOnsiteRoles_Call struct {
+	*mock.Call
+}
+
+// ActiveOnsiteRoles is a helper method to define mock.On call
+//   - ctx context.Context
+//   - tx port.Tx
+//   - org domain.OrganizationID
+//   - at *domain.AddressID
+func (_e *RoleRepository_Expecter) ActiveOnsiteRoles(ctx interface{}, tx interface{}, org interface{}, at interface{}) *RoleRepository_ActiveOnsiteRoles_Call {
+	return &RoleRepository_ActiveOnsiteRoles_Call{Call: _e.mock.On("ActiveOnsiteRoles", ctx, tx, org, at)}
+}
+
+func (_c *RoleRepository_ActiveOnsiteRoles_Call) Run(run func(ctx context.Context, tx port.Tx, org domain.OrganizationID, at *domain.AddressID)) *RoleRepository_ActiveOnsiteRoles_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 port.Tx
+		if args[1] != nil {
+			arg1 = args[1].(port.Tx)
+		}
+		var arg2 domain.OrganizationID
+		if args[2] != nil {
+			arg2 = args[2].(domain.OrganizationID)
+		}
+		var arg3 *domain.AddressID
+		if args[3] != nil {
+			arg3 = args[3].(*domain.AddressID)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *RoleRepository_ActiveOnsiteRoles_Call) Return(roleSummarys []domain.RoleSummary, err error) *RoleRepository_ActiveOnsiteRoles_Call {
+	_c.Call.Return(roleSummarys, err)
+	return _c
+}
+
+func (_c *RoleRepository_ActiveOnsiteRoles_Call) RunAndReturn(run func(ctx context.Context, tx port.Tx, org domain.OrganizationID, at *domain.AddressID) ([]domain.RoleSummary, error)) *RoleRepository_ActiveOnsiteRoles_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // ByID provides a mock function for the type RoleRepository
 func (_mock *RoleRepository) ByID(ctx context.Context, id domain.RoleID) (*domain.Role, error) {
 	ret := _mock.Called(ctx, id)
@@ -252,6 +332,160 @@ func (_c *RoleRepository_Close_Call) Return(role *domain.Role, err error) *RoleR
 }
 
 func (_c *RoleRepository_Close_Call) RunAndReturn(run func(ctx context.Context, tx port.Tx, id domain.RoleID, c port.RoleClosure) (*domain.Role, error)) *RoleRepository_Close_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// Contact provides a mock function for the type RoleRepository
+func (_mock *RoleRepository) Contact(ctx context.Context, tx port.Tx, role domain.RoleID, by domain.HirerID, resultBy time.Time) ([]domain.ContactRequest, error) {
+	ret := _mock.Called(ctx, tx, role, by, resultBy)
+
+	if len(ret) == 0 {
+		panic("no return value specified for Contact")
+	}
+
+	var r0 []domain.ContactRequest
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, port.Tx, domain.RoleID, domain.HirerID, time.Time) ([]domain.ContactRequest, error)); ok {
+		return returnFunc(ctx, tx, role, by, resultBy)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, port.Tx, domain.RoleID, domain.HirerID, time.Time) []domain.ContactRequest); ok {
+		r0 = returnFunc(ctx, tx, role, by, resultBy)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]domain.ContactRequest)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, port.Tx, domain.RoleID, domain.HirerID, time.Time) error); ok {
+		r1 = returnFunc(ctx, tx, role, by, resultBy)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// RoleRepository_Contact_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Contact'
+type RoleRepository_Contact_Call struct {
+	*mock.Call
+}
+
+// Contact is a helper method to define mock.On call
+//   - ctx context.Context
+//   - tx port.Tx
+//   - role domain.RoleID
+//   - by domain.HirerID
+//   - resultBy time.Time
+func (_e *RoleRepository_Expecter) Contact(ctx interface{}, tx interface{}, role interface{}, by interface{}, resultBy interface{}) *RoleRepository_Contact_Call {
+	return &RoleRepository_Contact_Call{Call: _e.mock.On("Contact", ctx, tx, role, by, resultBy)}
+}
+
+func (_c *RoleRepository_Contact_Call) Run(run func(ctx context.Context, tx port.Tx, role domain.RoleID, by domain.HirerID, resultBy time.Time)) *RoleRepository_Contact_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 port.Tx
+		if args[1] != nil {
+			arg1 = args[1].(port.Tx)
+		}
+		var arg2 domain.RoleID
+		if args[2] != nil {
+			arg2 = args[2].(domain.RoleID)
+		}
+		var arg3 domain.HirerID
+		if args[3] != nil {
+			arg3 = args[3].(domain.HirerID)
+		}
+		var arg4 time.Time
+		if args[4] != nil {
+			arg4 = args[4].(time.Time)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+			arg4,
+		)
+	})
+	return _c
+}
+
+func (_c *RoleRepository_Contact_Call) Return(contactRequests []domain.ContactRequest, err error) *RoleRepository_Contact_Call {
+	_c.Call.Return(contactRequests, err)
+	return _c
+}
+
+func (_c *RoleRepository_Contact_Call) RunAndReturn(run func(ctx context.Context, tx port.Tx, role domain.RoleID, by domain.HirerID, resultBy time.Time) ([]domain.ContactRequest, error)) *RoleRepository_Contact_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ContactRequestsForRole provides a mock function for the type RoleRepository
+func (_mock *RoleRepository) ContactRequestsForRole(ctx context.Context, role domain.RoleID) ([]domain.ContactRequest, error) {
+	ret := _mock.Called(ctx, role)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ContactRequestsForRole")
+	}
+
+	var r0 []domain.ContactRequest
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.RoleID) ([]domain.ContactRequest, error)); ok {
+		return returnFunc(ctx, role)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.RoleID) []domain.ContactRequest); ok {
+		r0 = returnFunc(ctx, role)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]domain.ContactRequest)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, domain.RoleID) error); ok {
+		r1 = returnFunc(ctx, role)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// RoleRepository_ContactRequestsForRole_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ContactRequestsForRole'
+type RoleRepository_ContactRequestsForRole_Call struct {
+	*mock.Call
+}
+
+// ContactRequestsForRole is a helper method to define mock.On call
+//   - ctx context.Context
+//   - role domain.RoleID
+func (_e *RoleRepository_Expecter) ContactRequestsForRole(ctx interface{}, role interface{}) *RoleRepository_ContactRequestsForRole_Call {
+	return &RoleRepository_ContactRequestsForRole_Call{Call: _e.mock.On("ContactRequestsForRole", ctx, role)}
+}
+
+func (_c *RoleRepository_ContactRequestsForRole_Call) Run(run func(ctx context.Context, role domain.RoleID)) *RoleRepository_ContactRequestsForRole_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 domain.RoleID
+		if args[1] != nil {
+			arg1 = args[1].(domain.RoleID)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *RoleRepository_ContactRequestsForRole_Call) Return(contactRequests []domain.ContactRequest, err error) *RoleRepository_ContactRequestsForRole_Call {
+	_c.Call.Return(contactRequests, err)
+	return _c
+}
+
+func (_c *RoleRepository_ContactRequestsForRole_Call) RunAndReturn(run func(ctx context.Context, role domain.RoleID) ([]domain.ContactRequest, error)) *RoleRepository_ContactRequestsForRole_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -472,74 +706,6 @@ func (_c *RoleRepository_ListByOrganization_Call) RunAndReturn(run func(ctx cont
 	return _c
 }
 
-// Matching provides a mock function for the type RoleRepository
-func (_mock *RoleRepository) Matching(ctx context.Context, m port.RoleMatch) ([]domain.Role, error) {
-	ret := _mock.Called(ctx, m)
-
-	if len(ret) == 0 {
-		panic("no return value specified for Matching")
-	}
-
-	var r0 []domain.Role
-	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, port.RoleMatch) ([]domain.Role, error)); ok {
-		return returnFunc(ctx, m)
-	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, port.RoleMatch) []domain.Role); ok {
-		r0 = returnFunc(ctx, m)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]domain.Role)
-		}
-	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, port.RoleMatch) error); ok {
-		r1 = returnFunc(ctx, m)
-	} else {
-		r1 = ret.Error(1)
-	}
-	return r0, r1
-}
-
-// RoleRepository_Matching_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Matching'
-type RoleRepository_Matching_Call struct {
-	*mock.Call
-}
-
-// Matching is a helper method to define mock.On call
-//   - ctx context.Context
-//   - m port.RoleMatch
-func (_e *RoleRepository_Expecter) Matching(ctx interface{}, m interface{}) *RoleRepository_Matching_Call {
-	return &RoleRepository_Matching_Call{Call: _e.mock.On("Matching", ctx, m)}
-}
-
-func (_c *RoleRepository_Matching_Call) Run(run func(ctx context.Context, m port.RoleMatch)) *RoleRepository_Matching_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 context.Context
-		if args[0] != nil {
-			arg0 = args[0].(context.Context)
-		}
-		var arg1 port.RoleMatch
-		if args[1] != nil {
-			arg1 = args[1].(port.RoleMatch)
-		}
-		run(
-			arg0,
-			arg1,
-		)
-	})
-	return _c
-}
-
-func (_c *RoleRepository_Matching_Call) Return(roles []domain.Role, err error) *RoleRepository_Matching_Call {
-	_c.Call.Return(roles, err)
-	return _c
-}
-
-func (_c *RoleRepository_Matching_Call) RunAndReturn(run func(ctx context.Context, m port.RoleMatch) ([]domain.Role, error)) *RoleRepository_Matching_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
 // Open provides a mock function for the type RoleRepository
 func (_mock *RoleRepository) Open(ctx context.Context, tx port.Tx, id domain.RoleID, by domain.HirerID, at time.Time) (*domain.Role, error) {
 	ret := _mock.Called(ctx, tx, id, by, at)
@@ -622,6 +788,74 @@ func (_c *RoleRepository_Open_Call) Return(role *domain.Role, err error) *RoleRe
 }
 
 func (_c *RoleRepository_Open_Call) RunAndReturn(run func(ctx context.Context, tx port.Tx, id domain.RoleID, by domain.HirerID, at time.Time) (*domain.Role, error)) *RoleRepository_Open_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// OverdueRatios provides a mock function for the type RoleRepository
+func (_mock *RoleRepository) OverdueRatios(ctx context.Context, now time.Time) ([]port.OverdueOrg, error) {
+	ret := _mock.Called(ctx, now)
+
+	if len(ret) == 0 {
+		panic("no return value specified for OverdueRatios")
+	}
+
+	var r0 []port.OverdueOrg
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, time.Time) ([]port.OverdueOrg, error)); ok {
+		return returnFunc(ctx, now)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, time.Time) []port.OverdueOrg); ok {
+		r0 = returnFunc(ctx, now)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]port.OverdueOrg)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, time.Time) error); ok {
+		r1 = returnFunc(ctx, now)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// RoleRepository_OverdueRatios_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'OverdueRatios'
+type RoleRepository_OverdueRatios_Call struct {
+	*mock.Call
+}
+
+// OverdueRatios is a helper method to define mock.On call
+//   - ctx context.Context
+//   - now time.Time
+func (_e *RoleRepository_Expecter) OverdueRatios(ctx interface{}, now interface{}) *RoleRepository_OverdueRatios_Call {
+	return &RoleRepository_OverdueRatios_Call{Call: _e.mock.On("OverdueRatios", ctx, now)}
+}
+
+func (_c *RoleRepository_OverdueRatios_Call) Run(run func(ctx context.Context, now time.Time)) *RoleRepository_OverdueRatios_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 time.Time
+		if args[1] != nil {
+			arg1 = args[1].(time.Time)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *RoleRepository_OverdueRatios_Call) Return(overdueOrgs []port.OverdueOrg, err error) *RoleRepository_OverdueRatios_Call {
+	_c.Call.Return(overdueOrgs, err)
+	return _c
+}
+
+func (_c *RoleRepository_OverdueRatios_Call) RunAndReturn(run func(ctx context.Context, now time.Time) ([]port.OverdueOrg, error)) *RoleRepository_OverdueRatios_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -800,6 +1034,143 @@ func (_c *RoleRepository_Revise_Call) Return(role *domain.Role, err error) *Role
 }
 
 func (_c *RoleRepository_Revise_Call) RunAndReturn(run func(ctx context.Context, tx port.Tx, of domain.RoleID, next *domain.Role, by domain.HirerID, at time.Time) (*domain.Role, error)) *RoleRepository_Revise_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// Stage provides a mock function for the type RoleRepository
+func (_mock *RoleRepository) Stage(ctx context.Context, c *domain.RoleCandidate, role domain.RoleID) (*domain.RoleCandidate, error) {
+	ret := _mock.Called(ctx, c, role)
+
+	if len(ret) == 0 {
+		panic("no return value specified for Stage")
+	}
+
+	var r0 *domain.RoleCandidate
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *domain.RoleCandidate, domain.RoleID) (*domain.RoleCandidate, error)); ok {
+		return returnFunc(ctx, c, role)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *domain.RoleCandidate, domain.RoleID) *domain.RoleCandidate); ok {
+		r0 = returnFunc(ctx, c, role)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*domain.RoleCandidate)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, *domain.RoleCandidate, domain.RoleID) error); ok {
+		r1 = returnFunc(ctx, c, role)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// RoleRepository_Stage_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Stage'
+type RoleRepository_Stage_Call struct {
+	*mock.Call
+}
+
+// Stage is a helper method to define mock.On call
+//   - ctx context.Context
+//   - c *domain.RoleCandidate
+//   - role domain.RoleID
+func (_e *RoleRepository_Expecter) Stage(ctx interface{}, c interface{}, role interface{}) *RoleRepository_Stage_Call {
+	return &RoleRepository_Stage_Call{Call: _e.mock.On("Stage", ctx, c, role)}
+}
+
+func (_c *RoleRepository_Stage_Call) Run(run func(ctx context.Context, c *domain.RoleCandidate, role domain.RoleID)) *RoleRepository_Stage_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 *domain.RoleCandidate
+		if args[1] != nil {
+			arg1 = args[1].(*domain.RoleCandidate)
+		}
+		var arg2 domain.RoleID
+		if args[2] != nil {
+			arg2 = args[2].(domain.RoleID)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *RoleRepository_Stage_Call) Return(roleCandidate *domain.RoleCandidate, err error) *RoleRepository_Stage_Call {
+	_c.Call.Return(roleCandidate, err)
+	return _c
+}
+
+func (_c *RoleRepository_Stage_Call) RunAndReturn(run func(ctx context.Context, c *domain.RoleCandidate, role domain.RoleID) (*domain.RoleCandidate, error)) *RoleRepository_Stage_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// Unstage provides a mock function for the type RoleRepository
+func (_mock *RoleRepository) Unstage(ctx context.Context, role domain.RoleID, user domain.UserID) error {
+	ret := _mock.Called(ctx, role, user)
+
+	if len(ret) == 0 {
+		panic("no return value specified for Unstage")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.RoleID, domain.UserID) error); ok {
+		r0 = returnFunc(ctx, role, user)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// RoleRepository_Unstage_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Unstage'
+type RoleRepository_Unstage_Call struct {
+	*mock.Call
+}
+
+// Unstage is a helper method to define mock.On call
+//   - ctx context.Context
+//   - role domain.RoleID
+//   - user domain.UserID
+func (_e *RoleRepository_Expecter) Unstage(ctx interface{}, role interface{}, user interface{}) *RoleRepository_Unstage_Call {
+	return &RoleRepository_Unstage_Call{Call: _e.mock.On("Unstage", ctx, role, user)}
+}
+
+func (_c *RoleRepository_Unstage_Call) Run(run func(ctx context.Context, role domain.RoleID, user domain.UserID)) *RoleRepository_Unstage_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 domain.RoleID
+		if args[1] != nil {
+			arg1 = args[1].(domain.RoleID)
+		}
+		var arg2 domain.UserID
+		if args[2] != nil {
+			arg2 = args[2].(domain.UserID)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *RoleRepository_Unstage_Call) Return(err error) *RoleRepository_Unstage_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *RoleRepository_Unstage_Call) RunAndReturn(run func(ctx context.Context, role domain.RoleID, user domain.UserID) error) *RoleRepository_Unstage_Call {
 	_c.Call.Return(run)
 	return _c
 }

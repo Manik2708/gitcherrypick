@@ -28,7 +28,7 @@ const onboardingColumns = `
 	id, name, coalesce(description, ''), email, coalesce(phone, ''),
 	-- ::text, because the column is a nullable enum and "not given" has to
 	-- read as the empty band rather than as a NULL nothing can scan.
-	coalesce(headcount::text, ''),
+	coalesce(headcount::text, ''), workplace::text,
 	coalesce(country, ''), coalesce(city, ''), coalesce(postal_code, ''),
 	coalesce(street1, ''), coalesce(street2, ''),
 	coalesce(owner_username, ''), coalesce(owner_display_name, ''),
@@ -39,7 +39,7 @@ const onboardingColumns = `
 func scanOnboarding(row rowScanner) (*port.OnboardingSubmission, error) {
 	var s port.OnboardingSubmission
 	if err := row.Scan(
-		&s.ID, &s.Name, &s.Description, &s.Email, &s.Phone, &s.Headcount,
+		&s.ID, &s.Name, &s.Description, &s.Email, &s.Phone, &s.Headcount, &s.Workplace,
 		&s.Country, &s.City, &s.PostalCode, &s.Street1, &s.Street2,
 		&s.OwnerUsername, &s.OwnerDisplayName,
 		&s.EmailVerifiedAt, &s.DecidedAt, &s.DecidedBy, &s.DecisionReason,
@@ -73,14 +73,14 @@ func (r *OnboardingRepository) Submit(ctx context.Context, t port.Tx, in *port.O
 	out, err := scanOnboarding(r.db.q(t).QueryRow(ctx, `
 		INSERT INTO organization_onboarding
 		    (id, name, description, email, phone, headcount,
-		     country, city, postal_code, street1, street2, supersedes_id)
+		     country, city, postal_code, street1, street2, supersedes_id, workplace)
 		VALUES ($1, $2, NULLIF($3, ''), $4, NULLIF($5, ''), $6::organization_headcount_band,
 		        NULLIF($7, ''), NULLIF($8, ''), NULLIF($9, ''),
-		        NULLIF($10, ''), NULLIF($11, ''), $12)
+		        NULLIF($10, ''), NULLIF($11, ''), $12, $13::organization_workplace)
 		RETURNING`+onboardingColumns,
 		string(id), in.Name, in.Description, in.Email, in.Phone, headcount,
 		in.Country, in.City, in.PostalCode, in.Street1, in.Street2,
-		idOrNil(in.SupersedesID)))
+		idOrNil(in.SupersedesID), string(in.Workplace)))
 	if err != nil {
 		return nil, translate(err, fmt.Sprintf("submitting onboarding for %q", in.Name))
 	}
@@ -202,16 +202,18 @@ func (r *OnboardingRepository) Promote(ctx context.Context, t port.Tx, id domain
 	err = q.QueryRow(ctx, `
 		INSERT INTO organizations
 		    (id, name, slug, description, email, phone, headcount,
-		     verified_at, verified_by)
+		     verified_at, verified_by, workplace)
 		VALUES ($1, $2, $3, NULLIF($4, ''), NULLIF($5, ''), NULLIF($6, ''),
-		        $7::organization_headcount_band, $8, $9)
+		        $7::organization_headcount_band, $8, $9, $10::organization_workplace)
 		RETURNING id, name, slug, coalesce(description, ''), coalesce(email, ''),
 		          coalesce(phone, ''), coalesce(headcount::text, ''),
-		          verified_at, payment_verified_at`,
+		          verified_at, payment_verified_at, workplace::text`,
 		orgID.String(), sub.Name, slug, sub.Description,
 		sub.Email, sub.Phone, nullableBand(sub.Headcount), at, string(by),
+		string(sub.Workplace),
 	).Scan(&org.ID, &org.Name, &org.Slug, &org.Description, &org.Email,
-		&org.Phone, &org.Headcount, &org.VerifiedAt, &org.PaymentVerifiedAt)
+		&org.Phone, &org.Headcount, &org.VerifiedAt, &org.PaymentVerifiedAt,
+		&org.Workplace)
 	if err != nil {
 		return nil, translate(err, fmt.Sprintf("creating organization %q", sub.Name))
 	}
@@ -241,10 +243,11 @@ func (r *OnboardingRepository) Promote(ctx context.Context, t port.Tx, id domain
 		return nil, translate(err, "creating the owner membership")
 	}
 
-	// The address, if one was given. A fully remote company has none to give,
-	// which is why ck_onboarding_address permits all-or-nothing rather than
-	// requiring it.
-	if sub.Country != "" {
+	// Keyed on the stated CHOICE, not on a blank (ADR-0024 §Transactions): an
+	// office organisation gets its main office with the organisation and the
+	// seat, and a fully remote one gets none. ck_onboarding_workplace_address
+	// guarantees an office submission carries the address.
+	if sub.Workplace == domain.WorkplaceOffice {
 		addressID, err := uuid.NewV7()
 		if err != nil {
 			return nil, fmt.Errorf("generating address id: %w", err)

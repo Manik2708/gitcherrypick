@@ -40,6 +40,80 @@ func (_m *OrganizationRepository) EXPECT() *OrganizationRepository_Expecter {
 	return &OrganizationRepository_Expecter{mock: &_m.Mock}
 }
 
+// AddAddress provides a mock function for the type OrganizationRepository
+func (_mock *OrganizationRepository) AddAddress(ctx context.Context, tx port.Tx, a *domain.Address) (*domain.Address, error) {
+	ret := _mock.Called(ctx, tx, a)
+
+	if len(ret) == 0 {
+		panic("no return value specified for AddAddress")
+	}
+
+	var r0 *domain.Address
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, port.Tx, *domain.Address) (*domain.Address, error)); ok {
+		return returnFunc(ctx, tx, a)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, port.Tx, *domain.Address) *domain.Address); ok {
+		r0 = returnFunc(ctx, tx, a)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*domain.Address)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, port.Tx, *domain.Address) error); ok {
+		r1 = returnFunc(ctx, tx, a)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// OrganizationRepository_AddAddress_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'AddAddress'
+type OrganizationRepository_AddAddress_Call struct {
+	*mock.Call
+}
+
+// AddAddress is a helper method to define mock.On call
+//   - ctx context.Context
+//   - tx port.Tx
+//   - a *domain.Address
+func (_e *OrganizationRepository_Expecter) AddAddress(ctx interface{}, tx interface{}, a interface{}) *OrganizationRepository_AddAddress_Call {
+	return &OrganizationRepository_AddAddress_Call{Call: _e.mock.On("AddAddress", ctx, tx, a)}
+}
+
+func (_c *OrganizationRepository_AddAddress_Call) Run(run func(ctx context.Context, tx port.Tx, a *domain.Address)) *OrganizationRepository_AddAddress_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 port.Tx
+		if args[1] != nil {
+			arg1 = args[1].(port.Tx)
+		}
+		var arg2 *domain.Address
+		if args[2] != nil {
+			arg2 = args[2].(*domain.Address)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *OrganizationRepository_AddAddress_Call) Return(address *domain.Address, err error) *OrganizationRepository_AddAddress_Call {
+	_c.Call.Return(address, err)
+	return _c
+}
+
+func (_c *OrganizationRepository_AddAddress_Call) RunAndReturn(run func(ctx context.Context, tx port.Tx, a *domain.Address) (*domain.Address, error)) *OrganizationRepository_AddAddress_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // AddRosterEntry provides a mock function for the type OrganizationRepository
 func (_mock *OrganizationRepository) AddRosterEntry(ctx context.Context, tx port.Tx, e *port.RosterEntry) (*port.RosterEntry, error) {
 	ret := _mock.Called(ctx, tx, e)
@@ -182,6 +256,80 @@ func (_c *OrganizationRepository_Addresses_Call) RunAndReturn(run func(ctx conte
 	return _c
 }
 
+// AllAddresses provides a mock function for the type OrganizationRepository
+func (_mock *OrganizationRepository) AllAddresses(ctx context.Context, tx port.Tx, id domain.OrganizationID) ([]domain.Address, error) {
+	ret := _mock.Called(ctx, tx, id)
+
+	if len(ret) == 0 {
+		panic("no return value specified for AllAddresses")
+	}
+
+	var r0 []domain.Address
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, port.Tx, domain.OrganizationID) ([]domain.Address, error)); ok {
+		return returnFunc(ctx, tx, id)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, port.Tx, domain.OrganizationID) []domain.Address); ok {
+		r0 = returnFunc(ctx, tx, id)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]domain.Address)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, port.Tx, domain.OrganizationID) error); ok {
+		r1 = returnFunc(ctx, tx, id)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// OrganizationRepository_AllAddresses_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'AllAddresses'
+type OrganizationRepository_AllAddresses_Call struct {
+	*mock.Call
+}
+
+// AllAddresses is a helper method to define mock.On call
+//   - ctx context.Context
+//   - tx port.Tx
+//   - id domain.OrganizationID
+func (_e *OrganizationRepository_Expecter) AllAddresses(ctx interface{}, tx interface{}, id interface{}) *OrganizationRepository_AllAddresses_Call {
+	return &OrganizationRepository_AllAddresses_Call{Call: _e.mock.On("AllAddresses", ctx, tx, id)}
+}
+
+func (_c *OrganizationRepository_AllAddresses_Call) Run(run func(ctx context.Context, tx port.Tx, id domain.OrganizationID)) *OrganizationRepository_AllAddresses_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 port.Tx
+		if args[1] != nil {
+			arg1 = args[1].(port.Tx)
+		}
+		var arg2 domain.OrganizationID
+		if args[2] != nil {
+			arg2 = args[2].(domain.OrganizationID)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *OrganizationRepository_AllAddresses_Call) Return(addresss []domain.Address, err error) *OrganizationRepository_AllAddresses_Call {
+	_c.Call.Return(addresss, err)
+	return _c
+}
+
+func (_c *OrganizationRepository_AllAddresses_Call) RunAndReturn(run func(ctx context.Context, tx port.Tx, id domain.OrganizationID) ([]domain.Address, error)) *OrganizationRepository_AllAddresses_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // ClaimUsername provides a mock function for the type OrganizationRepository
 func (_mock *OrganizationRepository) ClaimUsername(ctx context.Context, tx port.Tx, username string) error {
 	ret := _mock.Called(ctx, tx, username)
@@ -241,6 +389,81 @@ func (_c *OrganizationRepository_ClaimUsername_Call) Return(err error) *Organiza
 }
 
 func (_c *OrganizationRepository_ClaimUsername_Call) RunAndReturn(run func(ctx context.Context, tx port.Tx, username string) error) *OrganizationRepository_ClaimUsername_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GoFullyRemote provides a mock function for the type OrganizationRepository
+func (_mock *OrganizationRepository) GoFullyRemote(ctx context.Context, tx port.Tx, id domain.OrganizationID, by domain.HirerID, at time.Time) error {
+	ret := _mock.Called(ctx, tx, id, by, at)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GoFullyRemote")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, port.Tx, domain.OrganizationID, domain.HirerID, time.Time) error); ok {
+		r0 = returnFunc(ctx, tx, id, by, at)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// OrganizationRepository_GoFullyRemote_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GoFullyRemote'
+type OrganizationRepository_GoFullyRemote_Call struct {
+	*mock.Call
+}
+
+// GoFullyRemote is a helper method to define mock.On call
+//   - ctx context.Context
+//   - tx port.Tx
+//   - id domain.OrganizationID
+//   - by domain.HirerID
+//   - at time.Time
+func (_e *OrganizationRepository_Expecter) GoFullyRemote(ctx interface{}, tx interface{}, id interface{}, by interface{}, at interface{}) *OrganizationRepository_GoFullyRemote_Call {
+	return &OrganizationRepository_GoFullyRemote_Call{Call: _e.mock.On("GoFullyRemote", ctx, tx, id, by, at)}
+}
+
+func (_c *OrganizationRepository_GoFullyRemote_Call) Run(run func(ctx context.Context, tx port.Tx, id domain.OrganizationID, by domain.HirerID, at time.Time)) *OrganizationRepository_GoFullyRemote_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 port.Tx
+		if args[1] != nil {
+			arg1 = args[1].(port.Tx)
+		}
+		var arg2 domain.OrganizationID
+		if args[2] != nil {
+			arg2 = args[2].(domain.OrganizationID)
+		}
+		var arg3 domain.HirerID
+		if args[3] != nil {
+			arg3 = args[3].(domain.HirerID)
+		}
+		var arg4 time.Time
+		if args[4] != nil {
+			arg4 = args[4].(time.Time)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+			arg4,
+		)
+	})
+	return _c
+}
+
+func (_c *OrganizationRepository_GoFullyRemote_Call) Return(err error) *OrganizationRepository_GoFullyRemote_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *OrganizationRepository_GoFullyRemote_Call) RunAndReturn(run func(ctx context.Context, tx port.Tx, id domain.OrganizationID, by domain.HirerID, at time.Time) error) *OrganizationRepository_GoFullyRemote_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -309,6 +532,78 @@ func (_c *OrganizationRepository_ListRoster_Call) Return(rosterEntrys []port.Ros
 }
 
 func (_c *OrganizationRepository_ListRoster_Call) RunAndReturn(run func(ctx context.Context, orgID domain.OrganizationID) ([]port.RosterEntry, error)) *OrganizationRepository_ListRoster_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// LockWorkplace provides a mock function for the type OrganizationRepository
+func (_mock *OrganizationRepository) LockWorkplace(ctx context.Context, tx port.Tx, id domain.OrganizationID) (domain.Workplace, error) {
+	ret := _mock.Called(ctx, tx, id)
+
+	if len(ret) == 0 {
+		panic("no return value specified for LockWorkplace")
+	}
+
+	var r0 domain.Workplace
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, port.Tx, domain.OrganizationID) (domain.Workplace, error)); ok {
+		return returnFunc(ctx, tx, id)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, port.Tx, domain.OrganizationID) domain.Workplace); ok {
+		r0 = returnFunc(ctx, tx, id)
+	} else {
+		r0 = ret.Get(0).(domain.Workplace)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, port.Tx, domain.OrganizationID) error); ok {
+		r1 = returnFunc(ctx, tx, id)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// OrganizationRepository_LockWorkplace_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'LockWorkplace'
+type OrganizationRepository_LockWorkplace_Call struct {
+	*mock.Call
+}
+
+// LockWorkplace is a helper method to define mock.On call
+//   - ctx context.Context
+//   - tx port.Tx
+//   - id domain.OrganizationID
+func (_e *OrganizationRepository_Expecter) LockWorkplace(ctx interface{}, tx interface{}, id interface{}) *OrganizationRepository_LockWorkplace_Call {
+	return &OrganizationRepository_LockWorkplace_Call{Call: _e.mock.On("LockWorkplace", ctx, tx, id)}
+}
+
+func (_c *OrganizationRepository_LockWorkplace_Call) Run(run func(ctx context.Context, tx port.Tx, id domain.OrganizationID)) *OrganizationRepository_LockWorkplace_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 port.Tx
+		if args[1] != nil {
+			arg1 = args[1].(port.Tx)
+		}
+		var arg2 domain.OrganizationID
+		if args[2] != nil {
+			arg2 = args[2].(domain.OrganizationID)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *OrganizationRepository_LockWorkplace_Call) Return(workplace domain.Workplace, err error) *OrganizationRepository_LockWorkplace_Call {
+	_c.Call.Return(workplace, err)
+	return _c
+}
+
+func (_c *OrganizationRepository_LockWorkplace_Call) RunAndReturn(run func(ctx context.Context, tx port.Tx, id domain.OrganizationID) (domain.Workplace, error)) *OrganizationRepository_LockWorkplace_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -464,6 +759,81 @@ func (_c *OrganizationRepository_ReleaseUsername_Call) Return(err error) *Organi
 }
 
 func (_c *OrganizationRepository_ReleaseUsername_Call) RunAndReturn(run func(ctx context.Context, tx port.Tx, username string) error) *OrganizationRepository_ReleaseUsername_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// RemoveAddress provides a mock function for the type OrganizationRepository
+func (_mock *OrganizationRepository) RemoveAddress(ctx context.Context, tx port.Tx, id domain.AddressID, by domain.HirerID, at time.Time) error {
+	ret := _mock.Called(ctx, tx, id, by, at)
+
+	if len(ret) == 0 {
+		panic("no return value specified for RemoveAddress")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, port.Tx, domain.AddressID, domain.HirerID, time.Time) error); ok {
+		r0 = returnFunc(ctx, tx, id, by, at)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// OrganizationRepository_RemoveAddress_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RemoveAddress'
+type OrganizationRepository_RemoveAddress_Call struct {
+	*mock.Call
+}
+
+// RemoveAddress is a helper method to define mock.On call
+//   - ctx context.Context
+//   - tx port.Tx
+//   - id domain.AddressID
+//   - by domain.HirerID
+//   - at time.Time
+func (_e *OrganizationRepository_Expecter) RemoveAddress(ctx interface{}, tx interface{}, id interface{}, by interface{}, at interface{}) *OrganizationRepository_RemoveAddress_Call {
+	return &OrganizationRepository_RemoveAddress_Call{Call: _e.mock.On("RemoveAddress", ctx, tx, id, by, at)}
+}
+
+func (_c *OrganizationRepository_RemoveAddress_Call) Run(run func(ctx context.Context, tx port.Tx, id domain.AddressID, by domain.HirerID, at time.Time)) *OrganizationRepository_RemoveAddress_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 port.Tx
+		if args[1] != nil {
+			arg1 = args[1].(port.Tx)
+		}
+		var arg2 domain.AddressID
+		if args[2] != nil {
+			arg2 = args[2].(domain.AddressID)
+		}
+		var arg3 domain.HirerID
+		if args[3] != nil {
+			arg3 = args[3].(domain.HirerID)
+		}
+		var arg4 time.Time
+		if args[4] != nil {
+			arg4 = args[4].(time.Time)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+			arg4,
+		)
+	})
+	return _c
+}
+
+func (_c *OrganizationRepository_RemoveAddress_Call) Return(err error) *OrganizationRepository_RemoveAddress_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *OrganizationRepository_RemoveAddress_Call) RunAndReturn(run func(ctx context.Context, tx port.Tx, id domain.AddressID, by domain.HirerID, at time.Time) error) *OrganizationRepository_RemoveAddress_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -830,6 +1200,78 @@ func (_c *OrganizationRepository_VerifyOrganization_Call) Return(err error) *Org
 }
 
 func (_c *OrganizationRepository_VerifyOrganization_Call) RunAndReturn(run func(ctx context.Context, tx port.Tx, id domain.OrganizationID, by domain.AdminID, reason string) error) *OrganizationRepository_VerifyOrganization_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// Workplace provides a mock function for the type OrganizationRepository
+func (_mock *OrganizationRepository) Workplace(ctx context.Context, tx port.Tx, id domain.OrganizationID) (domain.Workplace, error) {
+	ret := _mock.Called(ctx, tx, id)
+
+	if len(ret) == 0 {
+		panic("no return value specified for Workplace")
+	}
+
+	var r0 domain.Workplace
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, port.Tx, domain.OrganizationID) (domain.Workplace, error)); ok {
+		return returnFunc(ctx, tx, id)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, port.Tx, domain.OrganizationID) domain.Workplace); ok {
+		r0 = returnFunc(ctx, tx, id)
+	} else {
+		r0 = ret.Get(0).(domain.Workplace)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, port.Tx, domain.OrganizationID) error); ok {
+		r1 = returnFunc(ctx, tx, id)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// OrganizationRepository_Workplace_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Workplace'
+type OrganizationRepository_Workplace_Call struct {
+	*mock.Call
+}
+
+// Workplace is a helper method to define mock.On call
+//   - ctx context.Context
+//   - tx port.Tx
+//   - id domain.OrganizationID
+func (_e *OrganizationRepository_Expecter) Workplace(ctx interface{}, tx interface{}, id interface{}) *OrganizationRepository_Workplace_Call {
+	return &OrganizationRepository_Workplace_Call{Call: _e.mock.On("Workplace", ctx, tx, id)}
+}
+
+func (_c *OrganizationRepository_Workplace_Call) Run(run func(ctx context.Context, tx port.Tx, id domain.OrganizationID)) *OrganizationRepository_Workplace_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 port.Tx
+		if args[1] != nil {
+			arg1 = args[1].(port.Tx)
+		}
+		var arg2 domain.OrganizationID
+		if args[2] != nil {
+			arg2 = args[2].(domain.OrganizationID)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *OrganizationRepository_Workplace_Call) Return(workplace domain.Workplace, err error) *OrganizationRepository_Workplace_Call {
+	_c.Call.Return(workplace, err)
+	return _c
+}
+
+func (_c *OrganizationRepository_Workplace_Call) RunAndReturn(run func(ctx context.Context, tx port.Tx, id domain.OrganizationID) (domain.Workplace, error)) *OrganizationRepository_Workplace_Call {
 	_c.Call.Return(run)
 	return _c
 }

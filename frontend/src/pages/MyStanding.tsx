@@ -140,11 +140,7 @@ export function MyStandingPage() {
 
   return (
     <div className="page">
-      <PageHead
-        eyebrow="Standing"
-        title="Your standing"
-        lede="Derived from merged pull requests a model has read — not from anything you declared about yourself."
-      />
+      <PageHead eyebrow="Standing" title="Your standing" />
 
       <ProfilePrompt />
 
@@ -191,16 +187,14 @@ export function MyStandingPage() {
 
       {rank.data?.ranked ? (
         <Banner icon="lock">
-          Only you can see your rank. There is no public board of positions, and a link you publish
-          carries your evidence but never your place in the pool.
+          Only you can see your rank. A link you publish carries your evidence, never your place.
         </Banner>
       ) : null}
 
       {optedOut ? (
         <Banner icon="lock">
           <b>You are not looking</b>, so you are excluded from search and from the ranked
-          population. Your scores are unaffected — opting out hides you, it does not unmake what
-          your evidence was worth.
+          population. Your scores are unaffected.
         </Banner>
       ) : null}
 

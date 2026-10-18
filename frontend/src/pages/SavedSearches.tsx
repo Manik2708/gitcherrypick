@@ -52,11 +52,7 @@ export function SavedSearchesPage() {
 
   return (
     <div className="page">
-      <PageHead
-        eyebrow="Saved"
-        title="Saved searches"
-        lede="These store the question, not the answer. Replaying one ranks the pool as it stands today."
-      />
+      <PageHead eyebrow="Saved" title="Saved searches" />
 
       {remove.error ? <Failure message={remove.error.message} /> : null}
 

@@ -1,0 +1,354 @@
+-- ---------------------------------------------------------------------------
+-- RFC-0024 — Role locations
+--
+-- Delta only. Everything not mentioned here stays as earlier RFCs defined it.
+--
+-- THIS FILE IS INERT UNTIL RFC-0024 IS APPROVED. Every statement below sits
+-- inside one block comment, on purpose.
+--
+-- `rfc/RFC-*.schema` applied in order IS the schema: e2e/schema.go, both
+-- harness scripts and cmd/devdata glob this directory and run whatever they
+-- find. A draft that dropped `roles.location` would therefore break the
+-- running backend, the repository suite and `make dev` the moment it was
+-- saved, before anybody had approved it. So the DDL is written out in full,
+-- to be read and reviewed, and executes nothing.
+--
+-- On approval the two guard lines (marked GUARD) are deleted in the same
+-- change that lands the code reading the new shape, and not before.
+--
+-- Written as ALTER / DROP in this file rather than as edits at origin in
+-- RFC-0017 and RFC-0019. ADR-0016 to ADR-0023 edited at origin; rfc/README
+-- asks for a delta. A draft may not edit an approved file either way, and the
+-- two forms build the same schema. Verified against PostgreSQL 16 with the
+-- guards removed, applied after every earlier .schema file.
+--
+-- ONLY A FIRST ADDRESS IS REVIEWED. An organisation with an office gave its
+-- first at onboarding, where an administrator read it (section 0). A fully
+-- remote one that later opens an office submits its first as a request an
+-- administrator decides (section 1b). Every address after the first is added
+-- by an owner and reviewed by nobody (section 1).
+-- ---------------------------------------------------------------------------
+
+
+
+-- ---------------------------------------------------------------------------
+-- 0. An organisation says whether it has an office.
+--
+-- ADR-0017 let a submission omit its address and inferred nothing from that:
+-- "no address" could mean a fully remote company or a form nobody finished.
+-- The owner's ruling is that the form ASKS. An organisation with an office
+-- gives an address, always. A fully remote one gives none, has no main
+-- office, may add no address later, and may post no onsite role.
+--
+-- An enum rather than a boolean for the reason the rest of this schema gives
+-- when it makes the same choice: the two values are named in the API and read
+-- by a person, and `has_office = false` says less than 'fully_remote'.
+-- ---------------------------------------------------------------------------
+CREATE TYPE organization_workplace AS ENUM ('office', 'fully_remote');
+
+-- On the submission, because that is where the choice is made and what the
+-- administrator reads.
+--
+-- Added nullable, filled, then made NOT NULL. No database has to survive
+-- (RFC-0024 section 1.11), but seeded rows may be present when this is
+-- applied, and a row with no address is exactly what 'fully_remote' means.
+ALTER TABLE organization_onboarding ADD COLUMN workplace organization_workplace;
+
+UPDATE organization_onboarding
+   SET workplace = CASE WHEN country IS NULL THEN 'fully_remote' ELSE 'office' END::organization_workplace;
+
+ALTER TABLE organization_onboarding
+    ALTER COLUMN workplace SET NOT NULL,
+
+    -- Replaced, not kept beside the new one: all-or-nothing is what let the
+    -- address be skipped without anybody saying why.
+    DROP CONSTRAINT ck_onboarding_address,
+
+    -- The choice and the address agree, in both directions. An office has a
+    -- country, a city and a street; postal_code and street2 stay optional,
+    -- because several countries have no postcodes (ADR-0017). A fully remote
+    -- submission carries no part of an address at all, so a stray postcode
+    -- cannot sit on a row that claims to have no office.
+    ADD CONSTRAINT ck_onboarding_workplace_address CHECK (
+        (workplace = 'office'
+            AND country IS NOT NULL AND city IS NOT NULL AND street1 IS NOT NULL) OR
+        (workplace = 'fully_remote'
+            AND country IS NULL AND city IS NULL AND postal_code IS NULL
+            AND street1 IS NULL AND street2 IS NULL)
+    );
+
+-- And on the organisation, copied by the approval that creates it. Read on
+-- every address write and every role write, so it lives where those look
+-- rather than a join away on a submission.
+ALTER TABLE organizations ADD COLUMN workplace organization_workplace;
+
+UPDATE organizations o
+   SET workplace = CASE WHEN EXISTS (SELECT 1 FROM organization_addresses a
+                                      WHERE a.organization_id = o.id)
+                        THEN 'office' ELSE 'fully_remote' END::organization_workplace;
+
+ALTER TABLE organizations ALTER COLUMN workplace SET NOT NULL;
+
+-- TWO RULES LIVE IN THE SERVICE, because each spans two tables:
+--
+--   * an 'office' organisation has exactly one main office. Approval writes
+--     the organisation and that row in one transaction. The only thing that
+--     removes it is the organisation going fully remote, which removes every
+--     address in the same transaction (section 1);
+--   * a 'fully_remote' organisation has no organization_addresses rows and no
+--     onsite role_locations rows. Approval writes none, and the address and
+--     role services refuse to.
+--
+-- The value changes in exactly two places, and both are transactions that
+-- also change the addresses, so the two tables never disagree:
+--
+--   'fully_remote' -> 'office'   an administrator approves an office request
+--                                 (section 1b); the main office is written.
+--   'office' -> 'fully_remote'   an owner switches, refused while any draft
+--                                 or open role has an onsite entry; every
+--                                 live address, main office included, is
+--                                 stamped removed (RFC-0024 section 9).
+--
+-- Each transaction locks the organizations row first, and so does every role
+-- write that reads this column. Without that, a role gaining an onsite entry
+-- and the switch to fully remote could each pass their check and both commit.
+
+
+-- ---------------------------------------------------------------------------
+-- 1. Addresses can be added after onboarding, and removed.
+--
+-- Until now the only row an organisation had was the main office, written by
+-- an administrator's approval (ADR-0017 §3). An organisation with an office
+-- starts with exactly that one, and an owner adds the rest. A fully remote
+-- organisation has none and adds none (section 0).
+-- ---------------------------------------------------------------------------
+ALTER TABLE organization_addresses
+    -- The owner who added it. NULL for the main office, which came from the
+    -- onboarding submission and was created by the approval.
+    ADD COLUMN added_by   uuid REFERENCES hirer_accounts(id),
+
+    -- Removed is a STAMP, not a delete. A closed role still says where it was,
+    -- and role_locations.address_id is ON DELETE RESTRICT, so a row a role has
+    -- ever pointed at can never be deleted anyway. Stamped rows leave the
+    -- picker and stay readable from the roles that used them.
+    ADD COLUMN removed_at timestamptz,
+    ADD COLUMN removed_by uuid REFERENCES hirer_accounts(id),
+
+    ADD CONSTRAINT ck_org_address_removed CHECK (
+        (removed_at IS NULL) = (removed_by IS NULL));
+
+-- NO "the main office is never removed" CHECK. The DELETE route still refuses
+-- it (main_office_not_removable), but going fully remote removes it with
+-- everything else, and a CHECK on this row cannot tell those two apart: it
+-- would need to read organizations.workplace. The service holds the line, in
+-- the two transactions described in section 0.
+
+-- At most one LIVE main office. Narrowed from RFC-0017's uq_org_main_office,
+-- which counted removed rows too: an organisation that went fully remote and
+-- later had an office approved again holds two main-office rows, one removed.
+-- The flag stays set on the removed one, because "this was the main office"
+-- is what a closed role pointing at it should still be able to say.
+DROP INDEX uq_org_main_office;
+CREATE UNIQUE INDEX uq_org_main_office ON organization_addresses (organization_id)
+    WHERE is_main_office AND removed_at IS NULL;
+
+-- The picker: what an onsite entry may point at today.
+CREATE INDEX idx_org_addresses_live ON organization_addresses (organization_id)
+    WHERE removed_at IS NULL;
+
+
+-- ---------------------------------------------------------------------------
+-- 1b. A fully remote organisation asks to have an office.
+--
+-- The first address of an organisation is reviewed by a person. For a company
+-- onboarded with an office that happened at onboarding; for one onboarded
+-- fully remote it happens here, when it opens one.
+--
+-- Its OWN TABLE, holding the address flat, rather than a pending row in
+-- organization_addresses. The same device as organization_onboarding
+-- (ADR-0017 §2, "the form creates nothing"), for the same reason: until an
+-- administrator approves, the organisation is still fully remote, and "a
+-- fully remote organisation has no address rows" should stay true without
+-- every reader of that table having to remember to skip pending ones.
+--
+-- No status column. Like a submission, a request is described by what has
+-- happened to it:
+--
+--   decided_at NULL                      waiting for an administrator
+--   decided_at set, address_id NULL      rejected
+--   address_id set                       approved; that row is the main office
+--
+-- Approval, in ONE transaction: the organization_addresses row is written with
+-- is_main_office = true and added_by = requested_by, organizations.workplace
+-- becomes 'office', and this row is stamped.
+--
+-- Append-only. A rejected organisation stays fully remote and may ask again
+-- at once: a new row, so an administrator reading the second request can see
+-- what changed. No limit and no waiting period (RFC-0024 section 8).
+-- ---------------------------------------------------------------------------
+CREATE TABLE organization_office_requests (
+    id              uuid PRIMARY KEY,
+    organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+
+    -- The address, as submitted. The columns of organization_addresses.
+    country         char(2) NOT NULL,
+    city            text    NOT NULL,
+    postal_code     text,
+    street1         text    NOT NULL,
+    street2         text,
+
+    -- The owner who asked.
+    requested_by    uuid NOT NULL REFERENCES hirer_accounts(id),
+
+    decided_at      timestamptz,
+    decided_by      uuid REFERENCES admin_accounts(id) ON DELETE SET NULL,
+    decision_reason text,
+
+    -- The main office this became. NULL for everything else, which is what
+    -- makes "approved" a fact about the row rather than a status to keep in
+    -- step (the reasoning of organization_onboarding.organization_id).
+    address_id      uuid REFERENCES organization_addresses(id) ON DELETE RESTRICT,
+
+    created_at      timestamptz NOT NULL DEFAULT now(),
+    updated_at      timestamptz NOT NULL DEFAULT now(),
+
+    CONSTRAINT ck_office_request_country CHECK (country ~ '^[A-Z]{2}$'),
+
+    -- Nothing becomes a main office without somebody having decided it should.
+    CONSTRAINT ck_office_request_approved_is_decided CHECK (
+        address_id IS NULL OR decided_at IS NOT NULL)
+);
+
+-- One request waiting at a time. A second while the first is undecided would
+-- give an administrator two addresses and no way to know which was meant.
+CREATE UNIQUE INDEX uq_office_request_pending ON organization_office_requests (organization_id)
+    WHERE decided_at IS NULL;
+
+-- NOT "approved at most once". An organisation that went fully remote may
+-- ask for an office again, and that request is reviewed and approved like the
+-- first (RFC-0024 section 9), so one organisation may hold several approved
+-- requests over its life. What is unique is the PENDING one, above, and the
+-- live main office, in section 1.
+
+-- The administrator's read: undecided, oldest first.
+CREATE INDEX idx_office_requests_queue ON organization_office_requests (created_at)
+    WHERE decided_at IS NULL;
+
+CREATE TRIGGER trg_organization_office_requests_updated_at
+    BEFORE UPDATE ON organization_office_requests
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+
+-- ---------------------------------------------------------------------------
+-- 2. Where a role's work is.
+--
+-- A SET of entries, replacing roles.location, roles.address_id and
+-- role_eligible_countries. Three kinds, and only three:
+--
+--   remote, nothing else   remote from anywhere
+--   remote, a country      remote, within that country
+--   onsite, an address     at that address
+--
+-- REMOTE NEVER POINTS AT AN ADDRESS and onsite never names a country of its
+-- own: a company may hire remotely in a country where it has no office, and
+-- an office already says which country it is in.
+--
+-- One role may hold several: "remote in India, remote in Germany, onsite in
+-- Bengaluru, onsite in Austin" is four rows.
+-- ---------------------------------------------------------------------------
+CREATE TYPE role_location_mode AS ENUM ('remote', 'onsite');
+
+CREATE TABLE role_locations (
+    role_id    uuid NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+
+    mode       role_location_mode NOT NULL,
+
+    -- ISO 3166-1 alpha-2, the same vocabulary as
+    -- user_work_preferences.current_country, which it is matched against.
+    -- NULL on a remote entry means ANYWHERE.
+    country    char(2),
+
+    -- RESTRICT, as roles.address_id was (ADR-0019 §5): a posting cannot claim
+    -- to be somewhere that no longer exists.
+    address_id uuid REFERENCES organization_addresses(id) ON DELETE RESTRICT,
+
+    -- The three kinds above, and nothing else.
+    CONSTRAINT ck_role_location_kind CHECK (
+        (mode = 'remote' AND address_id IS NULL) OR
+        (mode = 'onsite' AND address_id IS NOT NULL AND country IS NULL)
+    ),
+
+    CONSTRAINT ck_role_location_country CHECK (
+        country IS NULL OR country ~ '^[A-Z]{2}$'),
+
+    -- No entry twice. NULLS NOT DISTINCT, so this also allows at most ONE
+    -- remote-anywhere row per role — two all-NULL rows would otherwise count
+    -- as different.
+    CONSTRAINT uq_role_location
+        UNIQUE NULLS NOT DISTINCT (role_id, mode, country, address_id)
+);
+
+-- "Which roles use this address", read when one is removed.
+CREATE INDEX idx_role_locations_address ON role_locations (address_id)
+    WHERE address_id IS NOT NULL;
+
+-- THREE RULES LIVE IN THE SERVICE, because each spans rows or tables and a
+-- CHECK sees one row:
+--
+--   * a role has at least one entry;
+--   * remote-anywhere and remote-in-a-country never share a role;
+--   * an onsite entry's address belongs to the role's own organisation and is
+--     not removed at the time the role is written.
+--
+-- Same placement as ADR-0019 §Cross-table invariants. All three are asserted
+-- in the transaction that writes the role, and role_locations is written only
+-- there: an open role is immutable (ADR-0019 §13), and so are its entries.
+
+
+-- ---------------------------------------------------------------------------
+-- 3. Existing roles.
+--
+-- No database has to survive this change; they are rebuilt. The copy is here
+-- so the delta is complete when applied over seeded rows, not because there
+-- is data to save.
+--
+--   remote, no eligible countries   one remote-anywhere entry
+--   remote, eligible countries      one remote entry per country
+--   at an address                   one onsite entry at it
+--
+-- An OFFICE role's eligible countries are not carried: an onsite entry reaches
+-- contributors in any country, so there is nothing for them to become.
+-- ---------------------------------------------------------------------------
+INSERT INTO role_locations (role_id, mode, country, address_id)
+SELECT r.id, 'remote', NULL, NULL
+  FROM roles r
+ WHERE r.location = 'remote'
+   AND NOT EXISTS (SELECT 1 FROM role_eligible_countries c WHERE c.role_id = r.id);
+
+INSERT INTO role_locations (role_id, mode, country, address_id)
+SELECT r.id, 'remote', c.country, NULL
+  FROM roles r
+  JOIN role_eligible_countries c ON c.role_id = r.id
+ WHERE r.location = 'remote';
+
+INSERT INTO role_locations (role_id, mode, country, address_id)
+SELECT r.id, 'onsite', NULL, r.address_id
+  FROM roles r
+ WHERE r.location = 'address';
+
+
+-- ---------------------------------------------------------------------------
+-- 4. What the entries replace.
+-- ---------------------------------------------------------------------------
+ALTER TABLE roles
+    DROP CONSTRAINT ck_role_location,
+    DROP COLUMN address_id,
+    DROP COLUMN location;
+
+DROP TYPE role_location;
+
+-- Where a role may hire is now read off its entries. A second list that could
+-- disagree with them is the bug (the reasoning of ADR-0020 §3).
+DROP TABLE role_eligible_countries;
+
+

@@ -1,0 +1,482 @@
+{
+  "name": "an organisation's addresses are listed by every seat and kept by its owners",
+  "description": "ADR-0024 decisions 8, 9 and 10, and the endpoint table's three /orgs/{orgID}/addresses routes.\n\nThe office role never worked end to end because nothing over HTTP listed an organisation's addresses or added one. This is that surface. READING is open to every seat, because a member drafting an onsite role needs the picker. CHANGING is the owner's alone — deliberately not one of ADR-0019's three role settings, so even an organisation that lets any seat open roles still has its addresses kept by owners — and a member is refused exactly as the roster refuses one (403 not_an_org_member).\n\nRemoval is a STAMP, never a delete: the row stays, `removed_at` and `removed_by` say who and when, and the address leaves the list. An address is never edited, so there is no PATCH to test. The MAIN OFFICE is never removed by this route (decision 9) — the only path that removes it is the whole organisation going fully remote. And an address that is not this organisation's is answered exactly like one that does not exist, so a guessed id confirms nothing.\n\nEvery address added here is a LATER address and is reviewed by nobody (decision 10): it is live in the list the moment the 201 comes back, and it carries the owner who added it.\n\nThe `invalid_address` refusals name the field in the request, which for this body is top-level (`country`, `city`, `street1`), validated as onboarding validates an address.",
+  "seed": ["principals"],
+  "steps": [
+    {
+      "_step": "The owner reads the list: the kind of organisation, its live addresses with the main office first, and no office request — an office organisation never has one pending.",
+      "as": "hank",
+      "request": {
+        "method": "GET",
+        "path": "/orgs/01920000-0000-7000-8000-00000000b001/addresses"
+      },
+      "expect": {
+        "status": 200,
+        "_note": "This is where a client learns the organisation's kind (ADR-0024 Implementation): the role form already reads it to fill the Onsite picker.",
+        "body": {
+          "workplace": "office",
+          "addresses": [
+            {
+              "id": "01920000-0000-7000-8000-0000000ad001",
+              "country": "IN",
+              "city": "Bengaluru",
+              "postal_code": "560001",
+              "street1": "1 MG Road",
+              "street2": "Floor 4",
+              "is_main_office": true,
+              "removed": false
+            },
+            {
+              "id": "01920000-0000-7000-8000-0000000ad002",
+              "country": "US",
+              "city": "Austin",
+              "postal_code": "78701",
+              "street1": "500 W 2nd St",
+              "street2": "Suite 300",
+              "is_main_office": false,
+              "removed": false
+            }
+          ],
+          "office_request": null
+        }
+      }
+    },
+    {
+      "_step": "A MEMBER reads the same list. A member drafting an onsite role needs it, so reading is every seat's.",
+      "as": "dave_hiring",
+      "request": {
+        "method": "GET",
+        "path": "/orgs/01920000-0000-7000-8000-00000000b001/addresses"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "workplace": "office",
+          "addresses": [
+            {
+              "id": "01920000-0000-7000-8000-0000000ad001",
+              "country": "IN",
+              "city": "Bengaluru",
+              "postal_code": "560001",
+              "street1": "1 MG Road",
+              "street2": "Floor 4",
+              "is_main_office": true,
+              "removed": false
+            },
+            {
+              "id": "01920000-0000-7000-8000-0000000ad002",
+              "country": "US",
+              "city": "Austin",
+              "postal_code": "78701",
+              "street1": "500 W 2nd St",
+              "street2": "Suite 300",
+              "is_main_office": false,
+              "removed": false
+            }
+          ],
+          "office_request": null
+        }
+      }
+    },
+    {
+      "_step": "An owner of ANOTHER organisation has no seat here and reads nothing.",
+      "as": "sam_studio",
+      "request": {
+        "method": "GET",
+        "path": "/orgs/01920000-0000-7000-8000-00000000b001/addresses"
+      },
+      "expect": {
+        "status": 403,
+        "body": {
+          "error": "not_an_org_member"
+        }
+      }
+    },
+    {
+      "_step": "A member cannot ADD one — even though, under draft_and_approve, they may write the role that would use it (ADR-0024 Consequences).",
+      "as": "dave_hiring",
+      "request": {
+        "method": "POST",
+        "path": "/orgs/01920000-0000-7000-8000-00000000b001/addresses",
+        "body": {
+          "country": "DE",
+          "city": "Berlin",
+          "postal_code": "10117",
+          "street1": "Unter den Linden 1",
+          "street2": "Haus B"
+        }
+      },
+      "expect": {
+        "status": 403,
+        "body": {
+          "error": "not_an_org_member"
+        },
+        "db": {
+          "organization_addresses": {
+            "where": {
+              "city": "Berlin"
+            },
+            "count": 0
+          }
+        }
+      }
+    },
+    {
+      "_step": "...nor remove one.",
+      "as": "dave_hiring",
+      "request": {
+        "method": "DELETE",
+        "path": "/orgs/01920000-0000-7000-8000-00000000b001/addresses/{{acme.address.austin}}"
+      },
+      "expect": {
+        "status": 403,
+        "body": {
+          "error": "not_an_org_member"
+        },
+        "db": {
+          "organization_addresses": {
+            "where": {
+              "id": "{{acme.address.austin}}"
+            },
+            "count": 1,
+            "all_match": {
+              "removed_at": null,
+              "removed_by": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "_step": "The owner's body is validated as onboarding validates an address: a country, a city and a street, each named when it is missing.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/orgs/01920000-0000-7000-8000-00000000b001/addresses",
+        "body": {
+          "city": "Berlin",
+          "postal_code": "10117",
+          "street1": "Unter den Linden 1",
+          "street2": "Haus B"
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "invalid_address",
+          "field": "country"
+        }
+      }
+    },
+    {
+      "_step": "A country is two letters, not a name — a name has spellings, and a contributor's current_country is a code.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/orgs/01920000-0000-7000-8000-00000000b001/addresses",
+        "body": {
+          "country": "Germany",
+          "city": "Berlin",
+          "postal_code": "10117",
+          "street1": "Unter den Linden 1",
+          "street2": "Haus B"
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "invalid_address",
+          "field": "country"
+        }
+      }
+    },
+    {
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/orgs/01920000-0000-7000-8000-00000000b001/addresses",
+        "body": {
+          "country": "DE",
+          "postal_code": "10117",
+          "street1": "Unter den Linden 1",
+          "street2": "Haus B"
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "invalid_address",
+          "field": "city"
+        }
+      }
+    },
+    {
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/orgs/01920000-0000-7000-8000-00000000b001/addresses",
+        "body": {
+          "country": "DE",
+          "city": "Berlin",
+          "postal_code": "10117",
+          "street2": "Haus B"
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "invalid_address",
+          "field": "street1"
+        },
+        "db": {
+          "organization_addresses": {
+            "where": {
+              "organization_id": "01920000-0000-7000-8000-00000000b001"
+            },
+            "count": 2
+          }
+        }
+      }
+    },
+    {
+      "_step": "THE MAIN OFFICE IS NEVER REMOVED BY THIS ROUTE (ADR-0024 decision 9). An office organisation has exactly one live main office, and the only act that removes it is going fully remote, which removes every address at once.",
+      "as": "hank",
+      "request": {
+        "method": "DELETE",
+        "path": "/orgs/01920000-0000-7000-8000-00000000b001/addresses/{{acme.address.main}}"
+      },
+      "expect": {
+        "status": 409,
+        "body": {
+          "error": "main_office_not_removable"
+        },
+        "db": {
+          "organization_addresses": {
+            "where": {
+              "id": "{{acme.address.main}}"
+            },
+            "count": 1,
+            "all_match": {
+              "removed_at": null,
+              "is_main_office": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "_step": "Another organisation's address is answered as NOT FOUND — 404 on DELETE — identically to an id that does not exist, so the route cannot be used to learn which ids are real.",
+      "as": "hank",
+      "request": {
+        "method": "DELETE",
+        "path": "/orgs/01920000-0000-7000-8000-00000000b001/addresses/{{unverified_org.address.main}}"
+      },
+      "expect": {
+        "status": 404,
+        "body": {
+          "error": "address_not_found"
+        },
+        "db": {
+          "organization_addresses": {
+            "where": {
+              "id": "{{unverified_org.address.main}}"
+            },
+            "count": 1,
+            "all_match": {
+              "removed_at": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "_step": "...and an id nobody holds gets the same answer.",
+      "as": "hank",
+      "request": {
+        "method": "DELETE",
+        "path": "/orgs/01920000-0000-7000-8000-00000000b001/addresses/01920000-0000-7000-8000-0000000adfff"
+      },
+      "expect": {
+        "status": 404,
+        "body": {
+          "error": "address_not_found"
+        }
+      }
+    },
+    {
+      "_step": "The owner removes an address no role uses. A STAMP, not a delete: the row survives with who removed it and when, so a closed role that once pointed here would still render.",
+      "as": "hank",
+      "request": {
+        "method": "DELETE",
+        "path": "/orgs/01920000-0000-7000-8000-00000000b001/addresses/{{acme.address.austin}}"
+      },
+      "expect": {
+        "status": 204,
+        "body": null,
+        "db": {
+          "organization_addresses": {
+            "where": {
+              "id": "{{acme.address.austin}}"
+            },
+            "count": 1,
+            "all_match": {
+              "removed_by": "01920000-0000-7000-8000-00000000c001",
+              "is_main_office": false
+            },
+            "none_match": {
+              "removed_at": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "_step": "The owner ADDS one. 201 with the address, live at once: only an organisation's FIRST address is reviewed by a person, and this is not the first (ADR-0024 decision 10).",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/orgs/01920000-0000-7000-8000-00000000b001/addresses",
+        "body": {
+          "country": "DE",
+          "city": "Berlin",
+          "postal_code": "10117",
+          "street1": "Unter den Linden 1",
+          "street2": "Haus B"
+        }
+      },
+      "capture": {
+        "berlin": "$.id"
+      },
+      "expect": {
+        "status": 201,
+        "_note": "Not the main office — there is already one, and an organisation never has two live.",
+        "body": {
+          "id": "<uuid>",
+          "country": "DE",
+          "city": "Berlin",
+          "postal_code": "10117",
+          "street1": "Unter den Linden 1",
+          "street2": "Haus B",
+          "is_main_office": false,
+          "removed": false
+        },
+        "db": {
+          "organization_addresses": {
+            "where": {
+              "city": "Berlin"
+            },
+            "count": 1,
+            "all_match": {
+              "organization_id": "01920000-0000-7000-8000-00000000b001",
+              "added_by": "01920000-0000-7000-8000-00000000c001",
+              "removed_at": null,
+              "is_main_office": false
+            }
+          }
+        }
+      }
+    },
+    {
+      "_step": "The list is LIVE addresses: Austin has left it, Berlin is in it, and the main office is still first.",
+      "as": "dave_hiring",
+      "request": {
+        "method": "GET",
+        "path": "/orgs/01920000-0000-7000-8000-00000000b001/addresses"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "workplace": "office",
+          "addresses": [
+            {
+              "id": "01920000-0000-7000-8000-0000000ad001",
+              "country": "IN",
+              "city": "Bengaluru",
+              "postal_code": "560001",
+              "street1": "1 MG Road",
+              "street2": "Floor 4",
+              "is_main_office": true,
+              "removed": false
+            },
+            {
+              "id": "<uuid>",
+              "country": "DE",
+              "city": "Berlin",
+              "postal_code": "10117",
+              "street1": "Unter den Linden 1",
+              "street2": "Haus B",
+              "is_main_office": false,
+              "removed": false
+            }
+          ],
+          "office_request": null
+        }
+      }
+    },
+    {
+      "_step": "And the reason a member may read the list: the member drafts an onsite role at the address the owner just added. The hirer read embeds the address in full, so a list of roles needs no second request.",
+      "as": "dave_hiring",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles",
+        "body": {
+          "title": "Berlin platform engineer",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "onsite",
+              "address_id": "{{berlin}}"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "status": 201,
+        "body": {
+          "id": "<uuid>",
+          "organization_id": "01920000-0000-7000-8000-00000000b001",
+          "status": "draft",
+          "title": "Berlin platform engineer",
+          "description": "",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "onsite",
+              "country": null,
+              "address": {
+                "id": "<uuid>",
+                "country": "DE",
+                "city": "Berlin",
+                "postal_code": "10117",
+                "street1": "Unter den Linden 1",
+                "street2": "Haus B",
+                "is_main_office": false,
+                "removed": false
+              }
+            }
+          ],
+          "currency": "",
+          "yearly_ctc": null,
+          "yearly_base": null,
+          "hourly_rate": null,
+          "expected_hours": null,
+          "min_office_yoe": null,
+          "min_oss_yoe": null,
+          "requires_online_test": null,
+          "max_interview_rounds": null,
+          "avg_days_to_offer": null,
+          "questions": [],
+          "opened_at": null,
+          "close_requested_at": null,
+          "closed_at": null,
+          "close_reason": null,
+          "hires": [],
+          "advertised": false,
+          "supersedes": null,
+          "created_at": "<timestamp>",
+          "updated_at": "<timestamp>"
+        }
+      }
+    }
+  ]
+}

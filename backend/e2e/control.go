@@ -218,7 +218,7 @@ func (c *Control) applyClock(ctx context.Context, clock *ClockFake) error {
 // SetClock advances to an absolute instant.
 //
 // Some windows read better as a date than as a duration — "the first of
-// September", when what matters is that a shortlist's result date has passed.
+// September", when what matters is that a promised result date has passed.
 // The advance is computed from where the clock actually is, so the two
 // spellings cannot drift apart.
 func (c *Control) SetClock(ctx context.Context, target string) error {

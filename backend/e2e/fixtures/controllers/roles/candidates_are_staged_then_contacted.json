@@ -1,0 +1,890 @@
+{
+  "name": "candidates are staged privately, then contacted irreversibly",
+  "description": "ADR-0008 §3a and ADR-0023. Staging somebody on a job discloses NOTHING: no email, no notification, no row in contact_requests. A separate, deliberate contact step raises every request in one transaction and cannot be undone.\n\nThe rule it serves is that a contacted contributor can never be un-contacted — once somebody has been told a company is interested, that is a fact — and a rule that strict is only tolerable if there is a moment before it binds. That moment is what the mis-click remedy below is: Carol is staged, removed, and never learns either happened.\n\nTHERE IS NO SHORTLIST. A round was always one-to-one with a role (ADR-0019 §3), so it was a second name for the job carrying a second title and a second status that could disagree with the role's. The people hang off the role, and 'who have we approached for this' is one question with one answer.\n\nThree properties are pinned that a re-implementation loses first: the contact step is IDEMPOTENT (a second press with nobody new tells nobody and reports it), it is INCREMENTAL (somebody staged on day 3 is told and the others are not re-told), and the promised date is COPIED onto each request at the moment of sending, so nothing the company does afterwards rewrites what a contributor agreed to.\n\nREWRITTEN FOR ADR-0024. A role no longer has one `location`, an `address_id` and a list of `eligible_countries`: it holds a set of location entries — remote from anywhere, remote within a named country, or onsite at one of the organisation's addresses. The hirer reads every entry with `mode`, `country` and `address`; a contributor reads a country (or null for anywhere) and, for onsite, a city — never a street. The three old keys are gone from every request and response. The seeded role is one remote-anywhere entry, which is exactly what `location: remote` with no countries meant, so nothing else this case asserts moves.",
+  "seed": ["principals", "catalogue", "repositories", "scored_population"],
+  "steps": [
+    {
+      "_step": "AssertNotSelf fires at STAGE time, not when the emails go out. Discovering that a candidate is the recruiter's own account at send time is too late.",
+      "as": "dave_hiring",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/{{acme.id}}/roles/{{acme.role}}/candidates",
+        "body": {
+          "user_id": "01920000-0000-7000-8000-00000000a004"
+        }
+      },
+      "expect": {
+        "status": 403,
+        "body": {
+          "error": "cannot_shortlist_self"
+        },
+        "db": {
+          "role_candidates": {
+            "where": {
+              "role_id": "{{acme.role}}"
+            },
+            "count": 0
+          }
+        }
+      }
+    },
+    {
+      "_step": "An unverified hirer cannot put anybody on a job, even though staging discloses nothing.",
+      "as": "pending_pat",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/{{unverified_org.id}}/roles/{{unverified_org.role}}/candidates",
+        "body": {
+          "user_id": "01920000-0000-7000-8000-00000000a001"
+        }
+      },
+      "expect": {
+        "status": 403,
+        "body": {
+          "error": "hiring_capability_required",
+          "hirer_verified": false,
+          "organization_verified": false
+        }
+      }
+    },
+    {
+      "_step": "A hirer at ANOTHER org is refused at the organisation, before a role id is even resolved.",
+      "as": "sam_studio",
+      "request": {
+        "method": "GET",
+        "path": "/org-roles/{{acme.id}}/roles/{{acme.role}}/candidates"
+      },
+      "expect": {
+        "status": 403,
+        "_note": "403 not 404, and the difference is where the refusal happens: the org prefix is checked before any role is read, so Acme's role id is never looked up and nothing about it is confirmed or denied.",
+        "body": {
+          "error": "not_an_org_member"
+        }
+      }
+    },
+    {
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/{{acme.id}}/roles/{{acme.role}}/candidates",
+        "body": {
+          "user_id": "01920000-0000-7000-8000-00000000a001",
+          "note": "Strongest Go evidence in the pool."
+        }
+      },
+      "expect": {
+        "status": 201,
+        "_note": "No contact_request field. There is no contact request — that is the entire point of staging.",
+        "body": {
+          "user_id": "01920000-0000-7000-8000-00000000a001",
+          "display_name": "Alice Okafor",
+          "github_login": "aliceok",
+          "note": "Strongest Go evidence in the pool.",
+          "added_by": {
+            "id": "01920000-0000-7000-8000-00000000c001",
+            "username": "hank",
+            "display_name": "Hank Rivera",
+            "active": true
+          },
+          "added_at": "<timestamp>",
+          "notified_at": null,
+          "contact_status": "",
+          "accepted": false
+        },
+        "db": {
+          "role_candidates": {
+            "where": {
+              "role_id": "{{acme.role}}"
+            },
+            "count": 1,
+            "all_match": {
+              "notified_at": null
+            }
+          },
+          "contact_requests": {
+            "_note": "Zero. Staging is private.",
+            "where": {
+              "role_id": "{{acme.role}}"
+            },
+            "count": 0
+          }
+        }
+      },
+      "_step": "Stage three candidates onto the job itself. NOTHING is disclosed by any of these."
+    },
+    {
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/{{acme.id}}/roles/{{acme.role}}/candidates",
+        "body": {
+          "user_id": "01920000-0000-7000-8000-00000000a002",
+          "note": "Kubernetes depth."
+        }
+      },
+      "expect": {
+        "status": 201,
+        "_note": "No contact_request field. There is no contact request — that is the entire point of staging.",
+        "body": {
+          "user_id": "01920000-0000-7000-8000-00000000a002",
+          "display_name": "Bob Nakamura",
+          "github_login": "bobn",
+          "note": "Kubernetes depth.",
+          "added_by": {
+            "id": "01920000-0000-7000-8000-00000000c001",
+            "username": "hank",
+            "display_name": "Hank Rivera",
+            "active": true
+          },
+          "added_at": "<timestamp>",
+          "notified_at": null,
+          "contact_status": "",
+          "accepted": false
+        }
+      }
+    },
+    {
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/{{acme.id}}/roles/{{acme.role}}/candidates",
+        "body": {
+          "user_id": "01920000-0000-7000-8000-00000000a003",
+          "note": "Staged by mistake."
+        }
+      },
+      "expect": {
+        "status": 201,
+        "_note": "No contact_request field. There is no contact request — that is the entire point of staging.",
+        "body": {
+          "user_id": "01920000-0000-7000-8000-00000000a003",
+          "display_name": "Carol Diaz",
+          "github_login": "cdiaz",
+          "note": "Staged by mistake.",
+          "added_by": {
+            "id": "01920000-0000-7000-8000-00000000c001",
+            "username": "hank",
+            "display_name": "Hank Rivera",
+            "active": true
+          },
+          "added_at": "<timestamp>",
+          "notified_at": null,
+          "contact_status": "",
+          "accepted": false
+        }
+      }
+    },
+    {
+      "_step": "ORG SCOPING. dave_hiring is a different person at the same org and reads Hank's candidates as their own.",
+      "as": "dave_hiring",
+      "request": {
+        "method": "GET",
+        "path": "/org-roles/{{acme.id}}/roles/{{acme.role}}/candidates"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "candidates": [
+            {
+              "user_id": "01920000-0000-7000-8000-00000000a001",
+              "display_name": "Alice Okafor",
+              "github_login": "aliceok",
+              "note": "Strongest Go evidence in the pool.",
+              "added_by": {
+                "id": "01920000-0000-7000-8000-00000000c001",
+                "username": "hank",
+                "display_name": "Hank Rivera",
+                "active": true
+              },
+              "added_at": "<timestamp>",
+              "notified_at": null,
+              "contact_status": "",
+              "accepted": false
+            },
+            {
+              "user_id": "01920000-0000-7000-8000-00000000a002",
+              "display_name": "Bob Nakamura",
+              "github_login": "bobn",
+              "note": "Kubernetes depth.",
+              "added_by": {
+                "id": "01920000-0000-7000-8000-00000000c001",
+                "username": "hank",
+                "display_name": "Hank Rivera",
+                "active": true
+              },
+              "added_at": "<timestamp>",
+              "notified_at": null,
+              "contact_status": "",
+              "accepted": false
+            },
+            {
+              "user_id": "01920000-0000-7000-8000-00000000a003",
+              "display_name": "Carol Diaz",
+              "github_login": "cdiaz",
+              "note": "Staged by mistake.",
+              "added_by": {
+                "id": "01920000-0000-7000-8000-00000000c001",
+                "username": "hank",
+                "display_name": "Hank Rivera",
+                "active": true
+              },
+              "added_at": "<timestamp>",
+              "notified_at": null,
+              "contact_status": "",
+              "accepted": false
+            }
+          ]
+        }
+      }
+    },
+    {
+      "_step": "THE MIS-CLICK REMEDY. Carol was staged by mistake and is removed. She was never told, so nothing is erased.",
+      "as": "hank",
+      "request": {
+        "method": "DELETE",
+        "path": "/org-roles/{{acme.id}}/roles/{{acme.role}}/candidates/01920000-0000-7000-8000-00000000a003"
+      },
+      "expect": {
+        "status": 204,
+        "body": null,
+        "db": {
+          "role_candidates": {
+            "where": {
+              "role_id": "{{acme.role}}"
+            },
+            "count": 2
+          }
+        }
+      }
+    },
+    {
+      "_step": "And she learns nothing of it, before or after.",
+      "as": "carol",
+      "request": {
+        "method": "GET",
+        "path": "/me/contact-requests"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "total": 0,
+          "requests": []
+        }
+      }
+    },
+    {
+      "_step": "A duplicate stage is a conflict. One row per person per job is the primary key, which is also what makes the list one line per human.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/{{acme.id}}/roles/{{acme.role}}/candidates",
+        "body": {
+          "user_id": "01920000-0000-7000-8000-00000000a001"
+        }
+      },
+      "expect": {
+        "status": 409,
+        "body": {
+          "error": "already_shortlisted"
+        }
+      }
+    },
+    {
+      "_step": "The promised date is REQUIRED. It is what everybody contacted is told, and the overdue ratio is measured against it — 'we will let you know' with no date is what this field exists to stop.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/{{acme.id}}/roles/{{acme.role}}/contact",
+        "body": {}
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "invalid_role",
+          "field": "tentative_result_date"
+        }
+      }
+    },
+    {
+      "_step": "And it must be in the future: a date already past would be a promise broken the moment it was sent.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/{{acme.id}}/roles/{{acme.role}}/contact",
+        "body": {
+          "tentative_result_date": "2020-01-01"
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "invalid_role",
+          "field": "tentative_result_date"
+        }
+      }
+    },
+    {
+      "_step": "CONTACT. Two emails, one transaction, and those two people become permanent.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/{{acme.id}}/roles/{{acme.role}}/contact",
+        "body": {
+          "tentative_result_date": "2026-09-30"
+        }
+      },
+      "expect": {
+        "status": 200,
+        "_note": "The response states the irreversibility in the payload, not only in the UI that led here.",
+        "body": {
+          "role_id": "<uuid>",
+          "status": "open",
+          "notified": 2,
+          "already_notified": 0,
+          "irreversible": true,
+          "first_contacted_at": "<timestamp>",
+          "contacted": [
+            {
+              "user_id": "01920000-0000-7000-8000-00000000a001",
+              "display_name": "Alice Okafor",
+              "contact_request_id": "<uuid>",
+              "notified_at": "<timestamp>"
+            },
+            {
+              "user_id": "01920000-0000-7000-8000-00000000a002",
+              "display_name": "Bob Nakamura",
+              "contact_request_id": "<uuid>",
+              "notified_at": "<timestamp>"
+            }
+          ]
+        },
+        "db": {
+          "_note": "Every contact request written atomically — the ADR-0005 same-transaction property, on the act that discloses.",
+          "contact_requests": {
+            "where": {
+              "role_id": "{{acme.role}}"
+            },
+            "count": 2,
+            "all_match": {
+              "status": "pending",
+              "tentative_result_date": "2026-09-30"
+            }
+          },
+          "role_candidates": {
+            "where": {
+              "role_id": "{{acme.role}}"
+            },
+            "count": 2,
+            "none_match": {
+              "notified_at": null
+            }
+          },
+          "roles": {
+            "where": {
+              "id": "{{acme.role}}"
+            },
+            "none_match": {
+              "first_contacted_at": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "_step": "ONCE CONTACTED, NEVER REMOVED. Alice was told; deleting her would destroy the record of a disclosure that happened.",
+      "as": "hank",
+      "request": {
+        "method": "DELETE",
+        "path": "/org-roles/{{acme.id}}/roles/{{acme.role}}/candidates/01920000-0000-7000-8000-00000000a001"
+      },
+      "expect": {
+        "status": 409,
+        "body": {
+          "error": "entry_already_notified",
+          "notified_at": "<timestamp>"
+        },
+        "db": {
+          "role_candidates": {
+            "where": {
+              "role_id": "{{acme.role}}"
+            },
+            "count": 2
+          }
+        }
+      }
+    },
+    {
+      "_step": "...and that holds before she answers, not only after. The disclosure is what binds, not the reply.",
+      "as": "alice",
+      "request": {
+        "method": "GET",
+        "path": "/me/contact-requests"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "total": 1,
+          "requests": [
+            {
+              "id": "<uuid>",
+              "organization": {
+                "name": "Acme Corp",
+                "verified": true,
+                "payment_verified": true
+              },
+              "status": "pending",
+              "tentative_result_date": "2026-09-30",
+              "disclosure": null,
+              "role": {
+                "id": "<uuid>",
+                "title": "Backend engineer",
+                "description": "Seeded so a round has a job to be for.",
+                "engagement": "full_time",
+                "locations": [
+                  {
+                    "mode": "remote",
+                    "country": null
+                  }
+                ],
+                "currency": "",
+                "yearly_ctc": null,
+                "yearly_base": null,
+                "hourly_rate": null,
+                "expected_hours": null,
+                "requires_online_test": null,
+                "max_interview_rounds": null,
+                "avg_days_to_offer": null,
+                "questions": []
+              },
+              "expires_at": "<timestamp>",
+              "created_at": "<timestamp>"
+            }
+          ]
+        },
+        "_note": "What the CONTRIBUTOR sees: the company, the payment disclosure ADR-0002 §5 requires, the promised date, and the job itself — so 'somebody is interested in you' becomes something a person can answer honestly. No recruiter is named, and nothing here says who else was approached."
+      }
+    },
+    {
+      "_step": "A second press with nobody new sends nothing. Idempotent — a double click must not re-email anyone.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/{{acme.id}}/roles/{{acme.role}}/contact",
+        "body": {
+          "tentative_result_date": "2026-09-30"
+        }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "role_id": "<uuid>",
+          "status": "open",
+          "notified": 0,
+          "already_notified": 2,
+          "irreversible": true,
+          "first_contacted_at": "<timestamp>",
+          "contacted": []
+        },
+        "db": {
+          "contact_requests": {
+            "where": {
+              "role_id": "{{acme.role}}"
+            },
+            "count": 2
+          }
+        }
+      }
+    },
+    {
+      "_step": "DAY 3. A fourth name joins the same job rather than starting a second list with a second date.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/{{acme.id}}/roles/{{acme.role}}/candidates",
+        "body": {
+          "user_id": "01920000-0000-7000-8000-00000000a003",
+          "note": "Postgres internals."
+        }
+      },
+      "expect": {
+        "status": 201,
+        "body": {
+          "user_id": "01920000-0000-7000-8000-00000000a003",
+          "display_name": "Carol Diaz",
+          "github_login": "cdiaz",
+          "note": "Postgres internals.",
+          "added_by": {
+            "id": "01920000-0000-7000-8000-00000000c001",
+            "username": "hank",
+            "display_name": "Hank Rivera",
+            "active": true
+          },
+          "added_at": "<timestamp>",
+          "notified_at": null,
+          "contact_status": "",
+          "accepted": false
+        }
+      }
+    },
+    {
+      "as": "hank",
+      "request": {
+        "method": "GET",
+        "path": "/org-roles/{{acme.id}}/roles/{{acme.role}}/candidates"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "candidates": [
+            {
+              "user_id": "01920000-0000-7000-8000-00000000a001",
+              "display_name": "Alice Okafor",
+              "github_login": "aliceok",
+              "note": "Strongest Go evidence in the pool.",
+              "added_by": {
+                "id": "01920000-0000-7000-8000-00000000c001",
+                "username": "hank",
+                "display_name": "Hank Rivera",
+                "active": true
+              },
+              "added_at": "<timestamp>",
+              "notified_at": "<timestamp>",
+              "contact_status": "pending",
+              "accepted": false
+            },
+            {
+              "user_id": "01920000-0000-7000-8000-00000000a002",
+              "display_name": "Bob Nakamura",
+              "github_login": "bobn",
+              "note": "Kubernetes depth.",
+              "added_by": {
+                "id": "01920000-0000-7000-8000-00000000c001",
+                "username": "hank",
+                "display_name": "Hank Rivera",
+                "active": true
+              },
+              "added_at": "<timestamp>",
+              "notified_at": "<timestamp>",
+              "contact_status": "pending",
+              "accepted": false
+            },
+            {
+              "user_id": "01920000-0000-7000-8000-00000000a003",
+              "display_name": "Carol Diaz",
+              "github_login": "cdiaz",
+              "note": "Postgres internals.",
+              "added_by": {
+                "id": "01920000-0000-7000-8000-00000000c001",
+                "username": "hank",
+                "display_name": "Hank Rivera",
+                "active": true
+              },
+              "added_at": "<timestamp>",
+              "notified_at": null,
+              "contact_status": "",
+              "accepted": false
+            }
+          ]
+        }
+      }
+    },
+    {
+      "_step": "Contact again. ONE email. Alice and Bob are not told twice.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/{{acme.id}}/roles/{{acme.role}}/contact",
+        "body": {
+          "tentative_result_date": "2026-09-30"
+        }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "role_id": "<uuid>",
+          "status": "open",
+          "notified": 1,
+          "already_notified": 2,
+          "irreversible": true,
+          "first_contacted_at": "<timestamp>",
+          "contacted": [
+            {
+              "user_id": "01920000-0000-7000-8000-00000000a003",
+              "display_name": "Carol Diaz",
+              "contact_request_id": "<uuid>",
+              "notified_at": "<timestamp>"
+            }
+          ]
+        },
+        "db": {
+          "contact_requests": {
+            "where": {
+              "role_id": "{{acme.role}}"
+            },
+            "count": 3
+          }
+        }
+      },
+      "capture": {
+        "contact_request_id": "$.contacted[0].contact_request_id"
+      }
+    },
+    {
+      "_step": "Carol was inactive when contacted. Accepting refreshes her availability window — answering yes is a clearer statement of availability than the button she forgot to press.",
+      "as": "carol",
+      "request": {
+        "method": "POST",
+        "path": "/me/contact-requests/{{contact_request_id}}/accept",
+        "body": {}
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "id": "<uuid>",
+          "status": "accepted",
+          "responded_at": "<timestamp>",
+          "email_released_at": "<timestamp>",
+          "availability_refreshed": true
+        },
+        "db": {
+          "user_availability": {
+            "where": {
+              "user_id": "01920000-0000-7000-8000-00000000a003"
+            },
+            "none_match": {
+              "expires_at": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "as": "hank",
+      "request": {
+        "method": "GET",
+        "path": "/org-roles/{{acme.id}}/roles/{{acme.role}}/contact-requests"
+      },
+      "expect": {
+        "status": 200,
+        "_note": "requested_by names the colleague who asked, including one who has since left (ADR-0016 §9). A hirer looking at an old approach needs to know who on their side made it before making another.",
+        "body": {
+          "total": 3,
+          "requests": [
+            {
+              "id": "<uuid>",
+              "user": {
+                "id": "01920000-0000-7000-8000-00000000a001",
+                "display_name": "Alice Okafor",
+                "github_login": "aliceok"
+              },
+              "requested_by": {
+                "id": "01920000-0000-7000-8000-00000000c001",
+                "username": "hank",
+                "display_name": "Hank Rivera",
+                "active": true
+              },
+              "status": "pending",
+              "email": null,
+              "responded_at": null
+            },
+            {
+              "id": "<uuid>",
+              "user": {
+                "id": "01920000-0000-7000-8000-00000000a002",
+                "display_name": "Bob Nakamura",
+                "github_login": "bobn"
+              },
+              "requested_by": {
+                "id": "01920000-0000-7000-8000-00000000c001",
+                "username": "hank",
+                "display_name": "Hank Rivera",
+                "active": true
+              },
+              "status": "pending",
+              "email": null,
+              "responded_at": null
+            },
+            {
+              "id": "<uuid>",
+              "user": {
+                "id": "01920000-0000-7000-8000-00000000a003",
+                "display_name": "Carol Diaz",
+                "github_login": "cdiaz"
+              },
+              "requested_by": {
+                "id": "01920000-0000-7000-8000-00000000c001",
+                "username": "hank",
+                "display_name": "Hank Rivera",
+                "active": true
+              },
+              "status": "accepted",
+              "email": "carol@example.com",
+              "responded_at": "<timestamp>"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "_step": "The address is on the candidate list too, and only for the person who released it (ADR-0019 amendment 4).",
+      "as": "hank",
+      "request": {
+        "method": "GET",
+        "path": "/org-roles/{{acme.id}}/roles/{{acme.role}}/candidates"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "candidates": [
+            {
+              "user_id": "01920000-0000-7000-8000-00000000a001",
+              "display_name": "Alice Okafor",
+              "github_login": "aliceok",
+              "note": "Strongest Go evidence in the pool.",
+              "added_by": {
+                "id": "01920000-0000-7000-8000-00000000c001",
+                "username": "hank",
+                "display_name": "Hank Rivera",
+                "active": true
+              },
+              "added_at": "<timestamp>",
+              "notified_at": "<timestamp>",
+              "contact_status": "pending",
+              "accepted": false
+            },
+            {
+              "user_id": "01920000-0000-7000-8000-00000000a002",
+              "display_name": "Bob Nakamura",
+              "github_login": "bobn",
+              "note": "Kubernetes depth.",
+              "added_by": {
+                "id": "01920000-0000-7000-8000-00000000c001",
+                "username": "hank",
+                "display_name": "Hank Rivera",
+                "active": true
+              },
+              "added_at": "<timestamp>",
+              "notified_at": "<timestamp>",
+              "contact_status": "pending",
+              "accepted": false
+            },
+            {
+              "user_id": "01920000-0000-7000-8000-00000000a003",
+              "display_name": "Carol Diaz",
+              "github_login": "cdiaz",
+              "note": "Postgres internals.",
+              "added_by": {
+                "id": "01920000-0000-7000-8000-00000000c001",
+                "username": "hank",
+                "display_name": "Hank Rivera",
+                "active": true
+              },
+              "added_at": "<timestamp>",
+              "notified_at": "<timestamp>",
+              "contact_status": "accepted",
+              "accepted": true,
+              "email": "carol@example.com"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "_step": "Closing the job. The record of who was told stays: it is the history of what this company did.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/{{acme.id}}/roles/{{acme.role}}/close",
+        "body": {
+          "reason": "hired_via_platform",
+          "hired": ["01920000-0000-7000-8000-00000000a003"]
+        }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "id": "<uuid>",
+          "organization_id": "01920000-0000-7000-8000-00000000b001",
+          "status": "closed",
+          "title": "Backend engineer",
+          "description": "Seeded so a round has a job to be for.",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "remote",
+              "country": null,
+              "address": null
+            }
+          ],
+          "currency": "",
+          "yearly_ctc": null,
+          "yearly_base": null,
+          "hourly_rate": null,
+          "expected_hours": null,
+          "min_office_yoe": null,
+          "min_oss_yoe": null,
+          "requires_online_test": null,
+          "max_interview_rounds": null,
+          "avg_days_to_offer": null,
+          "questions": [],
+          "opened_at": "<timestamp>",
+          "close_requested_at": null,
+          "closed_at": "<timestamp>",
+          "close_reason": "hired_via_platform",
+          "hires": [
+            {
+              "user_id": "01920000-0000-7000-8000-00000000a003",
+              "recorded_at": "<timestamp>"
+            }
+          ],
+          "advertised": false,
+          "supersedes": null,
+          "created_at": "<timestamp>",
+          "updated_at": "<timestamp>"
+        },
+        "db": {
+          "role_candidates": {
+            "where": {
+              "role_id": "{{acme.role}}"
+            },
+            "count": 3
+          }
+        },
+        "_note": "The hire names somebody who ACCEPTED (ADR-0019 §15). Carol agreed to talk and released her address; staged, unanswered and declined all fail identically, because telling them apart would report a contributor's answer to whoever asked about somebody else's hiring."
+      }
+    },
+    {
+      "_step": "A closed job takes nobody new. Staging someone for a withdrawn opening would only mislead them.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/{{acme.id}}/roles/{{acme.role}}/candidates",
+        "body": {
+          "user_id": "01920000-0000-7000-8000-00000000a004"
+        }
+      },
+      "expect": {
+        "status": 409,
+        "body": {
+          "error": "role_closed"
+        }
+      }
+    },
+    {
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/{{acme.id}}/roles/{{acme.role}}/contact",
+        "body": {
+          "tentative_result_date": "2026-09-30"
+        }
+      },
+      "expect": {
+        "status": 409,
+        "body": {
+          "error": "role_closed"
+        }
+      }
+    }
+  ]
+}

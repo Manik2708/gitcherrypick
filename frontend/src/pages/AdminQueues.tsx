@@ -1,6 +1,7 @@
-// The four things only an admin does.
+// The things only an admin does.
 //
-// Each is a decision that reaches somebody: verification decides whether an
+// Each is a decision that reaches somebody: an office request decides whether
+// a fully remote organisation gets an office, verification decides whether an
 // organisation can hire at all, a skill request changes the catalogue
 // permanently, a dispute is a person arguing with a score, and a sweep
 // invalidates every number on the platform.
@@ -10,6 +11,7 @@
 
 import { useState } from "react";
 import {
+  useDecideOfficeRequest,
   useDecideReevaluation,
   useDecideSkillRequest,
   useDecideVerification,
@@ -18,9 +20,11 @@ import {
   useSweep,
   useDecideOnboarding,
   useOnboardingQueue,
+  useOfficeRequestQueue,
   useVerificationQueue,
 } from "../hooks/admin";
 import * as format from "../logic/format";
+import { addressLine } from "../logic/roleLocations";
 import {
   Banner,
   Button,
@@ -60,9 +64,8 @@ function OnboardingQueue() {
       </div>
 
       <p className="field__help">
-        Nothing here exists yet. Approving one creates the company, its address and the
-        owner&rsquo;s account together — and the name is only claimed at that moment, so approving a
-        second company with the same name will be refused.
+        Nothing here exists yet. Approving one creates the company, its office if it has one, and
+        the owner&rsquo;s account together.
       </p>
 
       {queue.error ? <Failure message={queue.error.message} onRetry={queue.reload} /> : null}
@@ -87,12 +90,10 @@ function OnboardingQueue() {
                 {/* The address is the evidence an administrator weighs, so it is
                     shown rather than hidden behind a click. Null means none was
                     given, which is itself a fact about the company. */}
-                {s.address ? (
-                  <span>
-                    {[s.address.street1, s.address.city, s.address.postal_code, s.address.country]
-                      .filter(Boolean)
-                      .join(", ")}
-                  </span>
+                {s.workplace === "fully_remote" ? (
+                  <Pill tone="secondary">Fully remote</Pill>
+                ) : s.address ? (
+                  <span>{addressLine(s.address)}</span>
                 ) : (
                   <span className="muted">No office address given</span>
                 )}
@@ -143,6 +144,90 @@ function OnboardingQueue() {
   );
 }
 
+/**
+ * Fully remote organisations asking for an office (ADR-0024 decision 13).
+ *
+ * Approving makes the address the organisation's main office. A rejection
+ * leaves it fully remote, and its reason is emailed and shown to every seat.
+ */
+function OfficeRequestQueue() {
+  const queue = useOfficeRequestQueue();
+  const decide = useDecideOfficeRequest();
+  const [reasons, setReasons] = useState<Record<string, string>>({});
+
+  const requests = queue.data?.office_requests ?? [];
+
+  return (
+    <Card>
+      <div className="section__head">
+        <h2 className="section__title">Office requests</h2>
+        <span className="section__note mono">{requests.length}</span>
+      </div>
+
+      {queue.error ? <Failure message={queue.error.message} onRetry={queue.reload} /> : null}
+      {queue.loading ? <Loading what="office requests" /> : null}
+      {decide.error ? <Failure message={decide.error.message} /> : null}
+      {!queue.loading && requests.length === 0 ? (
+        <Empty title="Nothing waiting" icon="check" />
+      ) : null}
+
+      <ul className="rows">
+        {requests.map((r) => (
+          <li className="row" key={r.id}>
+            <div className="row__mid">
+              <div className="row__ident">
+                <span className="row__name">{r.organization.name}</span>
+                <span className="row__login">by {r.requested_by}</span>
+                {r.supersedes ? <Pill tone="cherry">Asked again</Pill> : null}
+              </div>
+              <p className="row__meta">{addressLine(r.address)}</p>
+              <p className="row__meta mono">{format.date(r.created_at)}</p>
+
+              <Field
+                label="Reason"
+                htmlFor={`office-reason-${r.id}`}
+                help="Required to reject; shown to the organisation."
+              >
+                <input
+                  className="input"
+                  id={`office-reason-${r.id}`}
+                  value={reasons[r.id] ?? ""}
+                  onChange={(e) => setReasons({ ...reasons, [r.id]: e.target.value })}
+                />
+              </Field>
+            </div>
+
+            <div className="row__right">
+              <div className="row__actions">
+                <Button
+                  variant="primary"
+                  size="sm"
+                  disabled={decide.pending}
+                  onClick={() =>
+                    void decide.run(r.id, true, reasons[r.id] ?? "").then(queue.reload)
+                  }
+                >
+                  Approve
+                </Button>
+                <Button
+                  variant="quiet"
+                  size="sm"
+                  disabled={decide.pending || !(reasons[r.id] ?? "").trim()}
+                  onClick={() =>
+                    void decide.run(r.id, false, reasons[r.id] ?? "").then(queue.reload)
+                  }
+                >
+                  Reject
+                </Button>
+              </div>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </Card>
+  );
+}
+
 function VerificationQueue() {
   const queue = useVerificationQueue();
   const decide = useDecideVerification();
@@ -160,9 +245,7 @@ function VerificationQueue() {
 
       <p className="field__help">
         Approving lets this organisation search and shortlist. Payment capability is a separate
-        judgement — a studio can be demonstrably real and still have nothing but self-reported
-        payment history, and a contributor deciding whether to release their address is told which
-        of the two was established.
+        judgement.
       </p>
 
       {queue.loading ? <Loading what="verifications" /> : null}
@@ -272,8 +355,7 @@ function SkillRequestQueue() {
       </div>
 
       <Notice title="A bad slug fragments a population forever">
-        Approving creates the skill, and you name it — which is not always what was proposed.
-        Standing is per skill, and two spellings never merge.
+        Approving creates the skill, and you name it. Two spellings never merge.
       </Notice>
 
       {queue.loading ? <Loading what="skill requests" /> : null}
@@ -384,8 +466,7 @@ function DisputeQueue() {
       </div>
 
       <p className="field__help">
-        Accepting re-queues the claim to be judged again. Rejecting advances an escalating cooldown
-        — three rejections start one, and acceptance never counts against anybody.
+        Accepting re-queues the claim to be judged again. Rejecting advances a cooldown.
       </p>
 
       {queue.loading ? <Loading what="disputes" /> : null}
@@ -452,9 +533,8 @@ function SweepControl() {
       </div>
 
       <Notice title="Every score leaves search until it is re-judged">
-        Re-runs the whole corpus under a new rubric. The entire scored population falls out of
-        search the moment the active version moves, and drains back in as re-evaluation completes —
-        a leaderboard mixing two versions would rank people by which one happened to judge them.
+        Re-runs the whole corpus under a new rubric. The scored population falls out of search until
+        re-evaluation completes.
       </Notice>
 
       {sweep.error ? <Failure message={sweep.error.message} /> : null}
@@ -474,11 +554,7 @@ function SweepControl() {
           onChange={(e) => setVersion(e.target.value)}
         />
       </Field>
-      <Field
-        label="Reason"
-        htmlFor="sweep-reason"
-        help="Recorded permanently — it is what makes this reviewable later."
-      >
+      <Field label="Reason" htmlFor="sweep-reason" help="Recorded permanently.">
         <input
           className="input"
           id="sweep-reason"
@@ -507,12 +583,9 @@ function SweepControl() {
 export function AdminQueuesPage() {
   return (
     <div className="page">
-      <PageHead
-        eyebrow="Administration"
-        title="Review queues"
-        lede="Decisions that reach somebody. A rejection always carries a reason, because “rejected” with nothing to fix is not an answer."
-      />
+      <PageHead eyebrow="Administration" title="Review queues" />
       <OnboardingQueue />
+      <OfficeRequestQueue />
       <VerificationQueue />
       <SkillRequestQueue />
       <DisputeQueue />

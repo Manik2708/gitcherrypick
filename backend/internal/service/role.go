@@ -46,8 +46,20 @@ type RoleService struct {
 	profiles port.ProfileRepository
 	users    port.UserRepository
 	orgs     port.OrganizationRepository
-	tx       port.TxManager
-	clock    port.Clock
+
+	// hirers resolves the ORGANISATION a contact request is from — a
+	// contributor decides about a company, not about the recruiter who
+	// clicked (ADR-0005).
+	hirers   port.HirerRepository
+	notifier port.Notifier
+	access   port.AccessService
+
+	// places names a country in the contact email. It fails open: a code is
+	// shown where no name can be had (ADR-0018 §9, ADR-0024 §Bodies).
+	places port.PlaceService
+
+	tx    port.TxManager
+	clock port.Clock
 }
 
 // NewRoleService wires openings.
@@ -60,11 +72,16 @@ func NewRoleService(
 	profiles port.ProfileRepository,
 	users port.UserRepository,
 	orgs port.OrganizationRepository,
+	hirers port.HirerRepository,
+	notifier port.Notifier,
+	access port.AccessService,
+	places port.PlaceService,
 	tx port.TxManager,
 	clock port.Clock,
 ) *RoleService {
 	return &RoleService{roles: roles, openings: openings, skills: skills, settings: settings,
 		contacts: contacts, profiles: profiles, users: users, orgs: orgs,
+		hirers: hirers, notifier: notifier, access: access, places: places,
 		tx: tx, clock: clock}
 }
 
@@ -87,12 +104,17 @@ func (s *RoleService) Create(ctx context.Context, p domain.Principal, org domain
 
 	in.OrgID = org
 	in.CreatedBy = hirer.ID
-	if err := s.validate(ctx, org, &in); err != nil {
+	if err := validateRole(&in); err != nil {
 		return nil, err
 	}
 
 	var out *domain.Role
 	if err := s.tx.InTx(ctx, func(ctx context.Context, tx port.Tx) error {
+		locations, err := s.resolveLocations(ctx, tx, org, in.Locations)
+		if err != nil {
+			return err
+		}
+		in.Locations = locations
 		created, err := s.roles.Create(ctx, tx, &in)
 		if err != nil {
 			return err
@@ -133,12 +155,17 @@ func (s *RoleService) Update(ctx context.Context, p domain.Principal, org domain
 
 	in.ID = id
 	in.OrgID = org
-	if err := s.validate(ctx, org, &in); err != nil {
+	if err := validateRole(&in); err != nil {
 		return nil, err
 	}
 
 	var out *domain.Role
 	if err := s.tx.InTx(ctx, func(ctx context.Context, tx port.Tx) error {
+		locations, err := s.resolveLocations(ctx, tx, org, in.Locations)
+		if err != nil {
+			return err
+		}
+		in.Locations = locations
 		updated, err := s.roles.UpdateDraft(ctx, tx, &in)
 		if err != nil {
 			return err
@@ -176,12 +203,17 @@ func (s *RoleService) Revise(ctx context.Context, p domain.Principal, org domain
 
 	in.OrgID = org
 	in.CreatedBy = hirer.ID
-	if err := s.validate(ctx, org, &in); err != nil {
+	if err := validateRole(&in); err != nil {
 		return nil, err
 	}
 
 	var out *domain.Role
 	if err := s.tx.InTx(ctx, func(ctx context.Context, tx port.Tx) error {
+		locations, err := s.resolveLocations(ctx, tx, org, in.Locations)
+		if err != nil {
+			return err
+		}
+		in.Locations = locations
 		next, err := s.roles.Revise(ctx, tx, id, &in, hirer.ID, s.clock.Now())
 		if err != nil {
 			return err
@@ -233,6 +265,12 @@ func (s *RoleService) Open(ctx context.Context, p domain.Principal, org domain.O
 
 	var out *domain.Role
 	if err := s.tx.InTx(ctx, func(ctx context.Context, tx port.Tx) error {
+		// The entries are checked again on open, under the organisation's
+		// lock: an address removed, or the organisation gone fully remote,
+		// since the draft was written must not go out (ADR-0024 §Codes).
+		if _, err := s.resolveLocations(ctx, tx, org, existing.Locations); err != nil {
+			return err
+		}
 		opened, err := s.roles.Open(ctx, tx, id, hirer.ID, s.clock.Now())
 		if err != nil {
 			return err
@@ -274,11 +312,11 @@ func (s *RoleService) Close(ctx context.Context, p domain.Principal, org domain.
 		// 'superseded' is written by a revision and offered to nobody: a hirer
 		// claiming a role was replaced when nothing replaced it would leave a
 		// closed role that lies about why.
-		return nil, Coded(ErrInvalid, CodeInvalidRole,
+		return nil, invalidRole("reason",
 			"%q is not a reason a role can be closed for", in.Reason)
 	}
 	if in.Reason == domain.CloseOther && strings.TrimSpace(in.Note) == "" {
-		return nil, Coded(ErrInvalid, CodeInvalidRole,
+		return nil, invalidRole("note",
 			"tell us what happened — \"other\" with nothing after it is not a reason")
 	}
 
@@ -341,14 +379,14 @@ func (s *RoleService) Close(ctx context.Context, p domain.Principal, org domain.
 func (s *RoleService) resolveHires(ctx context.Context, role domain.RoleID, in port.CloseRequest) ([]domain.UserID, error) {
 	if in.Reason != domain.CloseHiredViaPlatform {
 		if len(in.Hired) > 0 {
-			return nil, Coded(ErrInvalid, CodeInvalidRole,
+			return nil, invalidRole("hired",
 				"only a role closed as hired through the platform names anybody")
 		}
 		return nil, nil
 	}
 
 	if len(in.Hired) == 0 {
-		return nil, Coded(ErrInvalid, CodeInvalidRole,
+		return nil, invalidRole("hired",
 			"tell us who you hired — this is the one thing that closes the loop "+
 				"between a ranked contributor and a job")
 	}
@@ -384,7 +422,7 @@ func (s *RoleService) resolveHires(ctx context.Context, role domain.RoleID, in p
 		out = append(out, user)
 	}
 	if len(out) == 0 {
-		return nil, Coded(ErrInvalid, CodeInvalidRole, "tell us who you hired")
+		return nil, invalidRole("hired", "tell us who you hired")
 	}
 	return out, nil
 }
@@ -454,12 +492,14 @@ func (s *RoleService) SaveSettings(ctx context.Context, p domain.Principal, org 
 			"only an owner may change who can create and close roles")
 	}
 
-	for _, a := range []domain.RoleAuthority{
-		in.RoleCreateAuthority, in.RoleUpdateAuthority, in.RoleCloseAuthority,
+	for _, setting := range []authoritySetting{
+		{"role_create_authority", in.RoleCreateAuthority},
+		{"role_update_authority", in.RoleUpdateAuthority},
+		{"role_close_authority", in.RoleCloseAuthority},
 	} {
-		if !a.Valid() {
-			return nil, Coded(ErrInvalid, CodeInvalidRole,
-				"%q is not one of any_hirer, draft_and_approve or owners_only", a)
+		if !setting.value.Valid() {
+			return nil, invalidRole(setting.key,
+				"%q is not one of any_hirer, draft_and_approve or owners_only", setting.value)
 		}
 	}
 
@@ -511,40 +551,29 @@ func (s *RoleService) owned(ctx context.Context, org domain.OrganizationID, id d
 	return role, nil
 }
 
-// validate checks the fields that can be wrong.
+// authoritySetting pairs one of the three settings with the request key that
+// carries it, so a refusal can name the key.
+type authoritySetting struct {
+	key   string
+	value domain.RoleAuthority
+}
+
+// validateRole checks the fields that can be wrong without reading anything.
 //
-// Every refusal is CODED. A bare ErrInvalid falls back to invalid_claim at the
-// controller, which would tell a hirer their EVIDENCE was rejected when what
-// was wrong was a currency — "claim" is a specific noun on this platform.
-func (s *RoleService) validate(ctx context.Context, org domain.OrganizationID, r *domain.Role) error {
+// Every refusal is CODED and names its FIELD (ADR-0024 decision 16). A bare
+// ErrInvalid falls back to invalid_claim at the controller, which would tell a
+// hirer their EVIDENCE was rejected when what was wrong was a currency.
+//
+// The locations are checked separately, inside the transaction, because they
+// depend on the organisation's kind and addresses (resolveLocations).
+func validateRole(r *domain.Role) error {
 	r.Title = strings.TrimSpace(r.Title)
 	if r.Title == "" {
-		return Coded(ErrInvalid, CodeInvalidRole, "a role needs a title")
+		return invalidRole("title", "a role needs a title")
 	}
 	if !r.Engagement.Valid() {
-		return Coded(ErrInvalid, CodeInvalidRole,
+		return invalidRole("engagement",
 			"%q is not full_time, contract, internship or freelance", r.Engagement)
-	}
-	if !r.Location.Valid() {
-		return Coded(ErrInvalid, CodeInvalidRole,
-			"%q is not remote or address", r.Location)
-	}
-
-	switch r.Location {
-	case domain.LocationAddress:
-		if r.AddressID == nil {
-			return Coded(ErrInvalid, CodeInvalidRole,
-				"a role at an office needs an address — add one to the "+
-					"organisation first, and every role there can point at it")
-		}
-		if err := s.addressBelongs(ctx, org, *r.AddressID); err != nil {
-			return err
-		}
-	case domain.LocationRemote:
-		// A remote role must not carry a pointer to the office it used to be
-		// at. Cleared rather than refused: somebody switching a role to remote
-		// is not making a mistake.
-		r.AddressID = nil
 	}
 
 	// Freelance pays by the hour; everything else by the year. A role
@@ -558,83 +587,63 @@ func (s *RoleService) validate(ctx context.Context, org domain.OrganizationID, r
 	r.Currency = strings.ToUpper(strings.TrimSpace(r.Currency))
 	stated := r.YearlyCTC != nil || r.YearlyBase != nil || r.HourlyRate != nil
 	if stated && !validCurrencyCode(r.Currency) {
-		return Coded(ErrInvalid, CodeInvalidRole,
+		return invalidRole("currency",
 			"an amount needs a currency — three letters, such as GBP")
 	}
 	if !stated {
 		r.Currency = ""
 	}
-	for _, amount := range []*int64{r.YearlyCTC, r.YearlyBase, r.HourlyRate} {
-		if amount != nil && *amount <= 0 {
-			return Coded(ErrInvalid, CodeInvalidRole, "an amount must be positive")
+	for _, amount := range []moneyField{
+		{"yearly_ctc", r.YearlyCTC}, {"yearly_base", r.YearlyBase}, {"hourly_rate", r.HourlyRate},
+	} {
+		if amount.value != nil && *amount.value <= 0 {
+			return invalidRole(amount.key, "an amount must be positive")
 		}
 	}
 	if r.YearlyCTC != nil && r.YearlyBase != nil && *r.YearlyBase > *r.YearlyCTC {
-		return Coded(ErrInvalid, CodeInvalidRole,
+		return invalidRole("yearly_base",
 			"the base cannot exceed the total package it is part of")
 	}
 	if r.ExpectedHours != nil && (*r.ExpectedHours <= 0 || *r.ExpectedHours > 168) {
-		return Coded(ErrInvalid, CodeInvalidRole,
+		return invalidRole("expected_hours",
 			"expected hours must be between 1 and 168 — there are 168 in a week")
 	}
 
-	for _, yoe := range []*int{r.MinOfficeYOE, r.MinOSSYOE} {
-		if yoe != nil && (*yoe < 0 || *yoe > 80) {
-			return Coded(ErrInvalid, CodeInvalidRole,
-				"a minimum must be between 0 and 80 years")
+	for _, yoe := range []yearsField{
+		{"min_office_yoe", r.MinOfficeYOE}, {"min_oss_yoe", r.MinOSSYOE},
+	} {
+		if yoe.value != nil && (*yoe.value < 0 || *yoe.value > 80) {
+			return invalidRole(yoe.key, "a minimum must be between 0 and 80 years")
 		}
 	}
 	if r.MaxInterviewRounds != nil && *r.MaxInterviewRounds <= 0 {
-		return Coded(ErrInvalid, CodeInvalidRole,
+		return invalidRole("max_interview_rounds",
 			"a process with no rounds is not a process — leave it blank instead")
 	}
 	if r.AvgDaysToOffer != nil && *r.AvgDaysToOffer < 0 {
-		return Coded(ErrInvalid, CodeInvalidRole,
-			"days to an offer cannot be negative")
+		return invalidRole("avg_days_to_offer", "days to an offer cannot be negative")
 	}
-
-	countries := make([]string, 0, len(r.EligibleCountries))
-	seen := map[string]bool{}
-	for _, c := range r.EligibleCountries {
-		c = strings.ToUpper(strings.TrimSpace(c))
-		if c == "" || seen[c] {
-			continue
-		}
-		if !validCountryCode(c) {
-			return Coded(ErrInvalid, CodeInvalidRole,
-				"%q is not a two-letter country code", c)
-		}
-		seen[c] = true
-		countries = append(countries, c)
-	}
-	// Empty stays empty, and means ANYWHERE. An organisation that never
-	// considered work authorisation should not exclude the world by leaving a
-	// field blank (ADR-0019 §6).
-	r.EligibleCountries = countries
 
 	for i := range r.Questions {
 		r.Questions[i].Question = strings.TrimSpace(r.Questions[i].Question)
 		if r.Questions[i].Question == "" {
-			return Coded(ErrInvalid, CodeInvalidRole,
+			return invalidRoleAt("questions", i+1,
 				"a screening question needs to say something")
 		}
 	}
 	return nil
 }
 
-// addressBelongs refuses a role pointed at somebody else's office.
-func (s *RoleService) addressBelongs(ctx context.Context, org domain.OrganizationID, id domain.AddressID) error {
-	addresses, err := s.orgs.Addresses(ctx, org)
-	if err != nil {
-		return fmt.Errorf("reading addresses: %w", err)
-	}
-	for _, a := range addresses {
-		if a.ID == id {
-			return nil
-		}
-	}
-	return Coded(ErrInvalid, CodeInvalidRole,
-		"that address does not belong to this organisation")
+// moneyField pairs an amount with its request key.
+type moneyField struct {
+	key   string
+	value *int64
+}
+
+// yearsField pairs a minimum with its request key.
+type yearsField struct {
+	key   string
+	value *int
 }
 
 /* --- public openings (ADR-0020) --------------------------------------------- */

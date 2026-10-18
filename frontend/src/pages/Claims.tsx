@@ -100,7 +100,6 @@ export function ClaimsPage() {
       <PageHead
         eyebrow="Evidence"
         title="Your claims"
-        lede="A claim is up to five merged pull requests and the skills they demonstrate. The evidence is what gets judged — not the claim."
         actions={
           <Button variant="primary" disabled={create.pending} onClick={() => void start()}>
             <Icon name="plus" size="sm" />
@@ -147,8 +146,7 @@ export function ClaimsPage() {
             </Button>
           }
         >
-          A claim is up to five merged pull requests and the skills they demonstrate — the evidence
-          is what gets judged, not the claim.
+          Up to five merged pull requests and the skills they demonstrate.
         </Empty>
       ) : null}
 

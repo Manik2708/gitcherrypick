@@ -38,7 +38,6 @@ type harness struct {
 	claims     *mocks.ClaimService
 	skills     *mocks.SkillService
 	discovery  *mocks.DiscoveryService
-	shortlists *mocks.ShortlistService
 	contacts   *mocks.ContactService
 	orgs       *mocks.OrganizationService
 	redemption *mocks.RedemptionService
@@ -50,6 +49,7 @@ type harness struct {
 	places     *mocks.PlaceService
 	money      *mocks.MoneyService
 	roles      *mocks.RoleService
+	workplace  *mocks.WorkplaceService
 }
 
 func newHarness(t *testing.T) *harness {
@@ -61,7 +61,6 @@ func newHarness(t *testing.T) *harness {
 		claims:     mocks.NewClaimService(t),
 		skills:     mocks.NewSkillService(t),
 		discovery:  mocks.NewDiscoveryService(t),
-		shortlists: mocks.NewShortlistService(t),
 		contacts:   mocks.NewContactService(t),
 		orgs:       mocks.NewOrganizationService(t),
 		redemption: mocks.NewRedemptionService(t),
@@ -73,6 +72,7 @@ func newHarness(t *testing.T) *harness {
 		places:     mocks.NewPlaceService(t),
 		money:      mocks.NewMoneyService(t),
 		roles:      mocks.NewRoleService(t),
+		workplace:  mocks.NewWorkplaceService(t),
 	}
 
 	// A fixed clock: the admin queue reports how long a request has waited,
@@ -89,14 +89,13 @@ func newHarness(t *testing.T) *harness {
 		controller.NewClaimController(h.claims, h.reeval),
 		controller.NewSkillController(h.skills),
 		controller.NewSkillRequestController(h.skills),
-		controller.NewShortlistController(h.shortlists),
-		controller.NewOrganizationController(h.orgs),
+		controller.NewOrganizationController(h.orgs, h.workplace),
 		controller.NewRoleController(h.roles),
 		controller.NewOpeningsController(h.roles),
 		controller.NewOrganizationsController(h.redemption, h.onboarding),
 		controller.NewPlacesController(h.places),
 		controller.NewMoneyController(h.money),
-		controller.NewAdminController(h.admin, h.evaluation, h.onboarding, clock),
+		controller.NewAdminController(h.admin, h.evaluation, h.onboarding, h.workplace, clock),
 		controller.NewPublicController(h.auth),
 		controller.NewDiscoveryController(h.discovery),
 	)

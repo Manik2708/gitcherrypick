@@ -413,6 +413,10 @@ type Organization struct {
 	// MainOffice is nil until one is given. Resolved by the repository from
 	// organization_addresses rather than stored inline.
 	MainOffice *Address
+
+	// Workplace is whether it has an office or is fully remote (ADR-0024
+	// decision 11). Set by the approval that creates the organisation.
+	Workplace Workplace
 }
 
 // HeadcountBand is how many people work somewhere, approximately.
@@ -468,7 +472,21 @@ type Address struct {
 	// IsMainOffice is a flag rather than a pointer from organizations, which
 	// would make the two tables mutually dependent.
 	IsMainOffice bool
+
+	// AddedBy is the owner who added it, nil for a main office, which came
+	// from a submission or request an administrator approved (ADR-0024 §8).
+	AddedBy *HirerID
+
+	// RemovedAt and RemovedBy stamp a removal. An address is never deleted
+	// and never edited: a closed role still says where it was.
+	RemovedAt *time.Time
+	RemovedBy *HirerID
+
+	CreatedAt time.Time
 }
+
+// Removed reports whether the address has left the picker.
+func (a *Address) Removed() bool { return a != nil && a.RemovedAt != nil }
 
 // IsVerified reports identity verification — the gate on hiring capability.
 func (o *Organization) IsVerified() bool { return o != nil && o.VerifiedAt != nil }

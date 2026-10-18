@@ -1,6 +1,6 @@
 {
   "name": "a role is drafted, signed, and then never edited again",
-  "description": "ADR-0019 decisions 11, 13 and 14, and the reason they belong together.\n\nA role is the first thing a hirer can create that makes a FINANCIAL STATEMENT on the company's behalf: a salary, a base, a number of interview rounds, sent in writing to everybody contacted and held to afterwards. A mistyped yearly_ctc is not a mistake somebody notices internally, it is a promise already delivered.\n\nSo authority is the organisation's choice, not the platform's, and it is held per action. Under the default draft_and_approve, any seat may WRITE a role and only an owner may OPEN it. dave_hiring is the member who proves the first half and is refused the second.\n\nOnce open, the role is IMMUTABLE. The salary somebody was shown is the salary they agreed to talk about, and a request raised last week keeps pointing at the row it was raised against. An edit is therefore refused outright and a revision writes a NEW role that supersedes the old one, closing it in the same act — which is why the revise response is a 201 with a different id rather than a 200 that would suggest the original had changed.\n\nClosing asks WHY. 'other' with nothing after it is not a reason, and 'superseded' is written by a revision and offered to nobody — a hirer claiming a role was replaced when nothing replaced it would leave a closed role that lies about why. The last three steps are the sharpest: hired_via_platform must name somebody, and the address must be one an accepted contact request already released to THIS organisation. A real contributor who never accepted and an address with no account here are refused identically, because a refusal that told them apart would answer the question the rule exists to withhold.",
+  "description": "ADR-0019 decisions 11, 13 and 14, and the reason they belong together.\n\nA role is the first thing a hirer can create that makes a FINANCIAL STATEMENT on the company's behalf: a salary, a base, a number of interview rounds, sent in writing to everybody contacted and held to afterwards. A mistyped yearly_ctc is not a mistake somebody notices internally, it is a promise already delivered.\n\nSo authority is the organisation's choice, not the platform's, and it is held per action. Under the default draft_and_approve, any seat may WRITE a role and only an owner may OPEN it. dave_hiring is the member who proves the first half and is refused the second.\n\nOnce open, the role is IMMUTABLE. The salary somebody was shown is the salary they agreed to talk about, and a request raised last week keeps pointing at the row it was raised against. An edit is therefore refused outright and a revision writes a NEW role that supersedes the old one, closing it in the same act — which is why the revise response is a 201 with a different id rather than a 200 that would suggest the original had changed.\n\nClosing asks WHY. 'other' with nothing after it is not a reason, and 'superseded' is written by a revision and offered to nobody — a hirer claiming a role was replaced when nothing replaced it would leave a closed role that lies about why. The last three steps are the sharpest: hired_via_platform must name somebody, and the address must be one an accepted contact request already released to THIS organisation. A real contributor who never accepted and an address with no account here are refused identically, because a refusal that told them apart would answer the question the rule exists to withhold.\n\nREWRITTEN FOR ADR-0024. A role no longer has one `location`, an `address_id` and a list of `eligible_countries`: it holds a set of location entries — remote from anywhere, remote within a named country, or onsite at one of the organisation's addresses. The hirer reads every entry with `mode`, `country` and `address`; a contributor reads a country (or null for anywhere) and, for onsite, a city — never a street. The three old keys are gone from every request and response.\n\nAlso decision 16: every `invalid_role` now names the request key it is about. The five refusals here that used to be a bare code — a base above its package (`yearly_base`), an amount with no currency (`currency`), `other` with no note (`note`), `superseded` offered as a reason (`reason`), and `hired_via_platform` naming nobody (`hired`) — each assert the field (amendment 1 §1.11 confirms these five). The code is unchanged, so nothing that branches on it breaks. The entries are part of the role and share its immutability (decision 4): the closed original still lists the two countries it was opened with, and the revision lists only what the revision said.",
   "seed": ["principals"],
   "steps": [
     {
@@ -13,11 +13,19 @@
           "title": "Staff backend engineer",
           "description": "Go and Kubernetes, on the platform team.",
           "engagement": "full_time",
-          "location": "remote",
+          "locations": [
+            {
+              "mode": "remote",
+              "country": "GB"
+            },
+            {
+              "mode": "remote",
+              "country": "de"
+            }
+          ],
           "currency": "GBP",
           "yearly_ctc": 12000000,
           "yearly_base": 9500000,
-          "eligible_countries": ["GB", "de"],
           "min_office_yoe": 5,
           "requires_online_test": false,
           "max_interview_rounds": 3,
@@ -35,7 +43,7 @@
       },
       "expect": {
         "status": 201,
-        "_note": "DRAFT, not open. A role is never born open: opening is a separate act, which is what makes the authority setting enforceable at all. Countries are upper-cased — 'de' and 'DE' cannot be two countries, because a contributor's current_country is matched against this.",
+        "_note": "DRAFT, not open. A role is never born open: opening is a separate act, which is what makes the authority setting enforceable at all. The remote countries are upper-cased and ordered — 'de' and 'DE' cannot be two countries, because a contributor's current_country is matched against them (ADR-0024 decision 5) — and a hirer entry always carries all three keys, `address` null for remote.",
         "body": {
           "id": "<uuid>",
           "organization_id": "01920000-0000-7000-8000-00000000b001",
@@ -43,14 +51,23 @@
           "title": "Staff backend engineer",
           "description": "Go and Kubernetes, on the platform team.",
           "engagement": "full_time",
-          "location": "remote",
-          "address_id": null,
+          "locations": [
+            {
+              "mode": "remote",
+              "country": "DE",
+              "address": null
+            },
+            {
+              "mode": "remote",
+              "country": "GB",
+              "address": null
+            }
+          ],
           "currency": "GBP",
           "yearly_ctc": 12000000,
           "yearly_base": 9500000,
           "hourly_rate": null,
           "expected_hours": null,
-          "eligible_countries": ["DE", "GB"],
           "min_office_yoe": 5,
           "min_oss_yoe": null,
           "requires_online_test": false,
@@ -98,7 +115,11 @@
         "body": {
           "title": "Impossible",
           "engagement": "full_time",
-          "location": "remote",
+          "locations": [
+            {
+              "mode": "remote"
+            }
+          ],
           "currency": "GBP",
           "yearly_ctc": 5000000,
           "yearly_base": 9000000
@@ -107,7 +128,8 @@
       "expect": {
         "status": 422,
         "body": {
-          "error": "invalid_role"
+          "error": "invalid_role",
+          "field": "yearly_base"
         }
       }
     },
@@ -120,14 +142,19 @@
         "body": {
           "title": "Unpriceable",
           "engagement": "full_time",
-          "location": "remote",
+          "locations": [
+            {
+              "mode": "remote"
+            }
+          ],
           "yearly_ctc": 9000000
         }
       },
       "expect": {
         "status": 422,
         "body": {
-          "error": "invalid_role"
+          "error": "invalid_role",
+          "field": "currency"
         }
       }
     },
@@ -161,14 +188,23 @@
           "title": "Staff backend engineer",
           "description": "Go and Kubernetes, on the platform team.",
           "engagement": "full_time",
-          "location": "remote",
-          "address_id": null,
+          "locations": [
+            {
+              "mode": "remote",
+              "country": "DE",
+              "address": null
+            },
+            {
+              "mode": "remote",
+              "country": "GB",
+              "address": null
+            }
+          ],
           "currency": "GBP",
           "yearly_ctc": 12000000,
           "yearly_base": 9500000,
           "hourly_rate": null,
           "expected_hours": null,
-          "eligible_countries": ["DE", "GB"],
           "min_office_yoe": 5,
           "min_oss_yoe": null,
           "requires_online_test": false,
@@ -202,7 +238,11 @@
         "body": {
           "title": "Staff backend engineer",
           "engagement": "full_time",
-          "location": "remote",
+          "locations": [
+            {
+              "mode": "remote"
+            }
+          ],
           "currency": "GBP",
           "yearly_ctc": 7000000
         }
@@ -223,7 +263,11 @@
         "body": {
           "title": "Staff backend engineer",
           "engagement": "full_time",
-          "location": "remote",
+          "locations": [
+            {
+              "mode": "remote"
+            }
+          ],
           "currency": "GBP",
           "yearly_ctc": 13000000,
           "yearly_base": 10000000
@@ -242,14 +286,18 @@
           "title": "Staff backend engineer",
           "description": "",
           "engagement": "full_time",
-          "location": "remote",
-          "address_id": null,
+          "locations": [
+            {
+              "mode": "remote",
+              "country": null,
+              "address": null
+            }
+          ],
           "currency": "GBP",
           "yearly_ctc": 13000000,
           "yearly_base": 10000000,
           "hourly_rate": null,
           "expected_hours": null,
-          "eligible_countries": [],
           "min_office_yoe": null,
           "min_oss_yoe": null,
           "requires_online_test": null,
@@ -284,14 +332,23 @@
           "title": "Staff backend engineer",
           "description": "Go and Kubernetes, on the platform team.",
           "engagement": "full_time",
-          "location": "remote",
-          "address_id": null,
+          "locations": [
+            {
+              "mode": "remote",
+              "country": "DE",
+              "address": null
+            },
+            {
+              "mode": "remote",
+              "country": "GB",
+              "address": null
+            }
+          ],
           "currency": "GBP",
           "yearly_ctc": 12000000,
           "yearly_base": 9500000,
           "hourly_rate": null,
           "expected_hours": null,
-          "eligible_countries": ["DE", "GB"],
           "min_office_yoe": 5,
           "min_oss_yoe": null,
           "requires_online_test": false,
@@ -325,7 +382,11 @@
         "body": {
           "title": "Third go",
           "engagement": "full_time",
-          "location": "remote"
+          "locations": [
+            {
+              "mode": "remote"
+            }
+          ]
         }
       },
       "expect": {
@@ -350,14 +411,18 @@
           "title": "Staff backend engineer",
           "description": "",
           "engagement": "full_time",
-          "location": "remote",
-          "address_id": null,
+          "locations": [
+            {
+              "mode": "remote",
+              "country": null,
+              "address": null
+            }
+          ],
           "currency": "GBP",
           "yearly_ctc": 13000000,
           "yearly_base": 10000000,
           "hourly_rate": null,
           "expected_hours": null,
-          "eligible_countries": [],
           "min_office_yoe": null,
           "min_oss_yoe": null,
           "requires_online_test": null,
@@ -389,7 +454,8 @@
       "expect": {
         "status": 422,
         "body": {
-          "error": "invalid_role"
+          "error": "invalid_role",
+          "field": "note"
         }
       }
     },
@@ -406,7 +472,8 @@
       "expect": {
         "status": 422,
         "body": {
-          "error": "invalid_role"
+          "error": "invalid_role",
+          "field": "reason"
         }
       }
     },
@@ -423,7 +490,8 @@
       "expect": {
         "status": 422,
         "body": {
-          "error": "invalid_role"
+          "error": "invalid_role",
+          "field": "hired"
         }
       }
     },
@@ -484,14 +552,18 @@
           "title": "Staff backend engineer",
           "description": "",
           "engagement": "full_time",
-          "location": "remote",
-          "address_id": null,
+          "locations": [
+            {
+              "mode": "remote",
+              "country": null,
+              "address": null
+            }
+          ],
           "currency": "GBP",
           "yearly_ctc": 13000000,
           "yearly_base": 10000000,
           "hourly_rate": null,
           "expected_hours": null,
-          "eligible_countries": [],
           "min_office_yoe": null,
           "min_oss_yoe": null,
           "requires_online_test": null,

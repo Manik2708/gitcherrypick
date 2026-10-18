@@ -48,7 +48,31 @@
       "slug": "acme",
       "linkedin_url": "https://linkedin.com/company/acme",
       "verified": true,
-      "payment_verified": true
+      "payment_verified": true,
+      "_note_workplace": "ADR-0024 decisions 11-12. An office organisation with TWO live addresses, so a role can be onsite in two places and an address can be removed without touching the main office. Bound as {{acme.address.main}} and {{acme.address.austin}}.",
+      "workplace": "office",
+      "addresses": [
+        {
+          "binding": "main",
+          "id": "01920000-0000-7000-8000-0000000ad001",
+          "country": "IN",
+          "city": "Bengaluru",
+          "postal_code": "560001",
+          "street1": "1 MG Road",
+          "street2": "Floor 4",
+          "is_main_office": true
+        },
+        {
+          "binding": "austin",
+          "id": "01920000-0000-7000-8000-0000000ad002",
+          "country": "US",
+          "city": "Austin",
+          "postal_code": "78701",
+          "street1": "500 W 2nd St",
+          "street2": "Suite 300",
+          "is_main_office": false
+        }
+      ]
     },
     {
       "key": "startup",
@@ -58,7 +82,10 @@
       "linkedin_url": null,
       "verified": true,
       "_note": "Verified on identity but NOT on payment. Contact requests must carry the disclosure label — ADR-0002.",
-      "payment_verified": false
+      "payment_verified": false,
+      "_note_workplace": "ADR-0024 decision 12: FULLY REMOTE. No address, adds none, posts no onsite entry until an administrator approves an office request.",
+      "workplace": "fully_remote",
+      "addresses": []
     },
     {
       "key": "unverified_org",
@@ -66,7 +93,21 @@
       "name": "Unknown Ltd",
       "slug": "unknown-ltd",
       "verified": false,
-      "payment_verified": false
+      "payment_verified": false,
+      "_note_workplace": "An office organisation with only its main office. Its address is the 'another organisation's address' a role at Acme must not be able to point at.",
+      "workplace": "office",
+      "addresses": [
+        {
+          "binding": "main",
+          "id": "01920000-0000-7000-8000-0000000ad003",
+          "country": "GB",
+          "city": "London",
+          "postal_code": "EC1A 1BB",
+          "street1": "10 Aldersgate St",
+          "street2": "Unit 2",
+          "is_main_office": true
+        }
+      ]
     }
   ],
   "hirers": [

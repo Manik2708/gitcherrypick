@@ -81,28 +81,6 @@ func (e Engagement) Label() string {
 	return string(e)
 }
 
-// RoleLocation is whether the work happens anywhere or somewhere.
-type RoleLocation string
-
-// The two placements.
-const (
-	LocationRemote  RoleLocation = "remote"
-	LocationAddress RoleLocation = "address"
-)
-
-// Valid reports whether l is one of the two.
-func (l RoleLocation) Valid() bool {
-	return l == LocationRemote || l == LocationAddress
-}
-
-// Label is this placement as a person reads it.
-func (l RoleLocation) Label() string {
-	if l == LocationRemote {
-		return "remote"
-	}
-	return "at their office"
-}
-
 // RoleStatus is where a role is in its life.
 type RoleStatus string
 
@@ -166,10 +144,10 @@ type Role struct {
 	Engagement Engagement
 	Status     RoleStatus
 
-	Location RoleLocation
-	// AddressID is set when Location is LocationAddress and nil otherwise. A
-	// remote role must not carry a stale pointer to the office it used to be at.
-	AddressID *AddressID
+	// Locations is where the work is: at least one entry, remote from
+	// anywhere, remote within a country, or onsite at an address (ADR-0024).
+	// As immutable as the rest of the role once it opens.
+	Locations []RoleLocation
 
 	// Currency is ISO 4217 and required whenever any amount is stated.
 	Currency string
@@ -183,11 +161,6 @@ type Role struct {
 	// Freelance.
 	HourlyRate    *int64
 	ExpectedHours *int
-
-	// EligibleCountries is ISO 3166-1 alpha-2. EMPTY MEANS ANYWHERE: an
-	// organisation that never considered work authorisation must not exclude
-	// the world by leaving a field blank (ADR-0019 §6).
-	EligibleCountries []string
 
 	// Minimums. Nil means no minimum, which is not the same as zero — a role
 	// open to anybody and a role explicitly open to people with no commercial
@@ -225,6 +198,12 @@ type Role struct {
 	CloseReason *CloseReason
 	CloseNote   string
 
+	// FirstContactedAt is when this job first told anybody (ADR-0023). Nil
+	// means nothing has ever been sent, so every candidate on it is still
+	// removable — and the overdue sweep skips it, because a job nobody was
+	// told about promised nothing.
+	FirstContactedAt *time.Time
+
 	// Hires is one entry per person, because a role can fill several seats.
 	Hires []RoleHire
 
@@ -242,26 +221,6 @@ type Role struct {
 
 // IsOpen reports whether this role can currently match anybody.
 func (r *Role) IsOpen() bool { return r != nil && r.Status == RoleOpen }
-
-// HiresAnywhere reports whether the role places no country restriction.
-func (r *Role) HiresAnywhere() bool { return r != nil && len(r.EligibleCountries) == 0 }
-
-// EligibleIn reports whether the role can hire somebody in this country.
-//
-// FAILS OPEN in both directions that matter: a role with no stated countries
-// admits everybody, and a contributor who has not said where they are is not
-// excluded from a role that hires anywhere.
-func (r *Role) EligibleIn(country string) bool {
-	if r.HiresAnywhere() {
-		return true
-	}
-	for _, c := range r.EligibleCountries {
-		if c == country {
-			return true
-		}
-	}
-	return false
-}
 
 // RoleQuestion is one yes/no question a role asks (ADR-0019 §9).
 //
@@ -493,15 +452,25 @@ type RoleCandidate struct {
 	DisplayName string
 	GitHubLogin string
 
-	// The round they are on. The first one, where somebody appears on
-	// several — which is the one that reached them.
-	ShortlistID   ShortlistID
-	ShortlistName string
+	// Why this person was put on the job, in the words of whoever put them
+	// there. Private to the organisation; the contributor never sees it.
+	Note string
 
-	// ContactStatus is empty while an entry is still STAGED. A staged entry
-	// has told nobody anything and is removable; everything else has.
+	// Who staged them, and when. Carried on the row rather than fetched:
+	// a hirer reading a list of people should not have to resolve a uuid per
+	// line to learn which colleague added them (ADR-0016 §9).
+	AddedBy HirerRef
+	AddedAt time.Time
+
+	// ContactStatus is empty while somebody is still STAGED. A staged
+	// candidate has been told nothing and is removable; everything else has.
 	ContactStatus ContactRequestStatus
 	NotifiedAt    *time.Time
+
+	// Email is set ONLY where the contributor released it by accepting
+	// (ADR-0019 amendment 4). Empty everywhere else, including for somebody
+	// who was asked and declined — a decline releases nothing.
+	Email string
 
 	// Accepted is the only state from which somebody may be recorded as a
 	// hire (ADR-0019 §15): they agreed to talk, and their address was

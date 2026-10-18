@@ -45,7 +45,7 @@ func TestEachKindGetsItsOwnRefusalCode(t *testing.T) {
 			hirerPrincipal(true), "/admin/verifications", service.CodeAdminRequired,
 		},
 		"hirer route, contributor caller": {
-			contributorPrincipal(), "/shortlists", service.CodeHirerRequired,
+			contributorPrincipal(), "/saved-searches", service.CodeHirerRequired,
 		},
 		"contributor route, hirer caller": {
 			hirerPrincipal(true), "/claims", service.CodeContributorRequired,

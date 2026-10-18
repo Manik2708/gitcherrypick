@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Manik2708/gitcherrypick/backend/internal/domain"
@@ -60,7 +61,7 @@ var _ port.OnboardingService = (*OnboardingService)(nil)
 // name is already submitted" could enumerate the companies mid-onboarding, one
 // guess at a time, before the public picker would ever list them.
 func (s *OnboardingService) Submit(ctx context.Context, in port.OnboardingForm) error {
-	if err := validateOnboarding(in); err != nil {
+	if err := validateOnboarding(&in); err != nil {
 		return err
 	}
 	return s.submit(ctx, in, nil)
@@ -73,7 +74,7 @@ func (s *OnboardingService) Submit(ctx context.Context, in port.OnboardingForm) 
 // revision keyed on the submission id alone would let anyone rewrite any
 // refused company's answers.
 func (s *OnboardingService) Revise(ctx context.Context, token string, in port.OnboardingForm) error {
-	if err := validateOnboarding(in); err != nil {
+	if err := validateOnboarding(&in); err != nil {
 		return err
 	}
 
@@ -116,7 +117,7 @@ func (s *OnboardingService) submit(ctx context.Context, in port.OnboardingForm, 
 		var err error
 		submission, err = s.onboarding.Submit(ctx, tx, &port.OnboardingSubmission{
 			Name: in.Name, Description: in.Description, Email: in.Email,
-			Phone: in.Phone, Headcount: in.Headcount,
+			Phone: in.Phone, Headcount: in.Headcount, Workplace: in.Workplace,
 			Country: in.Country, City: in.City, PostalCode: in.PostalCode,
 			Street1: in.Street1, Street2: in.Street2,
 			SupersedesID: supersedes,
@@ -351,32 +352,47 @@ func (s *OnboardingService) ExpireUnproven(ctx context.Context) (int, error) {
 	return n, nil
 }
 
-// validateOnboarding checks the two fields that are not optional.
+// validateOnboarding checks the form, naming the field it refuses
+// (ADR-0024 decision 17, ADR-0017 amendment 4).
 //
-// Name and email only. Everything else is genuinely optional: a fully remote
-// company has no office to name, a registered address is often an accountant's
-// rather than the company's, and several countries have no postcode.
+// The address follows the stated workplace, in both directions: an office
+// company gives a country, a city and a street, and the first missing part is
+// the one named; a fully remote company gives no part of one. An address
+// whose every part is empty counts as not sent, because that is what a form
+// with disabled fields submits (amendment 1 §1.9).
 //
-// NOT because "a freelancer has none" — an earlier comment said that, and it
-// was wrong. A freelancer never reaches this form: they are an independent
-// hirer and register through /auth/hirer/register (ADR-0017 §1). Everyone here
-// is a company.
-func validateOnboarding(in port.OnboardingForm) error {
+// Shared by Submit and Revise, and run BEFORE the code is spent on revise: a
+// company that mistypes its city should not need a new code to correct it.
+func validateOnboarding(in *port.OnboardingForm) error {
+	in.Name = strings.TrimSpace(in.Name)
+	in.Email = strings.TrimSpace(in.Email)
 	if in.Name == "" {
-		return fmt.Errorf("an organisation needs a name: %w", ErrInvalid)
+		return invalidOnboarding("name", "an organisation needs a name")
 	}
 	if in.Email == "" {
-		return fmt.Errorf("an organisation needs a contact email: %w", ErrInvalid)
+		return invalidOnboarding("email", "an organisation needs a contact email")
 	}
 	if in.Headcount != "" && !domain.ValidHeadcountBand(in.Headcount) {
-		return fmt.Errorf("%q is not a headcount band: %w", in.Headcount, ErrInvalid)
+		return invalidOnboarding("headcount", "%q is not a headcount band", in.Headcount)
 	}
-	// An address is all of it or none of it, matching ck_onboarding_address. A
-	// city with no country is not a place anybody can post to.
-	partial := in.Country != "" || in.City != "" || in.Street1 != ""
-	complete := in.Country != "" && in.City != "" && in.Street1 != ""
-	if partial && !complete {
-		return fmt.Errorf("an address needs a country, a city and a street: %w", ErrInvalid)
+	if !in.Workplace.Valid() {
+		return invalidOnboarding("workplace", "say whether the organisation has an office or is fully remote")
+	}
+
+	if in.Workplace == domain.WorkplaceFullyRemote {
+		for _, part := range []string{in.Country, in.City, in.PostalCode, in.Street1, in.Street2} {
+			if strings.TrimSpace(part) != "" {
+				return invalidOnboarding("address",
+					"a fully remote organisation gives no address")
+			}
+		}
+		in.Country, in.City, in.PostalCode, in.Street1, in.Street2 = "", "", "", "", ""
+		return nil
+	}
+
+	if field := addressProblem(&in.Country, in.City, in.Street1); field != "" {
+		return invalidOnboarding("address."+field,
+			"an office needs a country, a city and a street")
 	}
 	return nil
 }

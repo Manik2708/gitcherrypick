@@ -14,16 +14,20 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import type {
+  AddressesResponse,
   CloseReason,
   Engagement,
+  LocationRequest,
+  OrgAddress,
   Role,
   RoleCandidate,
   RoleDraft,
   RoleStatus,
 } from "../contract";
-import type { PillTone } from "../ui/primitives";
 import {
+  useAddresses,
   useCloseRole,
+  useContactCandidates,
   useCreateRole,
   useOpenRole,
   useOrgID,
@@ -31,11 +35,25 @@ import {
   useReviseRole,
   useRoleCandidates,
   useRoles,
+  useSeatRole,
+  useUnstageCandidate,
 } from "../hooks/hirer";
 import * as format from "../logic/format";
-import { CountryList } from "../ui/countries";
+import type { RoleProblem } from "../logic/roleDraft";
+import { draftProblem, mayOpen, messageFor, problemFrom } from "../logic/roleDraft";
+import type { LocationChoice } from "../logic/roleLocations";
+import {
+  DEFAULT_CHOICE,
+  addressLine,
+  choiceOf,
+  describeForHirer,
+  locationsOf,
+} from "../logic/roleLocations";
+import { CountryList, useCountryNames } from "../ui/countries";
 import { CurrencyPicker } from "../ui/currencies";
 import { OpeningForm } from "../ui/OpeningForm";
+import type { Stage } from "../ui/stages";
+import { StageToggles, inStages, stageLook, stageOf } from "../ui/stages";
 import {
   Banner,
   Button,
@@ -44,6 +62,7 @@ import {
   Empty,
   Failure,
   Field,
+  FieldError,
   Icon,
   Loading,
   PageHead,
@@ -66,7 +85,7 @@ const TABS: Array<[RoleStatus, string]> = [
 ];
 
 /**
- * Candidates whose name, GitHub login or round contains every word typed.
+ * Candidates whose name, GitHub login or note contains every word typed.
  *
  * The same every-word rule as the role search above, and for the same reason:
  * somebody types what they remember, not a field verbatim.
@@ -75,7 +94,7 @@ function matchingCandidates(people: RoleCandidate[], query: string): RoleCandida
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
   if (words.length === 0) return people;
   return people.filter((c) => {
-    const haystack = `${c.display_name} ${c.github_login ?? ""} ${c.shortlist_name}`.toLowerCase();
+    const haystack = `${c.display_name} ${c.github_login ?? ""} ${c.note ?? ""}`.toLowerCase();
     return words.every((word) => haystack.includes(word));
   });
 }
@@ -100,13 +119,12 @@ const BLANK: RoleDraft = {
   title: "",
   description: "",
   engagement: "full_time",
-  location: "remote",
+  locations: [],
   currency: "",
   yearly_ctc: null,
   yearly_base: null,
   hourly_rate: null,
   expected_hours: null,
-  eligible_countries: [],
   min_office_yoe: null,
   min_oss_yoe: null,
   requires_online_test: null,
@@ -135,13 +153,12 @@ function draftOf(role: Role): RoleDraft {
     title: role.title,
     description: role.description,
     engagement: role.engagement,
-    location: role.location,
+    locations: locationsOf(choiceOf(role.locations)),
     currency: role.currency,
     yearly_ctc: role.yearly_ctc,
     yearly_base: role.yearly_base,
     hourly_rate: role.hourly_rate,
     expected_hours: role.expected_hours,
-    eligible_countries: role.eligible_countries,
     min_office_yoe: role.min_office_yoe,
     min_oss_yoe: role.min_oss_yoe,
     requires_online_test: role.requires_online_test,
@@ -154,7 +171,8 @@ function draftOf(role: Role): RoleDraft {
 export function RolesPage() {
   const org = useOrgID();
   const roles = useRoles(org.id);
-  const settings = useOrgSettings(org.id);
+  // Once for the page, not once per card: each lookup is a request.
+  const nameOf = useCountryNames();
 
   const [composing, setComposing] = useState(false);
 
@@ -199,32 +217,11 @@ export function RolesPage() {
   const inScope = statuses.size === 0 ? all : all.filter((r) => statuses.has(r.status));
   const shown = matching(inScope, query);
 
-  // Stated as the RULE rather than guessed at the reader: the sign-in response
-  // carries no org role — that shape is pinned by the approved fixtures — so a
-  // screen that tried to say "you personally cannot do this" would be inferring
-  // it. The policy is true for everybody, and an owner reading it learns what
-  // their own setting does.
-  const approvalRule = settings.data?.role_create_authority ?? "draft_and_approve";
-
   return (
     <div className="page">
-      <PageHead
-        eyebrow="Hiring"
-        title="Roles"
-        lede="A role is what a round is for. Everybody you contact sees its salary, where it is, and what your process looks like — so it is written once and never quietly edited afterwards."
-      />
+      <PageHead eyebrow="Hiring" title="Roles" />
 
       {roles.error ? <Failure message={roles.error.message} onRetry={roles.reload} /> : null}
-
-      {approvalRule !== "any_hirer" ? (
-        <Banner icon="warn">
-          {approvalRule === "owners_only"
-            ? "Only an owner can write or open a role here."
-            : "Anybody with a seat can write a role, and an owner opens it."}{" "}
-          A role states a salary and a process on the organisation's behalf, in writing, to
-          everybody contacted — so somebody accountable signs it.
-        </Banner>
-      ) : null}
 
       {/* Only WRITING a role takes the page. Revising one is a panel on the
           role it revises, like advertising and closing it — the form is about
@@ -244,8 +241,7 @@ export function RolesPage() {
 
       {all.length === 0 ? (
         <Empty title="No roles yet" icon="bookmark">
-          A round can only approach people for a job you have committed to. Write one, and rounds
-          will have something to be for.
+          A round can only approach people for a job you have committed to.
         </Empty>
       ) : null}
 
@@ -331,8 +327,8 @@ export function RolesPage() {
           icon="bookmark"
         >
           {query.trim()
-            ? "Titles and descriptions are searched. Check the statuses you have ticked — a match in a closed role will not show while only Open is on."
-            : "Tick another status above to widen what you are looking at."}
+            ? "Titles and descriptions are searched. Check the statuses you have ticked."
+            : "Tick another status above."}
         </Empty>
       ) : null}
 
@@ -341,6 +337,7 @@ export function RolesPage() {
           key={role.id}
           orgId={org.id as string}
           role={role}
+          nameOf={nameOf}
           onChanged={() => roles.reload()}
         />
       ))}
@@ -351,10 +348,12 @@ export function RolesPage() {
 function RoleCard({
   orgId,
   role,
+  nameOf,
   onChanged,
 }: {
   orgId: string;
   role: Role;
+  nameOf: (code: string) => string;
   onChanged: () => void;
 }) {
   const openRole = useOpenRole(orgId);
@@ -394,17 +393,14 @@ function RoleCard({
       </div>
 
       <p className="small muted">
-        {ENGAGEMENTS.find((e) => e.value === role.engagement)?.label} ·{" "}
-        {role.location === "remote" ? "Remote" : "At an office"}
+        {ENGAGEMENTS.find((e) => e.value === role.engagement)?.label}
         {pay ? ` · ${pay}${role.engagement === "freelance" ? " / hour" : " a year"}` : ""}
       </p>
 
       {role.description ? <p className="small">{role.description}</p> : null}
 
       <p className="field__help">
-        {role.eligible_countries.length === 0
-          ? "Open to anybody, anywhere."
-          : `Can hire in ${role.eligible_countries.join(", ")}.`}
+        {describeForHirer(role.locations, nameOf)}.
         {role.min_oss_yoe != null
           ? ` At least ${role.min_oss_yoe} years contributing to open source.`
           : ""}
@@ -412,8 +408,8 @@ function RoleCard({
 
       {role.close_requested_at && role.status === "open" ? (
         <Banner icon="warn">
-          Somebody asked to close this on {format.date(role.close_requested_at)}. It is still open,
-          still matching, and still a commitment until an owner withdraws it.
+          Somebody asked to close this on {format.date(role.close_requested_at)}. It is still open
+          until an owner withdraws it.
         </Banner>
       ) : null}
 
@@ -520,23 +516,6 @@ function RoleCard({
 }
 
 /**
- * What each state means, said as a sentence rather than as a database value.
- *
- * The empty one is the case worth spelling out: a candidate with no contact
- * status has been STAGED — put on a round that has not been confirmed — so
- * nothing has been sent and they do not know they were considered. "staged"
- * on its own reads as jargon, and worse, it reads as though something already
- * happened to them.
- */
-const CANDIDATE_STATE: Record<string, { label: string; tone: PillTone }> = {
-  "": { label: "not contacted yet", tone: "secondary" },
-  pending: { label: "waiting for their answer", tone: "secondary" },
-  accepted: { label: "accepted", tone: "primary" },
-  declined: { label: "declined", tone: "stale" },
-  expired: { label: "never answered", tone: "stale" },
-};
-
-/**
  * Everybody already on a round for this role.
  *
  * One row per PERSON: the same contributor staged on two rounds for one job
@@ -549,20 +528,33 @@ const CANDIDATE_STATE: Record<string, { label: string; tone: PillTone }> = {
 function Candidates({ orgId, role }: { orgId: string; role: Role }) {
   const candidates = useRoleCandidates(orgId, role.id);
   const [query, setQuery] = useState("");
+  const [stages, setStages] = useState<Set<Stage>>(new Set());
+
+  const unstage = useUnstageCandidate(orgId, role.id);
+  const contact = useContactCandidates(orgId, role.id);
+
+  // The date everybody contacted is promised, asked HERE rather than when the
+  // job was written: a role is immutable once open (ADR-0019 §13), and this is
+  // a promise about now, not a property of the opening.
+  const [resultBy, setResultBy] = useState("");
+  const [acknowledged, setAcknowledged] = useState(false);
 
   const all = candidates.data?.candidates ?? [];
+  const stageFor = (c: RoleCandidate) => stageOf(c.contact_status, c.notified_at);
+  const present = new Set(all.map(stageFor));
 
   // Scoped to THIS ROLE, which is the whole point: a hirer asking "did I
   // already approach her for this job" is asking about one job. It searches
   // names and the round somebody is on, because those are the two things a
   // person remembers about a candidate they staged last week.
-  const list = matchingCandidates(all, query);
+  const list = inStages(matchingCandidates(all, query), stages, stageFor);
+
+  // Who has been told nothing yet. The only people a contact step reaches.
+  const untold = all.filter((c) => !c.notified_at);
 
   return (
     <Card>
-      <SectionTitle note="Searching again for this role will not offer these people back. Anyone not contacted yet can still be removed from their round — nothing has been sent.">
-        Already on this role
-      </SectionTitle>
+      <SectionTitle>Already on this role</SectionTitle>
 
       {candidates.loading ? <Loading what="candidates" /> : null}
       {candidates.error ? (
@@ -570,46 +562,130 @@ function Candidates({ orgId, role }: { orgId: string; role: Role }) {
       ) : null}
 
       {all.length > 0 ? (
-        <div className="search-input">
-          <Icon name="search" size="sm" />
-          <input
-            className="input"
-            type="search"
-            autoComplete="off"
-            aria-label={`Search candidates on ${role.title}`}
-            placeholder="Search these candidates"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
+        <div className="od-row">
+          <StageToggles
+            present={present}
+            selected={stages}
+            onChange={setStages}
+            label={`Filter candidates on ${role.title} by stage`}
           />
+
+          <div className="search-input od-fill">
+            <Icon name="search" size="sm" />
+            <input
+              className="input"
+              type="search"
+              autoComplete="off"
+              aria-label={`Search candidates on ${role.title}`}
+              placeholder="Search these candidates"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+            />
+          </div>
         </div>
       ) : null}
 
       {!candidates.loading && all.length === 0 ? (
         <Empty title="Nobody yet" icon="people">
-          Stage someone from search onto a round for this role and they will appear here.
+          Shortlist somebody from search into this role and they will appear here.
         </Empty>
+      ) : null}
+
+      {untold.length > 0 ? (
+        <Card>
+          {/* THE IRREVERSIBLE STEP, on the job the people were staged onto.
+              Staging told them nothing; this is the act that does, and it
+              cannot be taken back — so it asks for a date and an
+              acknowledgement rather than being a single click. */}
+          <SectionTitle>
+            Tell {untold.length} {untold.length === 1 ? "person" : "people"}
+          </SectionTitle>
+
+          {contact.error ? <Failure message={contact.error.message} /> : null}
+
+          <Field
+            label="You expect to have an answer by"
+            htmlFor={`result-by-${role.id}`}
+            help="Everybody you contact is told this date."
+            error={contact.error?.field === "tentative_result_date" ? contact.error.message : null}
+          >
+            <input
+              className="input"
+              id={`result-by-${role.id}`}
+              type="date"
+              value={resultBy}
+              onChange={(event) => setResultBy(event.target.value)}
+            />
+          </Field>
+
+          <Checkbox
+            label="I understand this cannot be undone"
+            checked={acknowledged}
+            onChange={setAcknowledged}
+          />
+
+          <Button
+            variant="danger"
+            disabled={!acknowledged || !resultBy || contact.pending}
+            onClick={() =>
+              void contact.run(resultBy).then((ok) => {
+                if (ok === null) return;
+                setAcknowledged(false);
+                candidates.reload();
+              })
+            }
+          >
+            <Icon name="mail" size="sm" />
+            {contact.pending ? "Sending…" : `Tell ${untold.length}`}
+          </Button>
+        </Card>
       ) : null}
 
       {all.length > 0 && list.length === 0 ? (
-        <Empty title={`Nobody here matches “${query.trim()}”`} icon="people">
-          This searches only the people already on this role — {all.length}{" "}
-          {all.length === 1 ? "person" : "people"}. Somebody you have not staged yet will not be
-          here.
+        <Empty
+          title={query.trim() ? `Nobody here matches “${query.trim()}”` : "Nobody at that stage"}
+          icon="people"
+        >
+          This searches only the {all.length} {all.length === 1 ? "person" : "people"} already on
+          this role.
         </Empty>
       ) : null}
 
-      {list.map((c) => (
-        <div className="od-row" key={c.user_id} style={{ ["--od-gap" as string]: "10px" }}>
-          <span className="od-field od-fill">
-            {/* Through to the scorecard, as in search. */}
-            <Link to={`/contributors/${c.user_id}`}>{c.display_name}</Link>
-            <span className="field__help">on {c.shortlist_name}</span>
-          </span>
-          <Pill tone={CANDIDATE_STATE[c.contact_status]?.tone ?? "secondary"}>
-            {CANDIDATE_STATE[c.contact_status]?.label ?? c.contact_status}
-          </Pill>
-        </div>
-      ))}
+      {list.map((c) => {
+        const look = stageLook(stageFor(c));
+        return (
+          <div className="od-row" key={c.user_id} style={{ ["--od-gap" as string]: "10px" }}>
+            <span className="od-field od-fill">
+              {/* Through to the scorecard, as in search. */}
+              <Link to={`/contributors/${c.user_id}`}>{c.display_name}</Link>
+              {c.note ? <span className="field__help">{c.note}</span> : null}
+            </span>
+            {/* The address, where it exists at all — it is carried only for
+                somebody who accepted (ADR-0019 amendment 4). Beside the pill
+                that says they accepted, because reading "accepted" and then
+                having to go somewhere else for the address is the gap this
+                closes. */}
+            {c.email ? <span className="row__meta mono">{c.email}</span> : null}
+            <Pill tone={look.tone}>{look.label}</Pill>
+
+            {/* Removable only while they have been told nothing. Afterwards
+                there is no button and nothing in its place — the pill beside
+                it already says they were told. */}
+            {c.notified_at ? null : (
+              <Button
+                variant="quiet"
+                size="sm"
+                disabled={unstage.pending}
+                onClick={() =>
+                  void unstage.run(c.user_id).then((ok) => ok !== null && candidates.reload())
+                }
+              >
+                Remove
+              </Button>
+            )}
+          </div>
+        );
+      })}
     </Card>
   );
 }
@@ -620,12 +696,12 @@ const REASONS: Array<{ value: CloseReason; label: string; help: string }> = [
   {
     value: "hired_via_platform",
     label: "We hired somebody from here",
-    help: "The one answer that tells us whether any of this works.",
+    help: "",
   },
   {
     value: "hired_elsewhere",
     label: "We filled it another way",
-    help: "Worth knowing, and not a consolation answer.",
+    help: "",
   },
   { value: "not_needed", label: "We do not need the headcount", help: "" },
   { value: "other", label: "Something else", help: "Tell us what, below." },
@@ -653,21 +729,19 @@ function CloseForm({
   // said no — recording any of them would be the company asserting something
   // about a person who never agreed to talk to it.
   const acceptable = (candidates.data?.candidates ?? []).filter((c) => c.accepted);
+  const refused = (field: string) => (close.error?.field === field ? close.error.message : null);
 
   return (
     <Card>
-      <SectionTitle note="A role that just stops teaches nobody anything.">
-        Why are you closing this?
-      </SectionTitle>
+      <SectionTitle>Why are you closing this?</SectionTitle>
 
       {/* Said BEFORE the decision, not discovered afterwards. Closing is the
           one action on this screen with no way back, and a hirer who thought
           it was reversible would close a role to tidy up and then find they
           have to write it again. */}
       <Banner icon="warn">
-        <b>Closing is permanent.</b> A closed role cannot be reopened — everybody you contacted
-        about it was told it closed, and a job that un-closes makes that a lie. If you want to
-        change what it says instead, publish a new version.
+        <b>Closing is permanent.</b> A closed role cannot be reopened. To change what it says,
+        publish a new version instead.
       </Banner>
 
       {REASONS.map((r) => (
@@ -680,21 +754,19 @@ function CloseForm({
           onChange={() => setReason(r.value)}
         />
       ))}
+      <FieldError message={refused("reason")} />
 
       {reason === "hired_via_platform" ? (
         <>
-          <SectionTitle note="Only people who accepted a contact request for this role. A role can fill several seats, so tick everybody.">
-            Who did you hire?
-          </SectionTitle>
+          <SectionTitle>Who did you hire?</SectionTitle>
 
           {candidates.loading ? <Loading what="candidates" /> : null}
           {candidates.error ? <Failure message={candidates.error.message} /> : null}
 
           {!candidates.loading && acceptable.length === 0 ? (
             <Banner icon="warn">
-              Nobody has accepted a contact request for this role yet, so there is no one we can
-              record as hired through the platform. If you found someone another way, close it as
-              hired elsewhere.
+              Nobody has accepted a contact request for this role yet. If you found someone another
+              way, close it as hired elsewhere.
             </Banner>
           ) : null}
 
@@ -702,18 +774,19 @@ function CloseForm({
             <Checkbox
               key={c.user_id}
               label={c.display_name}
-              help={`accepted · ${c.shortlist_name}`}
+              help={c.github_login ? `@${c.github_login}` : undefined}
               checked={hired.includes(c.user_id)}
               onChange={(on) =>
                 setHired(on ? [...hired, c.user_id] : hired.filter((id) => id !== c.user_id))
               }
             />
           ))}
+          <FieldError message={refused("hired")} />
         </>
       ) : null}
 
       {reason === "other" ? (
-        <Field label="What happened?" htmlFor={`note-${role.id}`}>
+        <Field label="What happened?" htmlFor={`note-${role.id}`} error={refused("note")}>
           <input
             className="input"
             id={`note-${role.id}`}
@@ -760,37 +833,79 @@ function RoleForm({
   const revise = useReviseRole(orgId, revising?.id ?? "");
   const action = revising ? revise : create;
 
+  // Creating and opening in one go is offered only to a seat the organisation
+  // lets open roles; the server still decides.
+  const openRole = useOpenRole(orgId);
+  const settings = useOrgSettings(orgId);
+  const seat = useSeatRole(orgId);
+  const canOpen = !revising && mayOpen(settings.data?.role_create_authority, seat);
+  // The draft a "Create and open" made before opening it was refused, so a
+  // retry opens that one rather than writing a second.
+  const [created, setCreated] = useState<string | null>(null);
+
+  // The onsite picker, the organisation's kind and any office request, from
+  // one read (ADR-0024 Implementation).
+  const addresses = useAddresses(orgId);
+  const nameOf = useCountryNames();
+
   const [form, setForm] = useState<RoleDraft>(revising ? draftOf(revising) : BLANK);
-  // The same picker the search filters use. Codes were typed here as a comma
-  // list while every other country field on the platform picked them from
-  // port.PlaceService — and a role's eligible countries are matched against a
-  // contributor's stated country exactly, so a typo excluded a country
-  // silently rather than visibly.
-  const [countries, setCountries] = useState<string[]>(revising ? revising.eligible_countries : []);
+  const [choice, setChoice] = useState<LocationChoice>(
+    revising ? choiceOf(revising.locations) : DEFAULT_CHOICE,
+  );
+
+  // The locations of the request last sent. A refusal's position is read
+  // against these, never against whatever the form holds now.
+  const [sent, setSent] = useState<LocationRequest[]>([]);
 
   const set = <K extends keyof RoleDraft>(key: K, value: RoleDraft[K]) =>
     setForm({ ...form, [key]: value });
 
   const freelance = form.engagement === "freelance";
 
+  // Shown once they have tried to save, and cleared by the next edit that
+  // fixes it — not while they are still filling the form in.
+  const [tried, setTried] = useState(false);
+  const draft: RoleDraft = { ...form, locations: locationsOf(choice) };
+  const problem =
+    (tried ? draftProblem(form.title, choice) : null) ?? problemFrom(action.error, sent);
+  const refused = (field: string) => messageFor(problem, field);
+
   const submit = () => {
-    const draft: RoleDraft = { ...form, eligible_countries: countries };
+    if (created) return onDone();
+    setTried(true);
+    if (draftProblem(form.title, choice)) return;
+    setSent(draft.locations);
     void action.run(draft).then((ok) => ok && onDone());
   };
 
+  const open = (id: string) => void openRole.run(id).then((ok) => ok && onDone());
+
+  const submitAndOpen = () => {
+    if (created) return open(created);
+    setTried(true);
+    if (draftProblem(form.title, choice)) return;
+    setSent(draft.locations);
+    void create.run(draft).then((role) => {
+      if (!role) return;
+      setCreated(role.id);
+      open(role.id);
+    });
+  };
+
+  // The live offices, and any this role already names that have since been
+  // removed — shown so they can be unticked rather than sent unseen.
+  const live = addresses.data?.addresses ?? [];
+  const carried = (revising?.locations ?? [])
+    .map((entry) => entry.address)
+    .filter((a): a is OrgAddress => a != null && !live.some((l) => l.id === a.id));
+
   return (
     <Card>
-      <SectionTitle
-        note={
-          revising
-            ? "This publishes a NEW role and closes the current one. Everybody you have already contacted keeps reading the version they were shown — the salary somebody agreed to talk about cannot change under them."
-            : "Saved as a draft. Nobody sees it until it is opened."
-        }
-      >
+      <SectionTitle note={revising ? "Publishes a new role and closes this one." : undefined}>
         {revising ? "Publish a new version" : "Write a role"}
       </SectionTitle>
 
-      <Field label="Title" htmlFor="title">
+      <Field label="Title" htmlFor="title" error={refused("title")}>
         <input
           className="input"
           id="title"
@@ -799,7 +914,7 @@ function RoleForm({
         />
       </Field>
 
-      <Field label="Description" htmlFor="description">
+      <Field label="Description" htmlFor="description" error={refused("description")}>
         <textarea
           className="input"
           id="description"
@@ -809,7 +924,7 @@ function RoleForm({
         />
       </Field>
 
-      <Field label="Kind of work" htmlFor="engagement">
+      <Field label="Kind of work" htmlFor="engagement" error={refused("engagement")}>
         <select
           className="input"
           id="engagement"
@@ -827,14 +942,14 @@ function RoleForm({
       <CurrencyPicker
         id="currency"
         label="Currency"
-        help="Any amount needs one — a number without a currency is not compared against what anybody expects, it is skipped."
         value={form.currency}
         onChange={(code) => set("currency", code)}
+        error={refused("currency")}
       />
 
       {freelance ? (
         <>
-          <Field label="Hourly rate" htmlFor="hourly">
+          <Field label="Hourly rate" htmlFor="hourly" error={refused("hourly_rate")}>
             <input
               className="input"
               id="hourly"
@@ -845,7 +960,7 @@ function RoleForm({
               onChange={(event) => set("hourly_rate", toMinor(event.target.value))}
             />
           </Field>
-          <Field label="Expected hours a week" htmlFor="hours">
+          <Field label="Expected hours a week" htmlFor="hours" error={refused("expected_hours")}>
             <input
               className="input"
               id="hours"
@@ -861,7 +976,12 @@ function RoleForm({
         </>
       ) : (
         <>
-          <Field label="Total package a year" htmlFor="ctc" help="Everything included.">
+          <Field
+            label="Total package a year"
+            htmlFor="ctc"
+            help="Everything included."
+            error={refused("yearly_ctc")}
+          >
             <input
               className="input"
               id="ctc"
@@ -875,7 +995,8 @@ function RoleForm({
           <Field
             label="Base a year"
             htmlFor="base"
-            help="What arrives monthly. Stated separately because it is the distinction candidates most need and most often are not given."
+            help="What arrives monthly."
+            error={refused("yearly_base")}
           >
             <input
               className="input"
@@ -890,27 +1011,25 @@ function RoleForm({
         </>
       )}
 
-      <Field label="Where the work happens" htmlFor="location">
-        <select
-          className="input"
-          id="location"
-          value={form.location}
-          onChange={(event) => set("location", event.target.value as RoleDraft["location"])}
-        >
-          <option value="remote">Remote</option>
-          <option value="address">At one of our offices</option>
-        </select>
-      </Field>
-
-      <CountryList
-        id="countries"
-        label="Countries you can hire in"
-        help="LEAVE BLANK FOR ANYWHERE — a list you have not thought about would quietly exclude the world."
-        values={countries}
-        onChange={setCountries}
+      <LocationFields
+        formId={revising?.id ?? "new"}
+        choice={choice}
+        onChange={setChoice}
+        offices={[...live, ...carried]}
+        loading={addresses.loading}
+        loadError={addresses.error?.message}
+        fullyRemote={addresses.data?.workplace === "fully_remote"}
+        officeRequest={addresses.data?.office_request ?? null}
+        problem={problem}
+        nameOf={nameOf}
       />
 
-      <Field label="Least years in a job" htmlFor="office_yoe" help="Blank for no minimum.">
+      <Field
+        label="Least years in a job"
+        htmlFor="office_yoe"
+        help="Blank for no minimum."
+        error={refused("min_office_yoe")}
+      >
         <input
           className="input"
           id="office_yoe"
@@ -927,7 +1046,8 @@ function RoleForm({
       <Field
         label="Least years contributing to open source"
         htmlFor="oss_yoe"
-        help="We check this one. It is dated from when somebody's first pull request was written, not from when it was merged — so it says when they started, not how fast a maintainer replied."
+        help="Dated from their first pull request."
+        error={refused("min_oss_yoe")}
       >
         <input
           className="input"
@@ -942,9 +1062,7 @@ function RoleForm({
         />
       </Field>
 
-      <SectionTitle note="Shown to the people you contact, and to nobody else. Not on a scorecard, not in search, not on the public picker.">
-        Your process
-      </SectionTitle>
+      <SectionTitle>Your process</SectionTitle>
 
       <Checkbox
         label="There is an online test"
@@ -952,7 +1070,7 @@ function RoleForm({
         onChange={(on) => set("requires_online_test", on)}
       />
 
-      <Field label="Most interview rounds" htmlFor="rounds">
+      <Field label="Most interview rounds" htmlFor="rounds" error={refused("max_interview_rounds")}>
         <input
           className="input"
           id="rounds"
@@ -971,7 +1089,8 @@ function RoleForm({
       <Field
         label="Usual days from first round to an offer"
         htmlFor="days"
-        help="Leave blank rather than inventing one. Somebody will hold you to it."
+        help="Blank rather than invented — you will be held to it."
+        error={refused("avg_days_to_offer")}
       >
         <input
           className="input"
@@ -985,14 +1104,166 @@ function RoleForm({
         />
       </Field>
 
-      {action.error ? <Failure message={action.error.message} /> : null}
+      {created && openRole.error ? (
+        <Failure message={`Saved as a draft, not opened. ${openRole.error.message}`} />
+      ) : problem ? (
+        <Failure message={problem.message} />
+      ) : action.error ? (
+        <Failure message={action.error.message} />
+      ) : null}
 
       <div className="od-row">
-        <Button variant="primary" disabled={action.pending || !form.title.trim()} onClick={submit}>
-          {action.pending ? "Saving…" : revising ? "Publish it" : "Save as a draft"}
+        {canOpen ? (
+          <Button
+            variant="primary"
+            disabled={create.pending || openRole.pending || !form.title.trim()}
+            onClick={submitAndOpen}
+          >
+            {create.pending || openRole.pending ? "Opening…" : "Create and open"}
+          </Button>
+        ) : null}
+        <Button
+          variant={canOpen ? undefined : "primary"}
+          disabled={action.pending || openRole.pending || !form.title.trim()}
+          onClick={submit}
+        >
+          {action.pending
+            ? "Saving…"
+            : revising
+              ? "Publish it"
+              : created
+                ? "Done"
+                : "Save as a draft"}
         </Button>
         <Button onClick={onCancel}>Cancel</Button>
       </div>
     </Card>
+  );
+}
+
+/**
+ * Where the work happens: Remote and Onsite, each a switch with its own list.
+ *
+ * Presentational — the offices and the organisation's kind arrive as props.
+ * Remote is anywhere OR a set of countries, never both (ADR-0024 decision 3).
+ * Onsite is off for a fully remote organisation, except to untick it on a role
+ * written before the organisation went fully remote.
+ */
+function LocationFields({
+  formId,
+  choice,
+  onChange,
+  offices,
+  loading,
+  loadError,
+  fullyRemote,
+  officeRequest,
+  problem,
+  nameOf,
+}: {
+  formId: string;
+  choice: LocationChoice;
+  onChange: (choice: LocationChoice) => void;
+  offices: OrgAddress[];
+  loading: boolean;
+  loadError: string | undefined;
+  fullyRemote: boolean;
+  officeRequest: AddressesResponse["office_request"];
+  problem: RoleProblem | null;
+  nameOf: (code: string) => string;
+}) {
+  const at = (slot: RoleProblem["slot"]) =>
+    problem && problem.slot === slot && !problem.addressId ? problem.message : null;
+  const atOffice = (id: string) =>
+    problem && problem.slot === "onsite" && problem.addressId === id ? problem.message : null;
+
+  const remoteNote = fullyRemote
+    ? officeRequest?.status === "pending"
+      ? "Your organisation is fully remote. An office request is waiting for review."
+      : officeRequest?.status === "rejected"
+        ? `Your organisation is fully remote. The office request was not approved: ${officeRequest.reason ?? ""}`
+        : "Your organisation is fully remote."
+    : undefined;
+
+  return (
+    <>
+      <SectionTitle>Where the work happens</SectionTitle>
+      <FieldError message={at("where")} />
+
+      <Checkbox
+        label="Remote"
+        checked={choice.remote}
+        onChange={(on) => onChange({ ...choice, remote: on })}
+      />
+      {choice.remote ? (
+        <>
+          <Radio
+            name={`remote-scope-${formId}`}
+            label="From anywhere"
+            checked={choice.anywhere}
+            onChange={() => onChange({ ...choice, anywhere: true })}
+          />
+          <Radio
+            name={`remote-scope-${formId}`}
+            label="Only in certain countries"
+            checked={!choice.anywhere}
+            onChange={() => onChange({ ...choice, anywhere: false })}
+          />
+          {!choice.anywhere ? (
+            <CountryList
+              id={`remote-countries-${formId}`}
+              label="Countries"
+              values={choice.countries}
+              onChange={(countries) => onChange({ ...choice, countries })}
+            />
+          ) : null}
+        </>
+      ) : null}
+      <FieldError message={at("remote")} />
+
+      <Checkbox
+        label="Onsite"
+        help={remoteNote}
+        checked={choice.onsite}
+        disabled={fullyRemote && !choice.onsite}
+        onChange={(on) => onChange({ ...choice, onsite: on })}
+      />
+      {choice.onsite ? (
+        <>
+          {loading ? <Loading what="your offices" /> : null}
+          {loadError ? <Failure message={loadError} /> : null}
+          {!loading && offices.length === 0 ? (
+            <p className="field__help">
+              No offices yet. <Link to="/offices">Add one</Link>.
+            </p>
+          ) : null}
+          {offices.map((office) => (
+            <div key={office.id}>
+              <Checkbox
+                label={`${office.city}, ${nameOf(office.country)}`}
+                help={[
+                  addressLine(office),
+                  office.is_main_office ? "main office" : null,
+                  office.removed ? "removed" : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+                checked={choice.addressIds.includes(office.id)}
+                onChange={(on) =>
+                  onChange({
+                    ...choice,
+                    addressIds: on
+                      ? [...choice.addressIds, office.id]
+                      : choice.addressIds.filter((id) => id !== office.id),
+                  })
+                }
+              />
+              <FieldError message={atOffice(office.id)} />
+            </div>
+          ))}
+        </>
+      ) : null}
+      <FieldError message={at("onsite")} />
+    </>
   );
 }

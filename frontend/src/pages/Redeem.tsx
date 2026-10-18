@@ -52,11 +52,7 @@ function StartRedemption() {
 
   return (
     <div className="page page--narrow">
-      <PageHead
-        eyebrow="Hiring account"
-        title="Claim your seat"
-        lede="Someone at your company reserved a seat against your work address. Prove you hold that address and it becomes an account."
-      />
+      <PageHead eyebrow="Hiring account" title="Claim your seat" />
 
       {start.error ? <Failure message={start.error.message} /> : null}
       {resend.error ? <Failure message={resend.error.message} /> : null}
@@ -67,10 +63,7 @@ function StartRedemption() {
             If <b>{email}</b> is on that organisation&rsquo;s list, a link is on its way. It works
             once and expires in 24 hours.
           </Banner>
-          <Banner>
-            We do not say whether the address was listed. Answering that question would let anyone
-            with this form discover who a company is hiring.
-          </Banner>
+          <Banner>We do not say whether the address was listed.</Banner>
           <p className="field__help">
             Nothing arrived?{" "}
             <button type="button" className="linklike" onClick={() => void resend.run()}>
@@ -84,11 +77,7 @@ function StartRedemption() {
           {organizations.loading ? (
             <Loading what="organisations" />
           ) : (
-            <Field
-              label="Your company"
-              htmlFor="org"
-              help="Only verified organisations can seat anybody, so only those are listed."
-            >
+            <Field label="Your company" htmlFor="org" help="Verified organisations only.">
               <select
                 className="input"
                 id="org"
@@ -105,11 +94,7 @@ function StartRedemption() {
             </Field>
           )}
 
-          <Field
-            label="Your work email"
-            htmlFor="email"
-            help="The address your company listed. Not a username — you do not choose that."
-          >
+          <Field label="Your work email" htmlFor="email" help="The address your company listed.">
             <input
               className="input"
               id="email"
@@ -165,11 +150,7 @@ function CompleteRedemption({ token }: { token: string }) {
 
   return (
     <div className="page page--narrow">
-      <PageHead
-        eyebrow="Hiring account"
-        title="Set your password"
-        lede="Your address is proven. This is the last step."
-      />
+      <PageHead eyebrow="Hiring account" title="Set your password" />
 
       {complete.error ? <Failure message={complete.error.message} /> : null}
 
@@ -192,8 +173,7 @@ function CompleteRedemption({ token }: { token: string }) {
       ) : (
         <Card>
           <Banner>
-            You do not choose a username here. Your organisation pinned it when they added you, so
-            nobody can take a colleague&rsquo;s name or grant themselves an owner seat.
+            You do not choose a username here — your organisation pinned it when they added you.
           </Banner>
 
           <Field label="Your name" htmlFor="name" help="How colleagues will see you.">

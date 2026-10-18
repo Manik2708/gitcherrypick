@@ -21,7 +21,7 @@ type JobService struct {
 	profiles port.ProfileVerifier
 
 	users      port.UserRepository
-	shortlists port.ShortlistRepository
+	roles      port.RoleRepository
 	contacts   port.ContactRepository
 	norms      port.NormsRepository
 	hirers     port.HirerRepository
@@ -33,7 +33,7 @@ type JobService struct {
 // NewJobService wires the scheduled tasks.
 func NewJobService(
 	users port.UserRepository,
-	shortlists port.ShortlistRepository,
+	roles port.RoleRepository,
 	contacts port.ContactRepository,
 	norms port.NormsRepository,
 	hirers port.HirerRepository,
@@ -42,7 +42,7 @@ func NewJobService(
 	notifier port.Notifier,
 	clock port.Clock,
 ) *JobService {
-	return &JobService{users: users, shortlists: shortlists, contacts: contacts,
+	return &JobService{users: users, roles: roles, contacts: contacts,
 		norms: norms, hirers: hirers, onboarding: onboarding, profiles: profiles,
 		notifier: notifier, clock: clock}
 }
@@ -118,12 +118,12 @@ func (s *JobService) ExpireAvailability(ctx context.Context) (int, error) {
 	return len(ids), nil
 }
 
-// FlagOverdueShortlists tells admins which organizations are not delivering.
+// FlagOverdueRoles tells admins which organizations are not delivering.
 //
 // Flagged, NEVER blocked. Blocking would punish a hirer for a candidate's
 // silence as readily as for their own neglect (ADR-0005).
-func (s *JobService) FlagOverdueShortlists(ctx context.Context) (int, error) {
-	ratios, err := s.shortlists.OverdueRatios(ctx, s.clock.Now())
+func (s *JobService) FlagOverdueRoles(ctx context.Context) (int, error) {
+	ratios, err := s.roles.OverdueRatios(ctx, s.clock.Now())
 	if err != nil {
 		return 0, fmt.Errorf("computing overdue ratios: %w", err)
 	}
@@ -136,7 +136,7 @@ func (s *JobService) FlagOverdueShortlists(ctx context.Context) (int, error) {
 		_ = s.notifier.Send(ctx, port.Notification{
 			Kind: port.NotifyOverdueShortlists, Recipient: "",
 			Data: map[string]any{
-				"organization": o.Name, "open": o.OpenShortlists,
+				"organization": o.Name, "open": o.OpenRoles,
 				"overdue": o.Overdue, "ratio": o.Ratio,
 			},
 		})
@@ -145,8 +145,8 @@ func (s *JobService) FlagOverdueShortlists(ctx context.Context) (int, error) {
 	return flagged, nil
 }
 
-// OverdueFlagRatio is the share of open rounds past their date that earns a
-// flag (ADR-0005).
+// OverdueFlagRatio is the share of contacted roles past their promised date
+// that earns a flag (ADR-0005).
 const OverdueFlagRatio = 0.8
 
 // ExpireContactRequests lapses unanswered approaches.

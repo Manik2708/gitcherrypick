@@ -92,8 +92,7 @@ export function ScorecardPage() {
         </Banner>
       ) : (
         <Banner icon="lock">
-          No contact address. It is released only when the contributor accepts a request, which a
-          confirmed shortlist raises.
+          No contact address. It is released when the contributor accepts a request.
         </Banner>
       )}
 

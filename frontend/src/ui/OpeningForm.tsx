@@ -62,22 +62,17 @@ export function OpeningForm({ orgId, role }: { orgId: string; role: Role }) {
 
   return (
     <Card>
-      <SectionTitle note="Published roles are the only thing on this platform a contributor can find on their own. Everything else waits for you to approach them.">
+      <SectionTitle>
         Advertise this role {live ? <Pill tone="primary">live</Pill> : null}
       </SectionTitle>
 
       {role.status !== "open" ? (
-        <Banner icon="warn">
-          Only an open role can be advertised. Open it first — a draft is not a commitment, and a
-          closed role is a job nobody is offering.
-        </Banner>
+        <Banner icon="warn">Only an open role can be advertised. Open it first.</Banner>
       ) : null}
 
       <p className="field__help">
         A contributor sees this only if they clear every bar below. Leave one blank to ask nothing
-        of it — blank is no bar, and 0 is a bar of zero. Somebody with no score at all clears
-        nothing you state, because an unjudged contributor has not been measured rather than
-        measured low.
+        of it.
       </p>
 
       <Field
@@ -97,11 +92,7 @@ export function OpeningForm({ orgId, role }: { orgId: string; role: Role }) {
         />
       </Field>
 
-      <Field
-        label="Minimum generalist score"
-        htmlFor="min_generalist"
-        help="Breadth, and deliberately unbounded — there is no top mark to compare against."
-      >
+      <Field label="Minimum generalist score" htmlFor="min_generalist" help="Breadth, unbounded.">
         <input
           className="input"
           id="min_generalist"
@@ -116,7 +107,7 @@ export function OpeningForm({ orgId, role }: { orgId: string; role: Role }) {
       <Field
         label="Minimum years in open source"
         htmlFor="opening_oss"
-        help="We check this one, dated from when their first pull request was written. Anybody we could not verify is left out rather than let through."
+        help="Dated from their first pull request."
       >
         <input
           className="input"
@@ -131,9 +122,7 @@ export function OpeningForm({ orgId, role }: { orgId: string; role: Role }) {
         />
       </Field>
 
-      <SectionTitle note="Only primary standing counts — five distinct merged pull requests. A skill with four is on their scorecard and clears nothing here.">
-        Skills, and how good at them
-      </SectionTitle>
+      <SectionTitle>Skills, and how good at them</SectionTitle>
 
       <SkillPicker
         id="opening-skills"

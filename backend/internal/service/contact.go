@@ -161,7 +161,7 @@ func (s *ContactService) notify(ctx context.Context, cr *domain.ContactRequest) 
 		Recipient: hirer.Email,
 		Data: map[string]any{
 			"contact_request_id": string(cr.ID),
-			"shortlist_id":       string(cr.ShortlistID),
+			"role_id":            string(cr.RoleID),
 		},
 	})
 }

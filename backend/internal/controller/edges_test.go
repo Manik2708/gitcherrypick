@@ -50,10 +50,10 @@ func TestNilResultsDoNotPanic(t *testing.T) {
 					Return(nil, nil)
 			},
 		},
-		"shortlist": {
-			hirerPrincipal(true), http.MethodGet, "/shortlists/" + shortlistID, "",
+		"role": {
+			hirerPrincipal(true), http.MethodGet, rolePath(roleIDConst), "",
 			func(h *harness) {
-				h.shortlists.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).
+				h.roles.EXPECT().Role(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 					Return(nil, nil)
 			},
 		},

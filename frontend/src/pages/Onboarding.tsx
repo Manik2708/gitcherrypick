@@ -14,7 +14,7 @@
 import { useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { endpoints } from "../api/endpoints";
-import type { HeadcountBand, OnboardingForm } from "../contract";
+import type { HeadcountBand, OnboardingForm, Workplace } from "../contract";
 import { HEADCOUNT_BANDS } from "../contract";
 import { useSession } from "../hooks/session";
 import { useAction } from "../hooks/useAsync";
@@ -26,6 +26,7 @@ const EMPTY: OnboardingForm = {
   email: "",
   phone: "",
   headcount: "",
+  workplace: "",
   address: { country: "", city: "", postal_code: "", street1: "", street2: "" },
 };
 
@@ -43,17 +44,26 @@ function OnboardingFormScreen({ token, revising }: { token: string; revising: bo
   const { client } = useSession();
   const [form, setForm] = useState<OnboardingForm>(EMPTY);
 
+  // A fully remote company sends no address (ADR-0024 decision 11). What was
+  // typed before switching stays in the disabled fields, unsent.
+  const fullyRemote = form.workplace === "fully_remote";
+  const { address, ...company } = form;
+  const body = fullyRemote ? company : form;
+
   const submit = useAction(() =>
     client.post<void>(
       revising ? endpoints.public.reviseOrganization() : endpoints.public.onboardOrganization(),
-      revising ? { token, ...form } : form,
+      revising ? { token, ...body } : body,
     ),
   );
 
   const set = <K extends keyof OnboardingForm>(key: K, value: OnboardingForm[K]) =>
     setForm({ ...form, [key]: value });
   const setAddress = (key: keyof OnboardingForm["address"], value: string) =>
-    setForm({ ...form, address: { ...form.address, [key]: value } });
+    setForm({ ...form, address: { ...address, [key]: value } });
+
+  // invalid_onboarding names its field (ADR-0017 amendment 4).
+  const refused = (field: string) => (submit.error?.field === field ? submit.error.message : null);
 
   const ready = form.name.trim() && form.email.trim();
 
@@ -65,10 +75,7 @@ function OnboardingFormScreen({ token, revising }: { token: string; revising: bo
           If <b>{form.email}</b> can receive mail, a confirmation code is on its way. It works once
           and expires in 24 hours.
         </Banner>
-        <Banner>
-          Nothing has been created yet — not the company, not an account, and the name is not
-          reserved. Confirming the address is what lets an administrator review it.
-        </Banner>
+        <Banner>Nothing has been created yet. Confirm the address to send it for review.</Banner>
       </div>
     );
   }
@@ -78,17 +85,12 @@ function OnboardingFormScreen({ token, revising }: { token: string; revising: bo
       <PageHead
         eyebrow="Your organisation"
         title={revising ? "Correct your submission" : "List your organisation"}
-        lede={
-          revising
-            ? "Change what was wrong and send it back. Your previous answers are kept, so an administrator can see what you changed."
-            : "Describe your company. An administrator reads this and decides whether it can hire here."
-        }
       />
 
       {submit.error ? <Failure message={submit.error.message} /> : null}
 
       <Card>
-        <Field label="Company name" htmlFor="name">
+        <Field label="Company name" htmlFor="name" error={refused("name")}>
           <input
             className="input"
             id="name"
@@ -112,7 +114,8 @@ function OnboardingFormScreen({ token, revising }: { token: string; revising: bo
         <Field
           label="Company email"
           htmlFor="email"
-          help="The confirmation code goes here, and whoever holds this address becomes the owner of the account."
+          help="The confirmation code goes here."
+          error={refused("email")}
         >
           <input
             className="input"
@@ -133,7 +136,7 @@ function OnboardingFormScreen({ token, revising }: { token: string; revising: bo
         <Field
           label="Roughly how many people work there"
           htmlFor="headcount"
-          help="A range, because nobody knows the exact number and a range is easier to answer honestly."
+          error={refused("headcount")}
         >
           <select
             className="input"
@@ -151,33 +154,51 @@ function OnboardingFormScreen({ token, revising }: { token: string; revising: bo
         </Field>
       </Card>
 
-      <SectionTitle note="Optional. A fully remote company has no office to give, and a registered address is often somebody else's — an accountant's, or a formation agent's.">
-        Main office
-      </SectionTitle>
+      <SectionTitle>Main office</SectionTitle>
 
       <Card>
-        <Field label="Country" htmlFor="country" help="Two-letter code, such as GB or IN.">
+        <Field label="Office or fully remote" htmlFor="workplace" error={refused("workplace")}>
+          <select
+            className="input"
+            id="workplace"
+            value={form.workplace}
+            onChange={(e) => set("workplace", e.target.value as Workplace | "")}
+          >
+            <option value="">Choose one</option>
+            <option value="office">We have an office</option>
+            <option value="fully_remote">We are fully remote</option>
+          </select>
+        </Field>
+        <Field
+          label="Country"
+          htmlFor="country"
+          help="Two-letter code, such as GB or IN."
+          error={refused("address.country") ?? refused("address")}
+        >
           <input
             className="input"
             id="country"
             maxLength={2}
-            value={form.address.country}
+            disabled={fullyRemote}
+            value={address.country}
             onChange={(e) => setAddress("country", e.target.value.toUpperCase())}
           />
         </Field>
-        <Field label="City" htmlFor="city">
+        <Field label="City" htmlFor="city" error={refused("address.city")}>
           <input
             className="input"
             id="city"
-            value={form.address.city}
+            disabled={fullyRemote}
+            value={address.city}
             onChange={(e) => setAddress("city", e.target.value)}
           />
         </Field>
-        <Field label="Street" htmlFor="street1">
+        <Field label="Street" htmlFor="street1" error={refused("address.street1")}>
           <input
             className="input"
             id="street1"
-            value={form.address.street1}
+            disabled={fullyRemote}
+            value={address.street1}
             onChange={(e) => setAddress("street1", e.target.value)}
           />
         </Field>
@@ -185,7 +206,8 @@ function OnboardingFormScreen({ token, revising }: { token: string; revising: bo
           <input
             className="input"
             id="street2"
-            value={form.address.street2}
+            disabled={fullyRemote}
+            value={address.street2}
             onChange={(e) => setAddress("street2", e.target.value)}
           />
         </Field>
@@ -193,7 +215,8 @@ function OnboardingFormScreen({ token, revising }: { token: string; revising: bo
           <input
             className="input"
             id="postal_code"
-            value={form.address.postal_code}
+            disabled={fullyRemote}
+            value={address.postal_code}
             onChange={(e) => setAddress("postal_code", e.target.value)}
           />
         </Field>
@@ -248,21 +271,14 @@ export function OnboardingVerifyPage() {
         <Banner icon="check">
           Your address is confirmed and <b>{username}</b> is reserved for you.
         </Banner>
-        <Banner>
-          An administrator reviews the company next. Your account is created when they approve it —
-          we will email you either way, and you can sign in from that moment.
-        </Banner>
+        <Banner>An administrator reviews the company next. We will email you either way.</Banner>
       </div>
     );
   }
 
   return (
     <div className="page page--narrow">
-      <PageHead
-        eyebrow="Your organisation"
-        title="Confirm and choose how you will sign in"
-        lede="This address is proven. Pick the name and password you will use once the company is approved."
-      />
+      <PageHead eyebrow="Your organisation" title="Confirm and choose how you will sign in" />
 
       {verify.error ? <Failure message={verify.error.message} /> : null}
 
@@ -285,14 +301,13 @@ export function OnboardingVerifyPage() {
       ) : (
         <Card>
           <Banner>
-            No account exists yet. These details are held until an administrator approves the
-            company, and the account is created at that moment.
+            No account exists yet. These details are held until the company is approved.
           </Banner>
 
           <Field
             label="Username"
             htmlFor="username"
-            help="What you sign in with. Chosen once and never reused, even after an account is closed — it is what keeps your name on your own work."
+            help="What you sign in with. Chosen once and never reused."
           >
             <input
               className="input"

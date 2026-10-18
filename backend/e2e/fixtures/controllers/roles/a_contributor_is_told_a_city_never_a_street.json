@@ -1,0 +1,317 @@
+{
+  "name": "a contributor is told a city and a country, never a street",
+  "description": "ADR-0024 decision 7 and its contributor and contact-email bodies.\n\nA contributor learns a city for the first time. A contact request — and an opening, which shares its role shape — carries each entry at the contributor's level of detail: `{\"mode\": \"remote\", \"country\": …}` with null for anywhere, and `{\"mode\": \"onsite\", \"country\": …, \"city\": …}`. Never a street, a postcode or an address id: the address is the organisation's, and somebody who has not even answered yet has no use for where its front door is.\n\nThe contact EMAIL carries one phrase built from the same entries at the same detail. Its wording is not fixed by the ADR — country names come from the place service and fall back to the code — so the message is asserted by what it must contain (both cities) and what it must not (either street, either postcode, either second line). Today the email says 'at their office', which names no city at all.",
+  "seed": ["principals", "catalogue", "repositories", "scored_population"],
+  "steps": [
+    {
+      "_step": "A role at both offices, or remote in Britain. The HIRER reads every address in full.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles",
+        "body": {
+          "title": "Field engineer",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "onsite",
+              "address_id": "{{acme.address.austin}}"
+            },
+            {
+              "mode": "onsite",
+              "address_id": "{{acme.address.main}}"
+            },
+            {
+              "mode": "remote",
+              "country": "GB"
+            }
+          ]
+        }
+      },
+      "capture": {
+        "role": "$.id"
+      },
+      "expect": {
+        "status": 201,
+        "body": {
+          "id": "<uuid>",
+          "organization_id": "01920000-0000-7000-8000-00000000b001",
+          "status": "draft",
+          "title": "Field engineer",
+          "description": "",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "remote",
+              "country": "GB",
+              "address": null
+            },
+            {
+              "mode": "onsite",
+              "country": null,
+              "address": {
+                "id": "01920000-0000-7000-8000-0000000ad001",
+                "country": "IN",
+                "city": "Bengaluru",
+                "postal_code": "560001",
+                "street1": "1 MG Road",
+                "street2": "Floor 4",
+                "is_main_office": true,
+                "removed": false
+              }
+            },
+            {
+              "mode": "onsite",
+              "country": null,
+              "address": {
+                "id": "01920000-0000-7000-8000-0000000ad002",
+                "country": "US",
+                "city": "Austin",
+                "postal_code": "78701",
+                "street1": "500 W 2nd St",
+                "street2": "Suite 300",
+                "is_main_office": false,
+                "removed": false
+              }
+            }
+          ],
+          "currency": "",
+          "yearly_ctc": null,
+          "yearly_base": null,
+          "hourly_rate": null,
+          "expected_hours": null,
+          "min_office_yoe": null,
+          "min_oss_yoe": null,
+          "requires_online_test": null,
+          "max_interview_rounds": null,
+          "avg_days_to_offer": null,
+          "questions": [],
+          "opened_at": null,
+          "close_requested_at": null,
+          "closed_at": null,
+          "close_reason": null,
+          "hires": [],
+          "advertised": false,
+          "supersedes": null,
+          "created_at": "<timestamp>",
+          "updated_at": "<timestamp>"
+        }
+      }
+    },
+    {
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles/{{role}}/open"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "id": "<uuid>",
+          "organization_id": "01920000-0000-7000-8000-00000000b001",
+          "status": "open",
+          "title": "Field engineer",
+          "description": "",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "remote",
+              "country": "GB",
+              "address": null
+            },
+            {
+              "mode": "onsite",
+              "country": null,
+              "address": {
+                "id": "01920000-0000-7000-8000-0000000ad001",
+                "country": "IN",
+                "city": "Bengaluru",
+                "postal_code": "560001",
+                "street1": "1 MG Road",
+                "street2": "Floor 4",
+                "is_main_office": true,
+                "removed": false
+              }
+            },
+            {
+              "mode": "onsite",
+              "country": null,
+              "address": {
+                "id": "01920000-0000-7000-8000-0000000ad002",
+                "country": "US",
+                "city": "Austin",
+                "postal_code": "78701",
+                "street1": "500 W 2nd St",
+                "street2": "Suite 300",
+                "is_main_office": false,
+                "removed": false
+              }
+            }
+          ],
+          "currency": "",
+          "yearly_ctc": null,
+          "yearly_base": null,
+          "hourly_rate": null,
+          "expected_hours": null,
+          "min_office_yoe": null,
+          "min_oss_yoe": null,
+          "requires_online_test": null,
+          "max_interview_rounds": null,
+          "avg_days_to_offer": null,
+          "questions": [],
+          "opened_at": "<timestamp>",
+          "close_requested_at": null,
+          "closed_at": null,
+          "close_reason": null,
+          "hires": [],
+          "advertised": false,
+          "supersedes": null,
+          "created_at": "<timestamp>",
+          "updated_at": "<timestamp>"
+        }
+      }
+    },
+    {
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles/{{role}}/candidates",
+        "body": {
+          "user_id": "01920000-0000-7000-8000-00000000a001"
+        }
+      },
+      "expect": {
+        "status": 201,
+        "body": {
+          "user_id": "01920000-0000-7000-8000-00000000a001",
+          "display_name": "Alice Okafor",
+          "github_login": "aliceok",
+          "added_by": {
+            "id": "01920000-0000-7000-8000-00000000c001",
+            "username": "hank",
+            "display_name": "Hank Rivera",
+            "active": true
+          },
+          "added_at": "<timestamp>",
+          "notified_at": null,
+          "contact_status": "",
+          "accepted": false
+        }
+      }
+    },
+    {
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles/{{role}}/contact",
+        "body": {
+          "tentative_result_date": "2026-09-30"
+        }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "role_id": "<uuid>",
+          "status": "open",
+          "notified": 1,
+          "already_notified": 0,
+          "irreversible": true,
+          "first_contacted_at": "<timestamp>",
+          "contacted": [
+            {
+              "user_id": "01920000-0000-7000-8000-00000000a001",
+              "display_name": "Alice Okafor",
+              "contact_request_id": "<uuid>",
+              "notified_at": "<timestamp>"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "_step": "THE CONTRIBUTOR'S READ. Remote in Britain; onsite in Bengaluru, India and in Austin, US. No `address` key, no street, no postcode, no id — the response cannot leak what it does not carry.",
+      "as": "alice",
+      "request": {
+        "method": "GET",
+        "path": "/me/contact-requests"
+      },
+      "expect": {
+        "status": 200,
+        "_note": "Exactly three keys on an onsite entry and two on a remote one. An extra key here is the leak this case exists to catch.",
+        "body": {
+          "total": 1,
+          "requests": [
+            {
+              "id": "<uuid>",
+              "organization": {
+                "name": "Acme Corp",
+                "verified": true,
+                "payment_verified": true
+              },
+              "status": "pending",
+              "tentative_result_date": "2026-09-30",
+              "disclosure": null,
+              "role": {
+                "id": "<uuid>",
+                "title": "Field engineer",
+                "description": "",
+                "engagement": "full_time",
+                "locations": [
+                  {
+                    "mode": "remote",
+                    "country": "GB"
+                  },
+                  {
+                    "mode": "onsite",
+                    "country": "IN",
+                    "city": "Bengaluru"
+                  },
+                  {
+                    "mode": "onsite",
+                    "country": "US",
+                    "city": "Austin"
+                  }
+                ],
+                "currency": "",
+                "yearly_ctc": null,
+                "yearly_base": null,
+                "hourly_rate": null,
+                "expected_hours": null,
+                "requires_online_test": null,
+                "max_interview_rounds": null,
+                "avg_days_to_offer": null,
+                "questions": []
+              },
+              "expires_at": "<timestamp>",
+              "created_at": "<timestamp>"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "_step": "THE EMAIL names both cities and neither address. One message, and it must satisfy both lists.",
+      "as": "system",
+      "request": {
+        "method": "READ_EMAIL",
+        "path": "/",
+        "body": {
+          "to": "alice@example.com",
+          "subject": "An organization is interested in your work",
+          "contains": ["Bengaluru", "Austin"],
+          "excludes": ["1 MG Road", "560001", "Floor 4", "500 W 2nd St", "78701", "Suite 300"],
+          "count": 1
+        }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "to": "alice@example.com",
+          "subject": "An organization is interested in your work",
+          "html": "<string>",
+          "token": "<string>"
+        }
+      }
+    }
+  ]
+}

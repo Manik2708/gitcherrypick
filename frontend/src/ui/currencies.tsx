@@ -48,12 +48,14 @@ export function CurrencyPicker({
   help,
   value,
   onChange,
+  error,
 }: {
   id: string;
   label: string;
   help?: string;
   value: string;
   onChange: (code: string) => void;
+  error?: string | null;
 }) {
   const currencies = useCurrencies();
   const ok = usable(currencies.data, currencies.error);
@@ -70,9 +72,8 @@ export function CurrencyPicker({
     <Field
       label={label}
       htmlFor={id}
-      help={
-        ok ? help : "The currency list could not be loaded. Type a three-letter code, such as GBP."
-      }
+      help={ok ? help : "List unavailable — type a three-letter code."}
+      error={error}
     >
       {ok ? (
         <select

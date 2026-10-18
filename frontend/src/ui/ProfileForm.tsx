@@ -88,9 +88,7 @@ export function ProfileForm({ onSaved }: { onSaved?: () => void }) {
 
   return (
     <>
-      <SectionTitle note="Availability says whether a hirer can reach you at all. This says what you would PREFER — it shapes which openings you are shown, and never stops anybody approaching you.">
-        What you are open to
-      </SectionTitle>
+      <SectionTitle>What you are open to</SectionTitle>
 
       {profile.error ? <Failure message={profile.error.message} onRetry={profile.reload} /> : null}
       {save.error ? <Failure message={save.error.message} /> : null}
@@ -116,16 +114,12 @@ export function ProfileForm({ onSaved }: { onSaved?: () => void }) {
         <CountryPicker
           id="country"
           label="Where you are"
-          help="Used to match roles that can only hire in certain countries."
+          help="Matches roles that hire only in certain countries."
           value={form.current_country}
           onChange={(code) => setForm({ ...form, current_country: code })}
         />
 
-        <Field
-          label="Years you have worked in a job"
-          htmlFor="office_yoe"
-          help="Your own figure. Shown to hirers as something you said, not as something we checked."
-        >
+        <Field label="Years you have worked in a job" htmlFor="office_yoe" help="Your own figure.">
           <input
             className="input"
             id="office_yoe"
@@ -149,9 +143,7 @@ export function ProfileForm({ onSaved }: { onSaved?: () => void }) {
           label="Your first pull request"
           htmlFor="first_pr"
           help={
-            locked
-              ? "Recorded. When you started is a fact about the past, so this one cannot be changed."
-              : "A link to the earliest merged pull request you are proud of. It does not have to be one you have claimed here — and once saved it cannot be changed."
+            locked ? "Recorded. This one cannot be changed." : "Once saved it cannot be changed."
           }
         >
           <input
@@ -167,7 +159,7 @@ export function ProfileForm({ onSaved }: { onSaved?: () => void }) {
         <Field
           label="Your latest pull request"
           htmlFor="latest_pr"
-          help="Keep this current. Unlike the first one, it is meant to change."
+          help="Meant to change — keep it current."
         >
           <input
             className="input"
@@ -249,15 +241,13 @@ function CompensationForm() {
 
       <Card>
         <Banner icon="lock">
-          <b>No hirer ever sees this.</b> It is used to keep roles that pay less than you asked for
-          out of your way, and nothing else. A company that knew what you would accept could offer
-          exactly that and no more, which is why we do not tell them.
+          <b>No hirer ever sees this.</b> It keeps roles that pay less than you asked for out of
+          your way, and nothing else.
         </Banner>
 
         <CurrencyPicker
           id="currency"
           label="Currency"
-          help="The code your rate is in. A salary is only compared against an expectation in the same currency, so this is picked rather than typed."
           value={form.currency}
           onChange={(code) => setForm({ ...form, currency: code })}
         />
@@ -286,10 +276,7 @@ function CompensationForm() {
           />
         </Field>
 
-        <p className="field__help">
-          Fill in whichever applies. A freelancer may give an hourly rate and no yearly figure;
-          somebody after a permanent role, the reverse.
-        </p>
+        <p className="field__help">Fill in whichever applies.</p>
 
         <Button variant="primary" disabled={save.pending} onClick={() => void save.run(form)}>
           {save.pending ? "Saving…" : "Save"}

@@ -37,11 +37,12 @@ func main() {
 
 func command() *cobra.Command {
 	var (
-		addr          string
-		selfURL       string
-		pinned        string
-		oauthCallback string
-		hirerCallback string
+		addr           string
+		selfURL        string
+		pinned         string
+		oauthCallback  string
+		hirerCallback  string
+		googleCallback string
 	)
 
 	cmd := &cobra.Command{
@@ -54,7 +55,7 @@ func command() *cobra.Command {
 			if selfURL == "" {
 				selfURL = "http://" + addr
 			}
-			return run(cmd.Context(), addr, selfURL, pinned, oauthCallback, hirerCallback)
+			return run(cmd.Context(), addr, selfURL, pinned, oauthCallback, hirerCallback, googleCallback)
 		},
 	}
 
@@ -70,6 +71,10 @@ func command() *cobra.Command {
 	cmd.Flags().StringVar(&hirerCallback, "hirer-oauth-callback-url", "",
 		"where the sign-in page sends a browser for a HIRER session. One identity "+
 			"may own both account types (ADR-0009), so the page offers both when set")
+	cmd.Flags().StringVar(&googleCallback, "google-callback-url", "",
+		"where the Google sign-in page (/google/o/oauth2/v2/auth) sends a browser "+
+			"back to, e.g. http://localhost:5173/auth/google/callback — the API's "+
+			"--google-redirect-uri. Empty disables the page, as for the fixture suite")
 	cmd.Flags().StringVar(&selfURL, "self-url", "",
 		"absolute base URL clients reach this server at; defaults to http://<addr>. "+
 			"OIDC discovery must advertise absolute endpoints, so the server has to know its own address")
@@ -77,7 +82,7 @@ func command() *cobra.Command {
 	return cmd
 }
 
-func run(ctx context.Context, addr, selfURL, pinned, oauthCallback, hirerCallback string) error {
+func run(ctx context.Context, addr, selfURL, pinned, oauthCallback, hirerCallback, googleCallback string) error {
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -95,8 +100,11 @@ func run(ctx context.Context, addr, selfURL, pinned, oauthCallback, hirerCallbac
 	}
 
 	srv := &http.Server{
-		Addr:              addr,
-		Handler:           NewServer(store, selfURL).WithOAuthCallback(oauthCallback, hirerCallback).Handler(),
+		Addr: addr,
+		Handler: NewServer(store, selfURL).
+			WithOAuthCallback(oauthCallback, hirerCallback).
+			WithGoogleCallback(googleCallback).
+			Handler(),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 

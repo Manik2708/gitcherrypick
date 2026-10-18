@@ -80,11 +80,7 @@ export function TeamPage() {
 
   return (
     <div className="page">
-      <PageHead
-        eyebrow="Organisation"
-        title="Your team"
-        lede="Reserve a seat for a colleague, and see who holds one."
-      />
+      <PageHead eyebrow="Organisation" title="Your team" />
 
       <RosterSection
         orgId={orgId}
@@ -147,24 +143,13 @@ function RosterSection({
 
   return (
     <>
-      <SectionTitle note="Owners only. An owner entry can add further people, so it is not a choice a member gets to make.">
-        Reserve a seat
-      </SectionTitle>
+      <SectionTitle>Reserve a seat</SectionTitle>
 
       {add.error ? <Failure message={add.error.message} /> : null}
       {remove.error ? <Failure message={remove.error.message} /> : null}
 
       <Card>
-        <Banner>
-          Listing an address does not create an account and grants nothing on its own. Your
-          colleague proves they hold the address, and the seat exists from that moment.
-        </Banner>
-
-        <Field
-          label="Work email"
-          htmlFor="roster-email"
-          help="Where the link goes. Two colleagues may share one — it is a contact address, not an identity."
-        >
+        <Field label="Work email" htmlFor="roster-email" help="Where the link goes.">
           <input
             className="input"
             id="roster-email"
@@ -177,7 +162,7 @@ function RosterSection({
         <Field
           label="Username"
           htmlFor="roster-username"
-          help="You choose it, not them. It is unique across the platform and is never reused, so the name on an old round always means one person."
+          help="You choose it, not them. Never reused."
         >
           <input
             className="input"
@@ -208,9 +193,7 @@ function RosterSection({
         </Button>
       </Card>
 
-      <SectionTitle note="Redeemed entries stay listed: they are the record of why a seat exists.">
-        Roster
-      </SectionTitle>
+      <SectionTitle>Roster</SectionTitle>
 
       {error ? <Failure message={error} /> : null}
       {loading ? <Loading what="the roster" /> : null}
@@ -272,9 +255,7 @@ function SeatsSection({
 
   return (
     <>
-      <SectionTitle note="Everyone in the organisation can read this — every seat already sees every round.">
-        Seats
-      </SectionTitle>
+      <SectionTitle>Seats</SectionTitle>
 
       {error ? <Failure message={error} /> : null}
       {loading ? <Loading what="seats" /> : null}
@@ -282,8 +263,7 @@ function SeatsSection({
       {departed > 0 ? (
         <Banner>
           {departed === 1 ? "One seat has" : `${departed} seats have`} been revoked. They stay
-          listed on purpose: a round from two years ago still carries their name, and a list that
-          quietly dropped them would leave that name unresolvable.
+          listed: old rounds still carry their name.
         </Banner>
       ) : null}
 

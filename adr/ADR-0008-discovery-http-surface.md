@@ -42,7 +42,7 @@ GET    /search                            hirer + hiring capability
 GET    /leaderboard                       hirer + hiring capability
 GET    /contributors/{id}/scorecard       hirer + hiring capability + AssertNotSelf
 
-POST   /shortlists                        -> status draft
+POST   /shortlists                        -> status open (amendment 4)
 GET    /shortlists
 GET    /shortlists/{id}
 PATCH  /shortlists/{id}
@@ -239,3 +239,34 @@ already approached.
 Measured before it was written, at 1,000 contributors and 500 shortlists: **17.0 ms → 21.4 ms
 median, of which the exclusion set is 0.84 ms**. It resolves through `idx_shortlists_role` and
 scales with how heavily one job has been worked, not with the population.
+
+### 4. A round has no draft state
+
+`shortlist_status` loses `draft`. A round is **open** from creation, and the enum is
+`open | closed`.
+
+Draft was carrying two different meanings at once: _"nobody on this round has been told"_
+and _"this round is not really a round yet"_. Only the first was ever enforced, and it was
+enforced somewhere else — `notified_at IS NULL` on the entry is what makes a removal legal,
+`first_confirmed_at IS NULL` is what makes a round unannounced, and neither reads the
+status. So the status was a third copy of a fact two columns already held, and a hirer had
+to learn a lifecycle word for a state that means "I have not pressed Confirm yet".
+
+Nothing about disclosure changes. Staging still tells nobody, Confirm is still the only act
+that discloses anything, and it is still irreversible. What the two remaining columns say:
+
+| Question                          | Answered by                             |
+| --------------------------------- | --------------------------------------- |
+| May this entry be removed?        | `shortlist_entries.notified_at IS NULL` |
+| Has this round ever told anybody? | `shortlists.first_confirmed_at IS NULL` |
+| Is it still accepting people?     | `shortlists.status <> 'closed'`         |
+
+**The overdue job moves with it.** ADR-0008's flagging counted `status = 'open'` rounds, on
+the reasoning that a draft promised nothing to anyone and flagging one would report an
+organization for failing to deliver on a search it never announced. That reasoning is
+unchanged and the column it keys on is not: the job now counts rounds with
+`first_confirmed_at IS NOT NULL`, which is the announcement itself rather than a status that
+stood in for it.
+
+`POST /shortlists` answers `status: "open"`, and `GET /shortlists?status=draft` is a filter
+value that no longer exists.

@@ -15,6 +15,7 @@ import (
 	"log/slog"
 	"net/http"
 	"regexp"
+	"strings"
 
 	"github.com/Manik2708/gitcherrypick/backend/internal/port"
 	"github.com/Manik2708/gitcherrypick/backend/internal/service"
@@ -210,6 +211,42 @@ func decode(w http.ResponseWriter, r *http.Request, into any) error {
 		return fmt.Errorf("decoding the request body: %w", err)
 	}
 	return nil
+}
+
+// unknownField pulls the key out of encoding/json's refusal of one. The
+// decoder reports it only as text, so this is the one place that text is read.
+var unknownField = regexp.MustCompile(`unknown field "([^"]+)"`)
+
+// fieldOf names the request key a decode failure is about: an unknown key, or
+// a value of the wrong type. "" when the body did not parse at all, because
+// then there is no key to name (ADR-0024 §Codes).
+func fieldOf(err error) string {
+	var typeErr *json.UnmarshalTypeError
+	if errors.As(err, &typeErr) && typeErr.Field != "" {
+		// The top-level key: a mistyped entry inside a list is reported by
+		// the list it is in, which is what a form can point at.
+		if dot := strings.IndexByte(typeErr.Field, '.'); dot > 0 {
+			return typeErr.Field[:dot]
+		}
+		return typeErr.Field
+	}
+	if err != nil {
+		if match := unknownField.FindStringSubmatch(err.Error()); match != nil {
+			return match[1]
+		}
+	}
+	return ""
+}
+
+// writeUndecodable answers a body that could not be read: 400 with the code,
+// and the key at fault when there is one.
+func writeUndecodable(w http.ResponseWriter, code string, err error) {
+	field := fieldOf(err)
+	if field == "" {
+		writeCode(w, http.StatusBadRequest, code)
+		return
+	}
+	writeDetail(w, http.StatusBadRequest, map[string]any{"error": code, "field": field})
 }
 
 // decodeOptional reads a body that may legitimately be absent, for endpoints

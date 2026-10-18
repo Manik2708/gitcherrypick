@@ -217,12 +217,12 @@ func (_c *JobService_ExpireOnboarding_Call) RunAndReturn(run func(ctx context.Co
 	return _c
 }
 
-// FlagOverdueShortlists provides a mock function for the type JobService
-func (_mock *JobService) FlagOverdueShortlists(ctx context.Context) (int, error) {
+// FlagOverdueRoles provides a mock function for the type JobService
+func (_mock *JobService) FlagOverdueRoles(ctx context.Context) (int, error) {
 	ret := _mock.Called(ctx)
 
 	if len(ret) == 0 {
-		panic("no return value specified for FlagOverdueShortlists")
+		panic("no return value specified for FlagOverdueRoles")
 	}
 
 	var r0 int
@@ -243,18 +243,18 @@ func (_mock *JobService) FlagOverdueShortlists(ctx context.Context) (int, error)
 	return r0, r1
 }
 
-// JobService_FlagOverdueShortlists_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'FlagOverdueShortlists'
-type JobService_FlagOverdueShortlists_Call struct {
+// JobService_FlagOverdueRoles_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'FlagOverdueRoles'
+type JobService_FlagOverdueRoles_Call struct {
 	*mock.Call
 }
 
-// FlagOverdueShortlists is a helper method to define mock.On call
+// FlagOverdueRoles is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *JobService_Expecter) FlagOverdueShortlists(ctx interface{}) *JobService_FlagOverdueShortlists_Call {
-	return &JobService_FlagOverdueShortlists_Call{Call: _e.mock.On("FlagOverdueShortlists", ctx)}
+func (_e *JobService_Expecter) FlagOverdueRoles(ctx interface{}) *JobService_FlagOverdueRoles_Call {
+	return &JobService_FlagOverdueRoles_Call{Call: _e.mock.On("FlagOverdueRoles", ctx)}
 }
 
-func (_c *JobService_FlagOverdueShortlists_Call) Run(run func(ctx context.Context)) *JobService_FlagOverdueShortlists_Call {
+func (_c *JobService_FlagOverdueRoles_Call) Run(run func(ctx context.Context)) *JobService_FlagOverdueRoles_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -267,12 +267,12 @@ func (_c *JobService_FlagOverdueShortlists_Call) Run(run func(ctx context.Contex
 	return _c
 }
 
-func (_c *JobService_FlagOverdueShortlists_Call) Return(flagged int, err error) *JobService_FlagOverdueShortlists_Call {
+func (_c *JobService_FlagOverdueRoles_Call) Return(flagged int, err error) *JobService_FlagOverdueRoles_Call {
 	_c.Call.Return(flagged, err)
 	return _c
 }
 
-func (_c *JobService_FlagOverdueShortlists_Call) RunAndReturn(run func(ctx context.Context) (int, error)) *JobService_FlagOverdueShortlists_Call {
+func (_c *JobService_FlagOverdueRoles_Call) RunAndReturn(run func(ctx context.Context) (int, error)) *JobService_FlagOverdueRoles_Call {
 	_c.Call.Return(run)
 	return _c
 }

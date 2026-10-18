@@ -18,7 +18,6 @@ CREATE TYPE snapshot_reason AS ENUM (
     'claim_withdrawn'
 );
 
-CREATE TYPE shortlist_status AS ENUM ('open', 'closed');
 
 CREATE TYPE contact_request_status AS ENUM ('pending', 'accepted', 'declined', 'expired');
 
@@ -116,77 +115,62 @@ CREATE INDEX idx_snapshots_user_time ON score_snapshots (user_id, captured_at DE
 CREATE INDEX idx_snapshots_user_skill ON score_snapshots (user_id, skill_id, captured_at DESC);
 
 -- ---------------------------------------------------------------------------
--- shortlists — owned by the ORGANIZATION (RFC-0005).
+-- role_candidates — everybody a company has put on a job (ADR-0023).
+--
+-- There is no `shortlists` table. A round was always one-to-one with a role —
+-- one shortlist, one role, by ADR-0019 §3 — so it was a second name for the
+-- same thing, carrying a second title, a second description and a second
+-- status that could disagree with the role's.
+--
+-- What it really held was this: the PEOPLE. So they hang off the role.
 -- ---------------------------------------------------------------------------
 
-CREATE TABLE shortlists (
-    id              uuid PRIMARY KEY,
-    organization_id uuid             NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-    name            text             NOT NULL,
-    description     text,
-
-    -- The job this round is for (ADR-0019 §3). One shortlist, one role: a
-    -- hirer wanting the same contributor for a second opening opens a second
-    -- shortlist, which raises a second, separate contact request.
-    --
-    -- This is what lets a contact request say "for THIS, at THIS salary, in
-    -- THESE countries" instead of "somebody is interested in you". Without it
-    -- the role details have no route to the person being contacted.
-    --
+CREATE TABLE role_candidates (
     -- NOT NULL, and the foreign key is added in RFC-0019 where `roles` is
     -- defined — a forward reference, not a migration. Ordering, not ALTER.
-    role_id         uuid             NOT NULL,
+    role_id     uuid        NOT NULL,
+    user_id     uuid        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    note        text,
+    added_by    uuid        NOT NULL REFERENCES hirer_accounts(id) ON DELETE RESTRICT,
+    added_at    timestamptz NOT NULL DEFAULT now(),
 
-    status          shortlist_status NOT NULL DEFAULT 'open',
+    -- Null means STAGED: this person has been told nothing and the row is
+    -- still removable. Set means they were contacted, and the row is
+    -- permanent — you cannot un-tell somebody.
+    notified_at timestamptz,
 
-    -- The commitment a hirer makes when opening a round. Not enforced by
-    -- blocking; an org with >=80% of open shortlists overdue is flagged to
-    -- admins instead (RFC-0005).
-    tentative_result_date date       NOT NULL,
-    closed_at       timestamptz,
-
-    created_by      uuid             NOT NULL REFERENCES hirer_accounts(id) ON DELETE RESTRICT,
-    created_at      timestamptz      NOT NULL DEFAULT now(),
-    updated_at      timestamptz      NOT NULL DEFAULT now()
+    -- One row per person per job. Somebody considered twice for one opening
+    -- was approached once.
+    PRIMARY KEY (role_id, user_id)
 );
 
-CREATE INDEX idx_shortlists_org ON shortlists (organization_id);
--- Drives the overdue-ratio check per organization.
-CREATE INDEX idx_shortlists_overdue ON shortlists (organization_id, tentative_result_date)
-    WHERE status = 'open';
-
-CREATE TRIGGER trg_shortlists_updated_at
-    BEFORE UPDATE ON shortlists
-    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
-
-CREATE TABLE shortlist_entries (
-    shortlist_id uuid        NOT NULL REFERENCES shortlists(id) ON DELETE CASCADE,
-    user_id      uuid        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    note         text,
-    added_by     uuid        NOT NULL REFERENCES hirer_accounts(id) ON DELETE RESTRICT,
-    added_at     timestamptz NOT NULL DEFAULT now(),
-    PRIMARY KEY (shortlist_id, user_id)
-);
+-- Drives "who is still unsent on this role", which the contact step reads.
+CREATE INDEX idx_role_candidates_unnotified
+    ON role_candidates (role_id)
+    WHERE notified_at IS NULL;
 
 -- ---------------------------------------------------------------------------
 -- contact_requests
 --
--- Shortlisting does NOT disclose an email. It raises a request the contributor
--- must accept (RFC-0005). Without this the consent model in RFC-0002 would be
--- bypassed by a single click.
+-- Staging somebody does NOT disclose an email. Contacting them raises a
+-- request they must accept (RFC-0005). Without this the consent model in
+-- RFC-0002 would be bypassed by a single click.
 -- ---------------------------------------------------------------------------
 
 CREATE TABLE contact_requests (
     id              uuid PRIMARY KEY,
-    shortlist_id    uuid                   NOT NULL REFERENCES shortlists(id) ON DELETE CASCADE,
+    -- The job. Forward reference like role_candidates.role_id above: the
+    -- constraint is declared in RFC-0019 where `roles` exists.
+    role_id         uuid                   NOT NULL,
     user_id         uuid                   NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     organization_id uuid                   NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
     requested_by    uuid                   NOT NULL REFERENCES hirer_accounts(id) ON DELETE RESTRICT,
 
     status          contact_request_status NOT NULL DEFAULT 'pending',
 
-    -- Shown to the contributor when deciding, copied from the shortlist so the
-    -- record of what they were told survives a later edit.
+    -- Shown to the contributor when deciding, and copied onto the request at
+    -- the moment of contact so the record of what they were PROMISED survives
+    -- whatever the company does afterwards.
     tentative_result_date date             NOT NULL,
 
     responded_at    timestamptz,
@@ -197,7 +181,7 @@ CREATE TABLE contact_requests (
 
     created_at      timestamptz            NOT NULL DEFAULT now(),
 
-    CONSTRAINT uq_contact_request UNIQUE (shortlist_id, user_id)
+    CONSTRAINT uq_contact_request UNIQUE (role_id, user_id)
 );
 
 CREATE INDEX idx_contact_requests_user ON contact_requests (user_id, status);

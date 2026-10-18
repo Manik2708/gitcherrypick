@@ -32,13 +32,16 @@ export type DerivedFilters = Pick<
  * for people open to contract work, and adding "remote" alongside it would
  * also return everybody open to a permanent remote job.
  *
- * Only a permanent role reads the location, because "full time" alone says
- * nothing about where — and remote and onsite are the two flags that do.
+ * Only a permanent role reads its locations, because "full time" alone says
+ * nothing about where — and remote and onsite are the two flags that do. A
+ * role in several places yields every mode present (ADR-0021 amendment 1).
  */
 function shapesFor(role: Role): string[] {
   switch (role.engagement) {
-    case "full_time":
-      return role.location === "remote" ? ["remote"] : ["onsite"];
+    case "full_time": {
+      const modes = new Set(role.locations.map((l) => l.mode));
+      return (["remote", "onsite"] as const).filter((m) => modes.has(m));
+    }
     case "contract":
       return ["contract"];
     case "internship":
@@ -53,6 +56,23 @@ function shapesFor(role: Role): string[] {
 }
 
 /**
+ * The countries a role can reach, or undefined for everywhere.
+ *
+ * Remote-anywhere and onsite admit everybody (ADR-0024 decision 5), so the
+ * country filter bites only on a role whose every entry is remote in a named
+ * country — the same reading GET /openings makes of it.
+ */
+function countriesFor(role: Role): string[] | undefined {
+  if (role.locations.length === 0) return undefined;
+  const countries: string[] = [];
+  for (const entry of role.locations) {
+    if (entry.mode !== "remote" || !entry.country) return undefined;
+    if (!countries.includes(entry.country)) countries.push(entry.country);
+  }
+  return countries;
+}
+
+/**
  * The filters a role implies.
  *
  * Fields the role does not state come back UNDEFINED rather than omitted, so
@@ -61,13 +81,12 @@ function shapesFor(role: Role): string[] {
  * narrows a search the hirer believes they have just reset.
  */
 export function filtersFromRole(role: Role): DerivedFilters {
+  const shapes = shapesFor(role);
   return {
-    // Empty means ANYWHERE on a role, and no filter in a search — the same
-    // thing said two ways, so it maps to undefined rather than [].
-    countries: role.eligible_countries.length > 0 ? [...role.eligible_countries] : undefined,
+    countries: countriesFor(role),
     minOfficeYoe: role.min_office_yoe ?? undefined,
     minOssYoe: role.min_oss_yoe ?? undefined,
-    openTo: shapesFor(role).length > 0 ? shapesFor(role) : undefined,
+    openTo: shapes.length > 0 ? shapes : undefined,
 
     // And stop offering the people already on a round for it. Searching again
     // for a job you have been working is the case this whole feature is for,

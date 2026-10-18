@@ -70,8 +70,7 @@ export function RegisterPage() {
         <PageHead eyebrow="Hiring account" title="Submitted" />
         <Banner>
           Your account exists and is <b>awaiting review</b>. An administrator checks who you are
-          before you can search the pool or shortlist anybody — a scorecard names a person and their
-          work, so the account asking for one is checked first.
+          before you can search the pool or shortlist anybody.
         </Banner>
         <Banner>
           You can sign in now and watch the status. Searching stays closed until it is approved.
@@ -85,11 +84,7 @@ export function RegisterPage() {
 
   return (
     <div className="page page--narrow">
-      <PageHead
-        eyebrow="Hiring account"
-        title="Register as an independent hirer"
-        lede="For hiring on your own account rather than a company's. Verified by a person before you can see anybody — this form is what they read."
-      />
+      <PageHead eyebrow="Hiring account" title="Register as an independent hirer" />
 
       {register.error ? <Failure message={register.error.message} /> : null}
 
@@ -108,7 +103,7 @@ export function RegisterPage() {
         <Field
           label="Username"
           htmlFor="username"
-          help="What you sign in with. Chosen once and never reused, even after an account is closed — it is what keeps your name on your own work."
+          help="What you sign in with. Chosen once and never reused."
         >
           <input
             className="input"
@@ -118,11 +113,7 @@ export function RegisterPage() {
             onChange={(e) => setUsername(e.target.value)}
           />
         </Field>
-        <Field
-          label="Email"
-          htmlFor="email"
-          help="Where we reach you. Not how you sign in — colleagues may share an address like hiring@yourcompany.com."
-        >
+        <Field label="Email" htmlFor="email" help="Where we reach you, not how you sign in.">
           <input
             className="input"
             id="email"

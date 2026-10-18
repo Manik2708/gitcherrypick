@@ -1,0 +1,617 @@
+{
+  "name": "an address a draft or open role uses cannot be removed, and a closed role still says where it was",
+  "description": "ADR-0024 decision 8 and the `address_in_use` and `address_removed` codes.\n\nRemoving an address is refused while a DRAFT or OPEN role uses it, with `roles` naming them, and allowed once only CLOSED roles do. Both halves matter. A draft about to be opened at an office that has just been retired would publish a place the company no longer has; an open role is immutable (ADR-0019 §13) and has already told people where the job is. A closed role, on the other hand, is history — it keeps pointing at the row, which is why removal is a stamp: the closed role below still renders Austin, now marked `removed`.\n\nAfter removal the address cannot be written onto a role again: `address_removed` on create, on a draft's PATCH and on revise, each naming the entry (`field: \"locations\"`, `position`, 1-based). A refused revise writes no successor.\n\n`roles` on `address_in_use` is `[{id, title, status}]`, oldest first, status draft or open — the only roles that block (amendment 1 §1.4).",
+  "seed": ["principals"],
+  "steps": [
+    {
+      "_step": "A DRAFT onsite at Austin.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles",
+        "body": {
+          "title": "Austin field engineer",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "onsite",
+              "address_id": "{{acme.address.austin}}"
+            }
+          ]
+        }
+      },
+      "capture": {
+        "draft": "$.id"
+      },
+      "expect": {
+        "status": 201,
+        "body": {
+          "id": "<uuid>",
+          "organization_id": "01920000-0000-7000-8000-00000000b001",
+          "status": "draft",
+          "title": "Austin field engineer",
+          "description": "",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "onsite",
+              "country": null,
+              "address": {
+                "id": "01920000-0000-7000-8000-0000000ad002",
+                "country": "US",
+                "city": "Austin",
+                "postal_code": "78701",
+                "street1": "500 W 2nd St",
+                "street2": "Suite 300",
+                "is_main_office": false,
+                "removed": false
+              }
+            }
+          ],
+          "currency": "",
+          "yearly_ctc": null,
+          "yearly_base": null,
+          "hourly_rate": null,
+          "expected_hours": null,
+          "min_office_yoe": null,
+          "min_oss_yoe": null,
+          "requires_online_test": null,
+          "max_interview_rounds": null,
+          "avg_days_to_offer": null,
+          "questions": [],
+          "opened_at": null,
+          "close_requested_at": null,
+          "closed_at": null,
+          "close_reason": null,
+          "hires": [],
+          "advertised": false,
+          "supersedes": null,
+          "created_at": "<timestamp>",
+          "updated_at": "<timestamp>"
+        }
+      }
+    },
+    {
+      "_step": "A second role, remote in the US or onsite at Austin. Remote first in the hirer read, then by country and city.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles",
+        "body": {
+          "title": "Austin support lead",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "remote",
+              "country": "US"
+            },
+            {
+              "mode": "onsite",
+              "address_id": "{{acme.address.austin}}"
+            }
+          ]
+        }
+      },
+      "capture": {
+        "open_role": "$.id"
+      },
+      "expect": {
+        "status": 201,
+        "body": {
+          "id": "<uuid>",
+          "organization_id": "01920000-0000-7000-8000-00000000b001",
+          "status": "draft",
+          "title": "Austin support lead",
+          "description": "",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "remote",
+              "country": "US",
+              "address": null
+            },
+            {
+              "mode": "onsite",
+              "country": null,
+              "address": {
+                "id": "01920000-0000-7000-8000-0000000ad002",
+                "country": "US",
+                "city": "Austin",
+                "postal_code": "78701",
+                "street1": "500 W 2nd St",
+                "street2": "Suite 300",
+                "is_main_office": false,
+                "removed": false
+              }
+            }
+          ],
+          "currency": "",
+          "yearly_ctc": null,
+          "yearly_base": null,
+          "hourly_rate": null,
+          "expected_hours": null,
+          "min_office_yoe": null,
+          "min_oss_yoe": null,
+          "requires_online_test": null,
+          "max_interview_rounds": null,
+          "avg_days_to_offer": null,
+          "questions": [],
+          "opened_at": null,
+          "close_requested_at": null,
+          "closed_at": null,
+          "close_reason": null,
+          "hires": [],
+          "advertised": false,
+          "supersedes": null,
+          "created_at": "<timestamp>",
+          "updated_at": "<timestamp>"
+        }
+      }
+    },
+    {
+      "_step": "...and OPENED, so it is now a commitment and its entries are as immutable as it is.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles/{{open_role}}/open"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "id": "<uuid>",
+          "organization_id": "01920000-0000-7000-8000-00000000b001",
+          "status": "open",
+          "title": "Austin support lead",
+          "description": "",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "remote",
+              "country": "US",
+              "address": null
+            },
+            {
+              "mode": "onsite",
+              "country": null,
+              "address": {
+                "id": "01920000-0000-7000-8000-0000000ad002",
+                "country": "US",
+                "city": "Austin",
+                "postal_code": "78701",
+                "street1": "500 W 2nd St",
+                "street2": "Suite 300",
+                "is_main_office": false,
+                "removed": false
+              }
+            }
+          ],
+          "currency": "",
+          "yearly_ctc": null,
+          "yearly_base": null,
+          "hourly_rate": null,
+          "expected_hours": null,
+          "min_office_yoe": null,
+          "min_oss_yoe": null,
+          "requires_online_test": null,
+          "max_interview_rounds": null,
+          "avg_days_to_offer": null,
+          "questions": [],
+          "opened_at": "<timestamp>",
+          "close_requested_at": null,
+          "closed_at": null,
+          "close_reason": null,
+          "hires": [],
+          "advertised": false,
+          "supersedes": null,
+          "created_at": "<timestamp>",
+          "updated_at": "<timestamp>"
+        }
+      }
+    },
+    {
+      "_step": "REFUSED: a draft and an open role use it. The refusal names the roles in the way, so the owner knows what to close or revise rather than being told only 'no'.",
+      "as": "hank",
+      "request": {
+        "method": "DELETE",
+        "path": "/orgs/01920000-0000-7000-8000-00000000b001/addresses/{{acme.address.austin}}"
+      },
+      "expect": {
+        "status": 409,
+        "body": {
+          "error": "address_in_use",
+          "roles": [
+            {
+              "id": "<uuid>",
+              "title": "Austin field engineer",
+              "status": "draft"
+            },
+            {
+              "id": "<uuid>",
+              "title": "Austin support lead",
+              "status": "open"
+            }
+          ]
+        },
+        "db": {
+          "organization_addresses": {
+            "where": {
+              "id": "{{acme.address.austin}}"
+            },
+            "count": 1,
+            "all_match": {
+              "removed_at": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "_step": "The draft is edited to drop its onsite entry — a draft's entries are written on PATCH (decision 4).",
+      "as": "hank",
+      "request": {
+        "method": "PATCH",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles/{{draft}}",
+        "body": {
+          "title": "Austin field engineer",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "remote",
+              "country": "US"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "id": "<uuid>",
+          "organization_id": "01920000-0000-7000-8000-00000000b001",
+          "status": "draft",
+          "title": "Austin field engineer",
+          "description": "",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "remote",
+              "country": "US",
+              "address": null
+            }
+          ],
+          "currency": "",
+          "yearly_ctc": null,
+          "yearly_base": null,
+          "hourly_rate": null,
+          "expected_hours": null,
+          "min_office_yoe": null,
+          "min_oss_yoe": null,
+          "requires_online_test": null,
+          "max_interview_rounds": null,
+          "avg_days_to_offer": null,
+          "questions": [],
+          "opened_at": null,
+          "close_requested_at": null,
+          "closed_at": null,
+          "close_reason": null,
+          "hires": [],
+          "advertised": false,
+          "supersedes": null,
+          "created_at": "<timestamp>",
+          "updated_at": "<timestamp>"
+        },
+        "db": {
+          "role_locations": {
+            "where": {
+              "role_id": "{{draft}}"
+            },
+            "count": 1,
+            "all_match": {
+              "mode": "remote",
+              "country": "US",
+              "address_id": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "_step": "Still refused: the OPEN role uses it, and an open role cannot be edited — it can only be closed or revised.",
+      "as": "hank",
+      "request": {
+        "method": "DELETE",
+        "path": "/orgs/01920000-0000-7000-8000-00000000b001/addresses/{{acme.address.austin}}"
+      },
+      "expect": {
+        "status": 409,
+        "body": {
+          "error": "address_in_use",
+          "roles": [
+            {
+              "id": "<uuid>",
+              "title": "Austin support lead",
+              "status": "open"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "_step": "The open role is closed.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles/{{open_role}}/close",
+        "body": {
+          "reason": "hired_elsewhere"
+        }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "id": "<uuid>",
+          "organization_id": "01920000-0000-7000-8000-00000000b001",
+          "status": "closed",
+          "title": "Austin support lead",
+          "description": "",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "remote",
+              "country": "US",
+              "address": null
+            },
+            {
+              "mode": "onsite",
+              "country": null,
+              "address": {
+                "id": "01920000-0000-7000-8000-0000000ad002",
+                "country": "US",
+                "city": "Austin",
+                "postal_code": "78701",
+                "street1": "500 W 2nd St",
+                "street2": "Suite 300",
+                "is_main_office": false,
+                "removed": false
+              }
+            }
+          ],
+          "currency": "",
+          "yearly_ctc": null,
+          "yearly_base": null,
+          "hourly_rate": null,
+          "expected_hours": null,
+          "min_office_yoe": null,
+          "min_oss_yoe": null,
+          "requires_online_test": null,
+          "max_interview_rounds": null,
+          "avg_days_to_offer": null,
+          "questions": [],
+          "opened_at": "<timestamp>",
+          "close_requested_at": null,
+          "closed_at": "<timestamp>",
+          "close_reason": "hired_elsewhere",
+          "hires": [],
+          "advertised": false,
+          "supersedes": null,
+          "created_at": "<timestamp>",
+          "updated_at": "<timestamp>"
+        }
+      }
+    },
+    {
+      "_step": "NOW IT IS REMOVED: only a closed role uses it.",
+      "as": "hank",
+      "request": {
+        "method": "DELETE",
+        "path": "/orgs/01920000-0000-7000-8000-00000000b001/addresses/{{acme.address.austin}}"
+      },
+      "expect": {
+        "status": 204,
+        "body": null,
+        "db": {
+          "organization_addresses": {
+            "where": {
+              "id": "{{acme.address.austin}}"
+            },
+            "count": 1,
+            "all_match": {
+              "removed_by": "01920000-0000-7000-8000-00000000c001"
+            },
+            "none_match": {
+              "removed_at": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "_step": "THE CLOSED ROLE STILL SAYS WHERE IT WAS. The address is embedded in full, now marked removed — which is the whole reason removal is a stamp and not a delete.",
+      "as": "hank",
+      "request": {
+        "method": "GET",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles/{{open_role}}"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "id": "<uuid>",
+          "organization_id": "01920000-0000-7000-8000-00000000b001",
+          "status": "closed",
+          "title": "Austin support lead",
+          "description": "",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "remote",
+              "country": "US",
+              "address": null
+            },
+            {
+              "mode": "onsite",
+              "country": null,
+              "address": {
+                "id": "01920000-0000-7000-8000-0000000ad002",
+                "country": "US",
+                "city": "Austin",
+                "postal_code": "78701",
+                "street1": "500 W 2nd St",
+                "street2": "Suite 300",
+                "is_main_office": false,
+                "removed": true
+              }
+            }
+          ],
+          "currency": "",
+          "yearly_ctc": null,
+          "yearly_base": null,
+          "hourly_rate": null,
+          "expected_hours": null,
+          "min_office_yoe": null,
+          "min_oss_yoe": null,
+          "requires_online_test": null,
+          "max_interview_rounds": null,
+          "avg_days_to_offer": null,
+          "questions": [],
+          "opened_at": "<timestamp>",
+          "close_requested_at": null,
+          "closed_at": "<timestamp>",
+          "close_reason": "hired_elsewhere",
+          "hires": [],
+          "advertised": false,
+          "supersedes": null,
+          "created_at": "<timestamp>",
+          "updated_at": "<timestamp>"
+        }
+      }
+    },
+    {
+      "_step": "It has left the picker.",
+      "as": "hank",
+      "request": {
+        "method": "GET",
+        "path": "/orgs/01920000-0000-7000-8000-00000000b001/addresses"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "workplace": "office",
+          "addresses": [
+            {
+              "id": "01920000-0000-7000-8000-0000000ad001",
+              "country": "IN",
+              "city": "Bengaluru",
+              "postal_code": "560001",
+              "street1": "1 MG Road",
+              "street2": "Floor 4",
+              "is_main_office": true,
+              "removed": false
+            }
+          ],
+          "office_request": null
+        }
+      }
+    },
+    {
+      "_step": "A removed address cannot be written onto a NEW role. The entry is named: field locations, position 2.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles",
+        "body": {
+          "title": "Back in Austin",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "remote",
+              "country": "US"
+            },
+            {
+              "mode": "onsite",
+              "address_id": "{{acme.address.austin}}"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "address_removed",
+          "field": "locations",
+          "position": 2
+        }
+      }
+    },
+    {
+      "_step": "...nor onto a draft by PATCH.",
+      "as": "hank",
+      "request": {
+        "method": "PATCH",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles/{{draft}}",
+        "body": {
+          "title": "Austin field engineer",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "onsite",
+              "address_id": "{{acme.address.austin}}"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "address_removed",
+          "field": "locations",
+          "position": 1
+        },
+        "db": {
+          "role_locations": {
+            "where": {
+              "role_id": "{{draft}}"
+            },
+            "count": 1,
+            "all_match": {
+              "mode": "remote",
+              "country": "US"
+            }
+          }
+        }
+      }
+    },
+    {
+      "_step": "...nor by revising an open role. A refused revise writes no successor and closes nothing.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles/{{acme.role}}/revise",
+        "body": {
+          "title": "Backend engineer",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "onsite",
+              "address_id": "{{acme.address.austin}}"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "address_removed",
+          "field": "locations",
+          "position": 1
+        },
+        "db": {
+          "roles": {
+            "where": {
+              "organization_id": "01920000-0000-7000-8000-00000000b001"
+            },
+            "count": 3
+          }
+        }
+      }
+    }
+  ]
+}

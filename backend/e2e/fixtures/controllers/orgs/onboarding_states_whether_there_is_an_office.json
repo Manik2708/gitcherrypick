@@ -1,0 +1,1122 @@
+{
+  "name": "onboarding asks whether the company has an office, and names the field it refuses",
+  "description": "ADR-0024 decisions 11 and 17, and ADR-0017 amendment 4.\n\nOnboarding used to accept a missing address and infer nothing from it, so 'no address' could mean a fully remote company or a form nobody finished. Now the form ASKS: `workplace` is `office` or `fully_remote`, required, no default. With an office the address is compulsory — country, city and street, postcode and second line optional as before. Fully remote, none is given, and one sent anyway is REFUSED rather than silently stripped; an address object whose every part is empty counts as not sent, because that is what a form with disabled fields submits (RFC-0024 §2).\n\nEvery refusal on both routes is `422 {\"error\": \"invalid_onboarding\", \"field\": …}`, replacing the `invalid_claim` a bare ErrInvalid used to fall through to — a company told its CLAIM was rejected, in a contributor's noun. `field` is the path in the request, so the address's parts are `address.country`, `address.city` and `address.street1`, and the first missing part is the one named. All ten rows of the table are run on POST /organizations and again on POST /organizations/revise, each request wrong in one way only; none of them writes a submission.\n\nApproval is keyed on the choice, not on a blank: the office company gets exactly one address, its main office, written with the organisation and the owner seat; the fully remote one gets none. `organizations.workplace` is copied from the submission, and the admin queue shows `workplace`, with `address` null exactly when it is fully_remote. A rejected company revising may change its answer, since a revision is a whole new submission (ADR-0017 §8).\n\nAmendment 1 §1.9: revising checks the form first and the code second, and a refused form does NOT spend the code — so the ten refused revisions below all present the same code, and the corrected eleventh, with that same code, is accepted.",
+  "seed": ["principals"],
+  "steps": [
+    {
+      "_step": "POST /organizations — no name.",
+      "as": "anonymous",
+      "request": {
+        "method": "POST",
+        "path": "/organizations",
+        "body": {
+          "email": "refused-name-0@example.test",
+          "workplace": "fully_remote"
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "invalid_onboarding",
+          "field": "name"
+        }
+      }
+    },
+    {
+      "_step": "POST /organizations — no email.",
+      "as": "anonymous",
+      "request": {
+        "method": "POST",
+        "path": "/organizations",
+        "body": {
+          "name": "Nameless Co",
+          "workplace": "fully_remote"
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "invalid_onboarding",
+          "field": "email"
+        }
+      }
+    },
+    {
+      "_step": "POST /organizations — not a headcount band.",
+      "as": "anonymous",
+      "request": {
+        "method": "POST",
+        "path": "/organizations",
+        "body": {
+          "name": "Lots Ltd",
+          "email": "refused-headcount-2@example.test",
+          "headcount": "lots",
+          "workplace": "fully_remote"
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "invalid_onboarding",
+          "field": "headcount"
+        }
+      }
+    },
+    {
+      "_step": "POST /organizations — workplace absent.",
+      "as": "anonymous",
+      "request": {
+        "method": "POST",
+        "path": "/organizations",
+        "body": {
+          "name": "Undecided Ltd",
+          "email": "refused-workplace-3@example.test",
+          "address": {
+            "country": "GB",
+            "city": "Cardiff",
+            "postal_code": "CF10 4PA",
+            "street1": "3 Bute Crescent",
+            "street2": "Dock Office"
+          }
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "invalid_onboarding",
+          "field": "workplace"
+        }
+      }
+    },
+    {
+      "_step": "POST /organizations — workplace not one of the two.",
+      "as": "anonymous",
+      "request": {
+        "method": "POST",
+        "path": "/organizations",
+        "body": {
+          "name": "Hybrid Ltd",
+          "email": "refused-workplace-4@example.test",
+          "workplace": "hybrid"
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "invalid_onboarding",
+          "field": "workplace"
+        }
+      }
+    },
+    {
+      "_step": "POST /organizations — office and no address at all — the first missing part is named.",
+      "as": "anonymous",
+      "request": {
+        "method": "POST",
+        "path": "/organizations",
+        "body": {
+          "name": "Officeless Ltd",
+          "email": "refused-address-country-5@example.test",
+          "workplace": "office"
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "invalid_onboarding",
+          "field": "address.country"
+        }
+      }
+    },
+    {
+      "_step": "POST /organizations — office and a country that is not two letters.",
+      "as": "anonymous",
+      "request": {
+        "method": "POST",
+        "path": "/organizations",
+        "body": {
+          "name": "Britain Ltd",
+          "email": "refused-address-country-6@example.test",
+          "workplace": "office",
+          "address": {
+            "country": "Britain",
+            "city": "Cardiff",
+            "postal_code": "CF10 4PA",
+            "street1": "3 Bute Crescent",
+            "street2": "Dock Office"
+          }
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "invalid_onboarding",
+          "field": "address.country"
+        }
+      }
+    },
+    {
+      "_step": "POST /organizations — office and no city.",
+      "as": "anonymous",
+      "request": {
+        "method": "POST",
+        "path": "/organizations",
+        "body": {
+          "name": "Cityless Ltd",
+          "email": "refused-address-city-7@example.test",
+          "workplace": "office",
+          "address": {
+            "country": "GB",
+            "postal_code": "CF10 4PA",
+            "street1": "3 Bute Crescent",
+            "street2": "Dock Office"
+          }
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "invalid_onboarding",
+          "field": "address.city"
+        }
+      }
+    },
+    {
+      "_step": "POST /organizations — office and no street.",
+      "as": "anonymous",
+      "request": {
+        "method": "POST",
+        "path": "/organizations",
+        "body": {
+          "name": "Streetless Ltd",
+          "email": "refused-address-street1-8@example.test",
+          "workplace": "office",
+          "address": {
+            "country": "GB",
+            "city": "Cardiff",
+            "postal_code": "CF10 4PA",
+            "street2": "Dock Office"
+          }
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "invalid_onboarding",
+          "field": "address.street1"
+        }
+      }
+    },
+    {
+      "_step": "POST /organizations — fully remote and an address sent anyway.",
+      "as": "anonymous",
+      "request": {
+        "method": "POST",
+        "path": "/organizations",
+        "body": {
+          "name": "Contradiction Ltd",
+          "email": "refused-address-9@example.test",
+          "workplace": "fully_remote",
+          "address": {
+            "country": "GB",
+            "city": "Cardiff",
+            "postal_code": "CF10 4PA",
+            "street1": "3 Bute Crescent",
+            "street2": "Dock Office"
+          }
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "invalid_onboarding",
+          "field": "address"
+        },
+        "db": {
+          "organization_onboarding": {
+            "count": 0
+          }
+        }
+      }
+    },
+    {
+      "_step": "Fully remote with an address object whose every part is EMPTY: not sent, and accepted. A form with disabled address fields submits exactly this.",
+      "as": "anonymous",
+      "request": {
+        "method": "POST",
+        "path": "/organizations",
+        "body": {
+          "name": "Hollow Ltd",
+          "email": "founder@hollow.example",
+          "workplace": "fully_remote",
+          "address": {
+            "country": "",
+            "city": "",
+            "postal_code": "",
+            "street1": "",
+            "street2": ""
+          }
+        }
+      },
+      "expect": {
+        "status": 202,
+        "body": null,
+        "db": {
+          "organization_onboarding": {
+            "where": {
+              "email": "founder@hollow.example"
+            },
+            "count": 1,
+            "all_match": {
+              "workplace": "fully_remote",
+              "country": null,
+              "city": null,
+              "postal_code": null,
+              "street1": null,
+              "street2": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "_step": "A company WITH AN OFFICE, and its address.",
+      "as": "anonymous",
+      "request": {
+        "method": "POST",
+        "path": "/organizations",
+        "body": {
+          "name": "Harbour Lights Ltd",
+          "email": "founder@harbourlights.example",
+          "workplace": "office",
+          "address": {
+            "country": "GB",
+            "city": "Cardiff",
+            "postal_code": "CF10 4PA",
+            "street1": "3 Bute Crescent",
+            "street2": "Dock Office"
+          }
+        }
+      },
+      "expect": {
+        "status": 202,
+        "body": null,
+        "db": {
+          "organization_onboarding": {
+            "where": {
+              "email": "founder@harbourlights.example"
+            },
+            "count": 1,
+            "all_match": {
+              "workplace": "office",
+              "country": "GB",
+              "city": "Cardiff",
+              "street1": "3 Bute Crescent"
+            }
+          }
+        }
+      }
+    },
+    {
+      "as": "system",
+      "request": {
+        "method": "READ_EMAIL",
+        "path": "/",
+        "body": {
+          "to": "founder@harbourlights.example",
+          "subject": "Confirm your company's email address",
+          "count": 1
+        }
+      },
+      "capture": {
+        "harbour_code": "$.token"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "to": "founder@harbourlights.example",
+          "subject": "Confirm your company's email address",
+          "html": "<string>",
+          "token": "<token>"
+        }
+      }
+    },
+    {
+      "as": "anonymous",
+      "request": {
+        "method": "POST",
+        "path": "/organizations/verify",
+        "body": {
+          "token": "{{harbour_code}}",
+          "username": "heron",
+          "display_name": "Heron Lusk",
+          "password": "correct-horse-battery-staple"
+        }
+      },
+      "expect": {
+        "status": 204,
+        "body": null
+      }
+    },
+    {
+      "_step": "A FULLY REMOTE company, and no address.",
+      "as": "anonymous",
+      "request": {
+        "method": "POST",
+        "path": "/organizations",
+        "body": {
+          "name": "Driftwood Collective",
+          "email": "hello@driftwood.example",
+          "workplace": "fully_remote"
+        }
+      },
+      "expect": {
+        "status": 202,
+        "body": null,
+        "db": {
+          "organization_onboarding": {
+            "where": {
+              "email": "hello@driftwood.example"
+            },
+            "count": 1,
+            "all_match": {
+              "workplace": "fully_remote",
+              "country": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "as": "system",
+      "request": {
+        "method": "READ_EMAIL",
+        "path": "/",
+        "body": {
+          "to": "hello@driftwood.example",
+          "subject": "Confirm your company's email address",
+          "count": 1
+        }
+      },
+      "capture": {
+        "driftwood_code": "$.token"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "to": "hello@driftwood.example",
+          "subject": "Confirm your company's email address",
+          "html": "<string>",
+          "token": "<token>"
+        }
+      }
+    },
+    {
+      "as": "anonymous",
+      "request": {
+        "method": "POST",
+        "path": "/organizations/verify",
+        "body": {
+          "token": "{{driftwood_code}}",
+          "username": "plover",
+          "display_name": "Plover Adeyemi",
+          "password": "correct-horse-battery-staple"
+        }
+      },
+      "expect": {
+        "status": 204,
+        "body": null
+      }
+    },
+    {
+      "_step": "The queue shows the stated choice beside the address, so the reviewer reads 'fully remote' rather than an absence. Hollow Ltd never proved its address and is not here.",
+      "as": "root",
+      "request": {
+        "method": "GET",
+        "path": "/admin/onboarding"
+      },
+      "capture": {
+        "harbour": "$.submissions[0].id",
+        "driftwood": "$.submissions[1].id"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "total": 2,
+          "submissions": [
+            {
+              "id": "<uuid>",
+              "name": "Harbour Lights Ltd",
+              "description": "",
+              "email": "founder@harbourlights.example",
+              "phone": "",
+              "headcount": "",
+              "workplace": "office",
+              "address": {
+                "country": "GB",
+                "city": "Cardiff",
+                "postal_code": "CF10 4PA",
+                "street1": "3 Bute Crescent",
+                "street2": "Dock Office"
+              },
+              "owner": {
+                "username": "heron",
+                "display_name": "Heron Lusk"
+              },
+              "created_at": "<timestamp>",
+              "age_hours": "<number>"
+            },
+            {
+              "id": "<uuid>",
+              "name": "Driftwood Collective",
+              "description": "",
+              "email": "hello@driftwood.example",
+              "phone": "",
+              "headcount": "",
+              "workplace": "fully_remote",
+              "address": null,
+              "owner": {
+                "username": "plover",
+                "display_name": "Plover Adeyemi"
+              },
+              "created_at": "<timestamp>",
+              "age_hours": "<number>"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "_step": "Approving the office company writes its main office with it.",
+      "as": "root",
+      "request": {
+        "method": "POST",
+        "path": "/admin/onboarding/{{harbour}}/decide",
+        "body": {
+          "decision": "approved",
+          "reason": "Registered office matches Companies House."
+        }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "id": "<uuid>",
+          "status": "approved",
+          "reviewed_at": "<timestamp>",
+          "reviewed_by": "<uuid>"
+        },
+        "db": {
+          "organizations": {
+            "where": {
+              "slug": "harbour-lights-ltd"
+            },
+            "count": 1,
+            "all_match": {
+              "workplace": "office"
+            }
+          },
+          "organization_addresses": {
+            "where": {
+              "city": "Cardiff"
+            },
+            "count": 1,
+            "all_match": {
+              "is_main_office": true,
+              "street1": "3 Bute Crescent",
+              "removed_at": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "_step": "Approving the fully remote company writes NO address.",
+      "as": "root",
+      "request": {
+        "method": "POST",
+        "path": "/admin/onboarding/{{driftwood}}/decide",
+        "body": {
+          "decision": "approved",
+          "reason": "Trading history checks out."
+        }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "id": "<uuid>",
+          "status": "approved",
+          "reviewed_at": "<timestamp>",
+          "reviewed_by": "<uuid>"
+        },
+        "db": {
+          "organizations": {
+            "where": {
+              "slug": "driftwood-collective"
+            },
+            "count": 1,
+            "all_match": {
+              "workplace": "fully_remote"
+            }
+          },
+          "organization_addresses": {
+            "_note": "Four: the three the seed wrote, and Harbour Lights' main office. Driftwood has none.",
+            "count": 4
+          }
+        }
+      }
+    },
+    {
+      "as": "anonymous",
+      "request": {
+        "method": "POST",
+        "path": "/auth/hirer/login",
+        "body": {
+          "username": "heron",
+          "password": "correct-horse-battery-staple"
+        }
+      },
+      "capture": {
+        "harbour_token": "$.access_token",
+        "harbour_org": "$.hirer.organization.id"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "hirer": {
+            "id": "<uuid>",
+            "display_name": "Heron Lusk",
+            "email": "founder@harbourlights.example",
+            "principal_type": "hirer",
+            "verified": true,
+            "organization": {
+              "id": "<uuid>",
+              "name": "Harbour Lights Ltd",
+              "verified": true,
+              "payment_verified": false
+            }
+          },
+          "access_token": "<token>",
+          "refresh_token": "<token>",
+          "expires_in": 900
+        }
+      }
+    },
+    {
+      "_step": "The office organisation's owner reads ONE address, its main office.",
+      "as": "anonymous",
+      "request": {
+        "method": "GET",
+        "path": "/orgs/{{harbour_org}}/addresses",
+        "headers": {
+          "Authorization": "Bearer {{harbour_token}}"
+        }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "workplace": "office",
+          "addresses": [
+            {
+              "id": "<uuid>",
+              "country": "GB",
+              "city": "Cardiff",
+              "postal_code": "CF10 4PA",
+              "street1": "3 Bute Crescent",
+              "street2": "Dock Office",
+              "is_main_office": true,
+              "removed": false
+            }
+          ],
+          "office_request": null
+        }
+      }
+    },
+    {
+      "as": "anonymous",
+      "request": {
+        "method": "POST",
+        "path": "/auth/hirer/login",
+        "body": {
+          "username": "plover",
+          "password": "correct-horse-battery-staple"
+        }
+      },
+      "capture": {
+        "driftwood_token": "$.access_token",
+        "driftwood_org": "$.hirer.organization.id"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "hirer": {
+            "id": "<uuid>",
+            "display_name": "Plover Adeyemi",
+            "email": "hello@driftwood.example",
+            "principal_type": "hirer",
+            "verified": true,
+            "organization": {
+              "id": "<uuid>",
+              "name": "Driftwood Collective",
+              "verified": true,
+              "payment_verified": false
+            }
+          },
+          "access_token": "<token>",
+          "refresh_token": "<token>",
+          "expires_in": 900
+        }
+      }
+    },
+    {
+      "_step": "The fully remote organisation's owner reads its kind and no address.",
+      "as": "anonymous",
+      "request": {
+        "method": "GET",
+        "path": "/orgs/{{driftwood_org}}/addresses",
+        "headers": {
+          "Authorization": "Bearer {{driftwood_token}}"
+        }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "workplace": "fully_remote",
+          "addresses": [],
+          "office_request": null
+        }
+      }
+    },
+    {
+      "_step": "THE REVISE ROUTE. A third company, which will be refused so that it holds a revise code.",
+      "as": "anonymous",
+      "request": {
+        "method": "POST",
+        "path": "/organizations",
+        "body": {
+          "name": "Quayside Ltd",
+          "email": "owner@quayside.example",
+          "workplace": "office",
+          "address": {
+            "country": "GB",
+            "city": "Swansea",
+            "postal_code": "SA1 1AA",
+            "street1": "1 Quay Parade",
+            "street2": ""
+          }
+        }
+      },
+      "expect": {
+        "status": 202,
+        "body": null
+      }
+    },
+    {
+      "as": "system",
+      "request": {
+        "method": "READ_EMAIL",
+        "path": "/",
+        "body": {
+          "to": "owner@quayside.example",
+          "subject": "Confirm your company's email address",
+          "count": 1
+        }
+      },
+      "capture": {
+        "quayside_code": "$.token"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "to": "owner@quayside.example",
+          "subject": "Confirm your company's email address",
+          "html": "<string>",
+          "token": "<token>"
+        }
+      }
+    },
+    {
+      "as": "anonymous",
+      "request": {
+        "method": "POST",
+        "path": "/organizations/verify",
+        "body": {
+          "token": "{{quayside_code}}",
+          "username": "curlew",
+          "display_name": "Curlew Bain",
+          "password": "correct-horse-battery-staple"
+        }
+      },
+      "expect": {
+        "status": 204,
+        "body": null
+      }
+    },
+    {
+      "as": "root",
+      "request": {
+        "method": "GET",
+        "path": "/admin/onboarding"
+      },
+      "capture": {
+        "quayside": "$.submissions[0].id"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "total": 1,
+          "submissions": [
+            {
+              "id": "<uuid>",
+              "name": "Quayside Ltd",
+              "description": "",
+              "email": "owner@quayside.example",
+              "phone": "",
+              "headcount": "",
+              "workplace": "office",
+              "address": {
+                "country": "GB",
+                "city": "Swansea",
+                "postal_code": "SA1 1AA",
+                "street1": "1 Quay Parade",
+                "street2": ""
+              },
+              "owner": {
+                "username": "curlew",
+                "display_name": "Curlew Bain"
+              },
+              "created_at": "<timestamp>",
+              "age_hours": "<number>"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "as": "root",
+      "request": {
+        "method": "POST",
+        "path": "/admin/onboarding/{{quayside}}/decide",
+        "body": {
+          "decision": "rejected",
+          "reason": "The Swansea address is a mail drop."
+        }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "id": "<uuid>",
+          "status": "rejected",
+          "reviewed_at": "<timestamp>",
+          "reviewed_by": "<uuid>"
+        }
+      }
+    },
+    {
+      "as": "system",
+      "request": {
+        "method": "READ_EMAIL",
+        "path": "/",
+        "body": {
+          "to": "owner@quayside.example",
+          "subject": "Your organization has been reviewed",
+          "count": 1
+        }
+      },
+      "capture": {
+        "quayside_revise": "$.token"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "to": "owner@quayside.example",
+          "subject": "Your organization has been reviewed",
+          "html": "<string>",
+          "token": "<token>"
+        }
+      }
+    },
+    {
+      "_step": "POST /organizations/revise — no name.",
+      "as": "anonymous",
+      "request": {
+        "method": "POST",
+        "path": "/organizations/revise",
+        "body": {
+          "token": "{{quayside_revise}}",
+          "email": "owner@quayside.example",
+          "workplace": "fully_remote"
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "invalid_onboarding",
+          "field": "name"
+        }
+      }
+    },
+    {
+      "_step": "POST /organizations/revise — no email.",
+      "as": "anonymous",
+      "request": {
+        "method": "POST",
+        "path": "/organizations/revise",
+        "body": {
+          "token": "{{quayside_revise}}",
+          "name": "Nameless Co",
+          "workplace": "fully_remote"
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "invalid_onboarding",
+          "field": "email"
+        }
+      }
+    },
+    {
+      "_step": "POST /organizations/revise — not a headcount band.",
+      "as": "anonymous",
+      "request": {
+        "method": "POST",
+        "path": "/organizations/revise",
+        "body": {
+          "token": "{{quayside_revise}}",
+          "name": "Lots Ltd",
+          "email": "owner@quayside.example",
+          "headcount": "lots",
+          "workplace": "fully_remote"
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "invalid_onboarding",
+          "field": "headcount"
+        }
+      }
+    },
+    {
+      "_step": "POST /organizations/revise — workplace absent.",
+      "as": "anonymous",
+      "request": {
+        "method": "POST",
+        "path": "/organizations/revise",
+        "body": {
+          "token": "{{quayside_revise}}",
+          "name": "Undecided Ltd",
+          "email": "owner@quayside.example",
+          "address": {
+            "country": "GB",
+            "city": "Cardiff",
+            "postal_code": "CF10 4PA",
+            "street1": "3 Bute Crescent",
+            "street2": "Dock Office"
+          }
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "invalid_onboarding",
+          "field": "workplace"
+        }
+      }
+    },
+    {
+      "_step": "POST /organizations/revise — workplace not one of the two.",
+      "as": "anonymous",
+      "request": {
+        "method": "POST",
+        "path": "/organizations/revise",
+        "body": {
+          "token": "{{quayside_revise}}",
+          "name": "Hybrid Ltd",
+          "email": "owner@quayside.example",
+          "workplace": "hybrid"
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "invalid_onboarding",
+          "field": "workplace"
+        }
+      }
+    },
+    {
+      "_step": "POST /organizations/revise — office and no address at all — the first missing part is named.",
+      "as": "anonymous",
+      "request": {
+        "method": "POST",
+        "path": "/organizations/revise",
+        "body": {
+          "token": "{{quayside_revise}}",
+          "name": "Officeless Ltd",
+          "email": "owner@quayside.example",
+          "workplace": "office"
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "invalid_onboarding",
+          "field": "address.country"
+        }
+      }
+    },
+    {
+      "_step": "POST /organizations/revise — office and a country that is not two letters.",
+      "as": "anonymous",
+      "request": {
+        "method": "POST",
+        "path": "/organizations/revise",
+        "body": {
+          "token": "{{quayside_revise}}",
+          "name": "Britain Ltd",
+          "email": "owner@quayside.example",
+          "workplace": "office",
+          "address": {
+            "country": "Britain",
+            "city": "Cardiff",
+            "postal_code": "CF10 4PA",
+            "street1": "3 Bute Crescent",
+            "street2": "Dock Office"
+          }
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "invalid_onboarding",
+          "field": "address.country"
+        }
+      }
+    },
+    {
+      "_step": "POST /organizations/revise — office and no city.",
+      "as": "anonymous",
+      "request": {
+        "method": "POST",
+        "path": "/organizations/revise",
+        "body": {
+          "token": "{{quayside_revise}}",
+          "name": "Cityless Ltd",
+          "email": "owner@quayside.example",
+          "workplace": "office",
+          "address": {
+            "country": "GB",
+            "postal_code": "CF10 4PA",
+            "street1": "3 Bute Crescent",
+            "street2": "Dock Office"
+          }
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "invalid_onboarding",
+          "field": "address.city"
+        }
+      }
+    },
+    {
+      "_step": "POST /organizations/revise — office and no street.",
+      "as": "anonymous",
+      "request": {
+        "method": "POST",
+        "path": "/organizations/revise",
+        "body": {
+          "token": "{{quayside_revise}}",
+          "name": "Streetless Ltd",
+          "email": "owner@quayside.example",
+          "workplace": "office",
+          "address": {
+            "country": "GB",
+            "city": "Cardiff",
+            "postal_code": "CF10 4PA",
+            "street2": "Dock Office"
+          }
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "invalid_onboarding",
+          "field": "address.street1"
+        }
+      }
+    },
+    {
+      "_step": "POST /organizations/revise — fully remote and an address sent anyway.",
+      "as": "anonymous",
+      "request": {
+        "method": "POST",
+        "path": "/organizations/revise",
+        "body": {
+          "token": "{{quayside_revise}}",
+          "name": "Contradiction Ltd",
+          "email": "owner@quayside.example",
+          "workplace": "fully_remote",
+          "address": {
+            "country": "GB",
+            "city": "Cardiff",
+            "postal_code": "CF10 4PA",
+            "street1": "3 Bute Crescent",
+            "street2": "Dock Office"
+          }
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "invalid_onboarding",
+          "field": "address"
+        },
+        "db": {
+          "organization_onboarding": {
+            "where": {
+              "email": "owner@quayside.example"
+            },
+            "count": 1
+          }
+        }
+      }
+    },
+    {
+      "_step": "And a rejected company may CHANGE ITS ANSWER: the revision says it is fully remote after all, and gives no address.",
+      "as": "anonymous",
+      "request": {
+        "method": "POST",
+        "path": "/organizations/revise",
+        "body": {
+          "token": "{{quayside_revise}}",
+          "name": "Quayside Ltd",
+          "email": "owner@quayside.example",
+          "workplace": "fully_remote"
+        }
+      },
+      "expect": {
+        "status": 202,
+        "body": null,
+        "db": {
+          "organization_onboarding": {
+            "where": {
+              "email": "owner@quayside.example",
+              "workplace": "fully_remote"
+            },
+            "count": 1,
+            "all_match": {
+              "country": null,
+              "decided_at": null
+            },
+            "none_match": {
+              "supersedes_id": null
+            }
+          }
+        }
+      }
+    }
+  ]
+}

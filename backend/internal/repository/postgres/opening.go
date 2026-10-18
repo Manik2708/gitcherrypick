@@ -241,16 +241,6 @@ const clearedOpenings = `
 	                AND w.first_pr_authored_at
 	                    <= $2::timestamptz - (live.min_oss_yoe || ' years')::interval))
 
-	       -- Where they are. No stated countries on the role means anywhere;
-	       -- a contributor who has not said where they are is admitted only by
-	       -- a role that hires anywhere (ADR-0019 §6).
-	       AND (NOT EXISTS (SELECT 1 FROM role_eligible_countries c
-	                         WHERE c.role_id = live.role_id)
-	            OR (coalesce(w.current_country, '') <> ''
-	                AND EXISTS (SELECT 1 FROM role_eligible_countries c
-	                             WHERE c.role_id = live.role_id
-	                               AND c.country = w.current_country)))
-
 	       -- EVERY skill bar, at PRIMARY standing only (ADR-0005). "Not
 	       -- exists a bar this person fails" rather than a count, so a bar
 	       -- naming a skill they have never claimed fails on absence.
@@ -264,26 +254,36 @@ const clearedOpenings = `
 	                WHERE os.opening_id = live.opening_id
 	                  AND (us.score IS NULL OR us.score < os.min_score))
 
-	       -- WHAT THEY SAID THEY WOULD PREFER. This is the contributor's OWN
-	       -- view, so filtering it by their own preference is the point — it
-	       -- is not a gate on who may reach them (ADR-0021 §3).
+	       -- WHERE, AND IN WHAT SHAPE, read PER ENTRY (ADR-0024 decision 5,
+	       -- ADR-0020 amendment 1, ADR-0021 amendment 1). A role reaches them
+	       -- when ONE entry both admits them by place and is a shape they
+	       -- said they would take.
 	       --
-	       -- Freelance reads a flag like every other engagement now. It used
-	       -- to key off availability_status, which made it the one shape
-	       -- expressed differently from the other four and put this CASE arm
-	       -- out of step with itself.
-	       AND (CASE r.engagement
-	                -- A permanent role reads the LOCATION, because "full time"
-	                -- alone says nothing about where, and remote and onsite
-	                -- are the two flags that do.
-	                WHEN 'full_time' THEN
-	                    CASE WHEN r.location = 'remote'
-	                         THEN coalesce(w.open_to_remote, false)
-	                         ELSE coalesce(w.open_to_onsite, false) END
-	                WHEN 'contract'   THEN coalesce(w.open_to_contract, false)
-	                WHEN 'internship' THEN coalesce(w.open_to_internships, false)
-	                WHEN 'freelance'  THEN coalesce(w.open_to_freelance, false)
-	            END)
+	       -- By place: remote-anywhere and onsite admit everybody, somebody
+	       -- with no stated country included; remote-in-a-country admits
+	       -- whoever states that country.
+	       --
+	       -- By shape: a full-time role reads the ENTRY'S mode, because "full
+	       -- time" alone says nothing about where, and remote and onsite are
+	       -- the two flags that do. The other engagements read their own
+	       -- flag. This is the contributor's OWN view, so filtering it by
+	       -- their own preference is the point — it is not a gate on who may
+	       -- reach them (ADR-0021 §3).
+	       AND EXISTS (
+	               SELECT 1 FROM role_locations l
+	                WHERE l.role_id = live.role_id
+	                  AND (l.mode = 'onsite'
+	                       OR l.country IS NULL
+	                       OR l.country = nullif(w.current_country, ''))
+	                  AND (CASE r.engagement
+	                           WHEN 'full_time' THEN
+	                               CASE WHEN l.mode = 'remote'
+	                                    THEN coalesce(w.open_to_remote, false)
+	                                    ELSE coalesce(w.open_to_onsite, false) END
+	                           WHEN 'contract'   THEN coalesce(w.open_to_contract, false)
+	                           WHEN 'internship' THEN coalesce(w.open_to_internships, false)
+	                           WHEN 'freelance'  THEN coalesce(w.open_to_freelance, false)
+	                       END))
 
 	       -- WHAT THEY EXPECT TO BE PAID. The one place this figure is ever
 	       -- used, and it travels no further: it keeps roles paying less than

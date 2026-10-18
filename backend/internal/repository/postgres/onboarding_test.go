@@ -22,7 +22,8 @@ func mustSubmit(ctx context.Context, t *testing.T, db *postgres.DB, name, email 
 		var err error
 		out, err = db.Onboarding().Submit(ctx, tx, &port.OnboardingSubmission{
 			Name: name, Email: email, Description: "We build things.",
-			Phone: "+44 20 7946 0958", Headcount: domain.Headcount11To50,
+			Workplace: domain.WorkplaceOffice,
+			Phone:     "+44 20 7946 0958", Headcount: domain.Headcount11To50,
 			Country: "GB", City: "London", PostalCode: "EC1A 1BB",
 			Street1: "12 Old Street",
 		})
@@ -286,7 +287,8 @@ func TestOnboardingPromotion(t *testing.T) {
 			var err error
 			revision, err = db.Onboarding().Submit(ctx, tx, &port.OnboardingSubmission{
 				Name: "Acme Corp", Email: "hiring@acme.example",
-				Country: "GB", City: "Leeds", Street1: "40 New Road",
+				Workplace: domain.WorkplaceOffice,
+				Country:   "GB", City: "Leeds", Street1: "40 New Road",
 				SupersedesID: &rejected.ID,
 			})
 			return err

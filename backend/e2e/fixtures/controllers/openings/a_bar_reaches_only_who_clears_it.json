@@ -1,6 +1,6 @@
 {
   "name": "an advert reaches only the people who clear its bar",
-  "description": "ADR-0020. Every role until now was PRIVATE: a hirer searched, shortlisted, and a contributor heard about the job only when a contact request arrived. An opening is a role a company has chosen to publish, with a bar on it — and it inverts discovery in one direction and no other. There is no apply route in this fixture because there is no apply route at all: reading an opening sends nothing, and a company cannot learn that anybody looked.\n\nThe assertions that matter are all the same rule seen from different sides: A STATED BAR IS NOT CLEARED BY AN ABSENT SCORE. These figures are evidence the platform produced, so somebody with no overall score has not been judged rather than scored low — showing them a role asking for 60 would promise a match that does not exist, and the remedy is a claim rather than a filter that looks away.\n\nThe COUNT is the other half. A contributor sees only what they clear, so an empty list on its own cannot say whether nobody is hiring or whether they qualify for nothing. `missed` answers that and nothing more: it itemises no shortfall and exposes no company's bar.",
+  "description": "ADR-0020. Every role until now was PRIVATE: a hirer searched, shortlisted, and a contributor heard about the job only when a contact request arrived. An opening is a role a company has chosen to publish, with a bar on it — and it inverts discovery in one direction and no other. There is no apply route in this fixture because there is no apply route at all: reading an opening sends nothing, and a company cannot learn that anybody looked.\n\nThe assertions that matter are all the same rule seen from different sides: A STATED BAR IS NOT CLEARED BY AN ABSENT SCORE. These figures are evidence the platform produced, so somebody with no overall score has not been judged rather than scored low — showing them a role asking for 60 would promise a match that does not exist, and the remedy is a claim rather than a filter that looks away.\n\nThe COUNT is the other half. A contributor sees only what they clear, so an empty list on its own cannot say whether nobody is hiring or whether they qualify for nothing. `missed` answers that and nothing more: it itemises no shortfall and exposes no company's bar.\n\nREWRITTEN FOR ADR-0024. A role no longer has one `location`, an `address_id` and a list of `eligible_countries`: it holds a set of location entries — remote from anywhere, remote within a named country, or onsite at one of the organisation's addresses. The hirer reads every entry with `mode`, `country` and `address`; a contributor reads a country (or null for anywhere) and, for onsite, a city — never a street. The three old keys are gone from every request and response. The meaning of this case is unchanged: `eligible_countries: [\"GB\"]` is now one remote entry in GB, which admits exactly the contributors who state GB (ADR-0024 decision 5). Dave still counts as missed — he states no country, and a remote-in-GB entry does not admit an unstated one.",
   "seed": ["principals", "catalogue", "repositories", "scored_population"],
   "steps": [
     {
@@ -51,11 +51,15 @@
           "title": "Platform engineer",
           "description": "Go, on the deploy path.",
           "engagement": "full_time",
-          "location": "remote",
+          "locations": [
+            {
+              "mode": "remote",
+              "country": "GB"
+            }
+          ],
           "currency": "GBP",
           "yearly_ctc": 9000000,
           "yearly_base": 7500000,
-          "eligible_countries": ["GB"],
           "max_interview_rounds": 2
         }
       },
@@ -71,14 +75,18 @@
           "title": "Platform engineer",
           "description": "Go, on the deploy path.",
           "engagement": "full_time",
-          "location": "remote",
-          "address_id": null,
+          "locations": [
+            {
+              "mode": "remote",
+              "country": "GB",
+              "address": null
+            }
+          ],
           "currency": "GBP",
           "yearly_ctc": 9000000,
           "yearly_base": 7500000,
           "hourly_rate": null,
           "expected_hours": null,
-          "eligible_countries": ["GB"],
           "min_office_yoe": null,
           "min_oss_yoe": null,
           "requires_online_test": null,
@@ -112,14 +120,18 @@
           "title": "Platform engineer",
           "description": "Go, on the deploy path.",
           "engagement": "full_time",
-          "location": "remote",
-          "address_id": null,
+          "locations": [
+            {
+              "mode": "remote",
+              "country": "GB",
+              "address": null
+            }
+          ],
           "currency": "GBP",
           "yearly_ctc": 9000000,
           "yearly_base": 7500000,
           "hourly_rate": null,
           "expected_hours": null,
-          "eligible_countries": ["GB"],
           "min_office_yoe": null,
           "min_oss_yoe": null,
           "requires_online_test": null,
@@ -296,13 +308,17 @@
                 "title": "Platform engineer",
                 "description": "Go, on the deploy path.",
                 "engagement": "full_time",
-                "location": "remote",
+                "locations": [
+                  {
+                    "mode": "remote",
+                    "country": "GB"
+                  }
+                ],
                 "currency": "GBP",
                 "yearly_ctc": 9000000,
                 "yearly_base": 7500000,
                 "hourly_rate": null,
                 "expected_hours": null,
-                "eligible_countries": ["GB"],
                 "requires_online_test": null,
                 "max_interview_rounds": 2,
                 "avg_days_to_offer": null,

@@ -100,13 +100,7 @@ export function ReadinessPanel({ readiness }: { readiness: Readiness | undefined
 
   return (
     <Card>
-      <SectionTitle
-        note={
-          findable
-            ? "Nothing is stopping a hirer finding you."
-            : "Until these are cleared, you are in no search result."
-        }
-      >
+      <SectionTitle>
         Can hirers find you?{" "}
         {findable ? <Pill tone="primary">yes</Pill> : <Pill tone="cherry">not yet</Pill>}
       </SectionTitle>

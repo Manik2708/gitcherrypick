@@ -188,74 +188,37 @@ export interface HirerRef {
   active: boolean;
 }
 
-/* --- shortlists ---------------------------------------------------------- */
+/* --- candidates on a role (ADR-0023) -------------------------------------- */
 
-export type ShortlistStatus = "draft" | "open" | "closed";
 export type ContactStatus = "pending" | "accepted" | "declined" | "expired";
 
 /**
- * An entry as STAGING returns it — nested user, note, who added it.
- *
- * Distinct from RoundEntry below, which is what reading a round returns. The
- * two are genuinely different shapes for different questions, and treating one
- * as the other is what crashed the round screen: it read `entry.user.id` off a
- * response that has never carried a `user` object.
+ * `irreversible` arrives on the wire because the platform offers no way back,
+ * and `already_notified` so a second press can be SEEN to have sent nothing.
  */
-export interface ShortlistEntry {
-  shortlist_id: string;
-  user: { id: string; display_name: string; github_login: string };
-  note?: string | null;
-  added_by?: HirerRef | null;
-  /** Null means this candidate has not been told. Removal is only legal then. */
-  notified_at?: string | null;
-  contact_status?: ContactStatus | null;
-  email?: string | null;
-  added_at: string;
-}
-
-/**
- * An entry as READING A ROUND returns it: flat, and carrying where each
- * candidate stands.
- *
- * `notified_at` is the boundary removal turns on (ADR-0008 §3a) — null means
- * still private and removable, set means they were told and the entry is
- * permanent. `email` appears only once somebody accepted.
- */
-export interface RoundEntry {
-  user_id: string;
-  display_name: string;
-  notified_at: string | null;
-  contact_status?: ContactStatus | null;
-  email?: string | null;
-}
-
-export interface ShortlistSummary {
-  id: string;
-  /** The job this round is for. One round, one role (ADR-0019 §3). */
+export interface ContactResult {
   role_id: string;
-  name: string;
-  status: ShortlistStatus;
-  tentative_result_date: string;
-  entry_count?: number;
-  unnotified_count?: number;
-  created_by?: HirerRef | null;
-  created_at: string;
-}
-
-export interface Shortlist extends ShortlistSummary {
-  description: string;
-  entry_count: number;
-  unnotified_count: number;
-  first_confirmed_at?: string | null;
-  entries: RoundEntry[];
-  organization?: { name: string; verified: boolean } | null;
-}
-
-/** `irreversible` arrives on the wire because the platform offers no way back. */
-export interface ConfirmResult {
+  status: RoleStatus;
   notified: number;
   already_notified: number;
   irreversible: boolean;
+  first_contacted_at?: string | null;
+  contacted: Array<{
+    user_id: string;
+    display_name: string;
+    contact_request_id: string;
+    notified_at?: string | null;
+  }>;
+}
+
+/** A contact request as the ASKING side sees it. */
+export interface HirerContactRequest {
+  id: string;
+  user: { id: string; display_name: string; github_login?: string };
+  requested_by: HirerRef;
+  status: ContactStatus;
+  email?: string | null;
+  responded_at?: string | null;
 }
 
 /* --- contributor: standing ------------------------------------------------ */
@@ -457,16 +420,15 @@ export interface ContactRole {
   title: string;
   description: string;
   engagement: Engagement;
-  location: RoleLocation;
+
+  /** Never a street, a postcode or an address id (ADR-0024 decision 7). */
+  locations: ContributorLocation[];
 
   currency: string;
   yearly_ctc: number | null;
   yearly_base: number | null;
   hourly_rate: number | null;
   expected_hours: number | null;
-
-  /** EMPTY MEANS ANYWHERE, not nowhere. A client showing this has to say so. */
-  eligible_countries: string[];
 
   /** The process, disclosed here and nowhere else (ADR-0017). */
   requires_online_test: boolean | null;
@@ -479,8 +441,107 @@ export interface ContactRole {
 /* --- roles (ADR-0019) ------------------------------------------------------ */
 
 export type Engagement = "full_time" | "contract" | "internship" | "freelance";
-export type RoleLocation = "remote" | "address";
 export type RoleStatus = "draft" | "open" | "closed";
+
+/* --- where a role's work is (ADR-0024) ------------------------------------- */
+
+export type LocationMode = "remote" | "onsite";
+
+/** Whether an organisation has an office. Learnt from GET …/addresses. */
+export type Workplace = "office" | "fully_remote";
+
+/** The parts of an address, as onboarding, the address form and an office request send them. */
+export interface AddressParts {
+  country: string;
+  city: string;
+  postal_code: string;
+  street1: string;
+  street2: string;
+}
+
+/** One of an organisation's addresses, as a hirer reads it and as a role embeds it. */
+export interface OrgAddress extends AddressParts {
+  id: string;
+  is_main_office: boolean;
+  /** Stamped removed. Still embedded in a closed role that used it. */
+  removed: boolean;
+}
+
+/**
+ * A location entry as a hirer reads it.
+ *
+ * Remote carries a country or null for anywhere; onsite carries the address
+ * and no country of its own (decision 2).
+ */
+export interface RoleLocationEntry {
+  mode: LocationMode;
+  country: string | null;
+  address: OrgAddress | null;
+}
+
+/** A location entry as a hirer writes it. The three kinds, and only three. */
+export type LocationRequest =
+  | { mode: "remote" }
+  | { mode: "remote"; country: string }
+  | { mode: "onsite"; address_id: string };
+
+/** A location entry as a contributor reads it: a city and a country at most. */
+export type ContributorLocation =
+  | { mode: "remote"; country: string | null }
+  | { mode: "onsite"; country: string; city: string };
+
+/**
+ * A fully remote organisation's ask for an office (amendment 1 §1.3).
+ *
+ * `decided_at` and `reason` arrive only on a rejection. An approved request is
+ * never shown: its address is the main office by then.
+ */
+export interface OfficeRequest {
+  id: string;
+  status: "pending" | "rejected";
+  address: AddressParts;
+  requested_at: string;
+  decided_at?: string;
+  reason?: string;
+}
+
+export interface AddressesResponse {
+  workplace: Workplace;
+  /** Live only, main office first, then in the order they were added. */
+  addresses: OrgAddress[];
+  office_request: OfficeRequest | null;
+}
+
+/** A draft or open role named by `address_in_use` or `onsite_roles_exist`. */
+export interface BlockingRole {
+  id: string;
+  title: string;
+  status: "draft" | "open";
+}
+
+/** An office request awaiting an administrator (amendment 1 §1.2). */
+export interface AdminOfficeRequest {
+  id: string;
+  organization: { id: string; name: string };
+  address: AddressParts;
+  requested_by: string;
+  created_at: string;
+  /** The rejected request this one follows. Absent on a first request. */
+  supersedes?: string;
+}
+
+export interface OfficeRequestQueueResponse {
+  total: number;
+  office_requests: AdminOfficeRequest[];
+}
+
+/** What every administrator decide route answers. */
+export interface AdminDecision {
+  id: string;
+  status: "approved" | "rejected";
+  reviewed_at: string;
+  reviewed_by: string;
+}
 
 /**
  * Why a role stopped being open.
@@ -512,17 +573,14 @@ export interface Role {
   description: string;
   engagement: Engagement;
 
-  location: RoleLocation;
-  address_id: string | null;
+  /** At least one. Remote first, then by country, then by city. */
+  locations: RoleLocationEntry[];
 
   currency: string;
   yearly_ctc: number | null;
   yearly_base: number | null;
   hourly_rate: number | null;
   expected_hours: number | null;
-
-  /** Empty means anywhere (ADR-0019 §6). */
-  eligible_countries: string[];
 
   min_office_yoe: number | null;
   min_oss_yoe: number | null;
@@ -558,8 +616,7 @@ export interface RoleDraft {
   title: string;
   description: string;
   engagement: Engagement;
-  location: RoleLocation;
-  address_id?: string;
+  locations: LocationRequest[];
 
   currency: string;
   yearly_ctc: number | null;
@@ -567,7 +624,6 @@ export interface RoleDraft {
   hourly_rate: number | null;
   expected_hours: number | null;
 
-  eligible_countries: string[];
   min_office_yoe: number | null;
   min_oss_yoe: number | null;
 
@@ -721,19 +777,14 @@ export type HeadcountBand = "1-10" | "11-50" | "51-200" | "201-1000" | "1000+";
 
 export const HEADCOUNT_BANDS: HeadcountBand[] = ["1-10", "11-50", "51-200", "201-1000", "1000+"];
 
-export interface OnboardingAddress {
-  country: string;
-  city: string;
-  postal_code: string;
-  street1: string;
-  street2: string;
-}
-
 /**
  * A company describing itself.
  *
  * No owner fields. Whoever proves the company address chooses the username and
  * password, so a form anyone can submit cannot name who will own the result.
+ *
+ * `workplace` is required by the server; "" is the form not answered yet. A
+ * fully remote company sends no address (ADR-0024 decision 11).
  */
 export interface OnboardingForm {
   name: string;
@@ -741,7 +792,8 @@ export interface OnboardingForm {
   email: string;
   phone: string;
   headcount: HeadcountBand | "";
-  address: OnboardingAddress;
+  workplace: Workplace | "";
+  address: AddressParts;
 }
 
 /** A submission awaiting an administrator, as the admin queue shows it. */
@@ -752,7 +804,9 @@ export interface OnboardingSubmission {
   email: string;
   phone: string;
   headcount: HeadcountBand | "";
-  address: OnboardingAddress | null;
+  workplace: Workplace;
+  /** Null for a fully remote company. */
+  address: AddressParts | null;
   owner: { username: string; display_name: string };
   supersedes?: string | null;
   created_at: string;
@@ -924,11 +978,20 @@ export interface RoleCandidate {
   user_id: string;
   display_name: string;
   github_login?: string;
-  shortlist_id: string;
-  shortlist_name: string;
+
+  /** Private to the organisation — the contributor never sees it. */
+  note?: string;
+  added_by: HirerRef;
+  added_at: string;
   /** Empty while still staged — told nothing, and removable. */
   contact_status: string;
   notified_at: string | null;
   /** The only state a hire may be recorded from. */
   accepted: boolean;
+  /**
+   * Present only where the contributor released it by accepting (ADR-0019
+   * amendment 4). Absent — not null — for everybody else, including somebody
+   * who was asked and declined.
+   */
+  email?: string;
 }

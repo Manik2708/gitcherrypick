@@ -1,8 +1,7 @@
 // The door.
 //
-// Two paths, because one GitHub identity can own both a contributor account and
-// a hirer seat — so the path you take decides which one you are asking for,
-// rather than the server guessing.
+// Contributors sign in with GitHub; hirers with a username and password or with
+// Google; admins with an email and password.
 
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
@@ -31,8 +30,8 @@ export function SignInPage() {
     return body;
   });
 
-  const hirerGithub = useAction(async () => {
-    const body = await client.post<{ authorize_url: string }>(endpoints.auth.hirerGithubStart());
+  const hirerGoogle = useAction(async () => {
+    const body = await client.get<{ authorize_url: string }>(endpoints.auth.googleStart());
     window.location.assign(body.authorize_url);
     return body;
   });
@@ -46,21 +45,16 @@ export function SignInPage() {
     return session;
   });
 
-  const failure = github.error ?? hirerGithub.error ?? password_.error;
+  const failure = github.error ?? hirerGoogle.error ?? password_.error;
 
   return (
     <div className="page page--narrow">
-      <PageHead
-        eyebrow="GitCherryPick"
-        title="Sign in"
-        lede="Prove what you can do with evidence — merged pull requests, judged against the skills you claim."
-      />
+      <PageHead eyebrow="GitCherryPick" title="Sign in" />
 
       {failure ? <Failure message={failure.message} /> : null}
 
       <Card>
         <p className="eyebrow">Contributors</p>
-        <p className="small muted">There is no password: your account is your GitHub identity.</p>
         <Button variant="primary" disabled={github.pending} onClick={() => void github.run()}>
           <Icon name="commit" size="sm" />
           {github.pending ? "Redirecting…" : "Sign in with GitHub"}
@@ -69,11 +63,7 @@ export function SignInPage() {
 
       <Card>
         <p className="eyebrow">Hiring</p>
-        <Field
-          label="Username"
-          htmlFor="username"
-          help="Not your email address. Colleagues may share one, so it identifies nobody."
-        >
+        <Field label="Username" htmlFor="username" help="Not your email address.">
           <input
             className="input"
             id="username"
@@ -102,11 +92,10 @@ export function SignInPage() {
           </Button>
           <Button
             variant="ghost"
-            disabled={hirerGithub.pending}
-            onClick={() => void hirerGithub.run()}
+            disabled={hirerGoogle.pending}
+            onClick={() => void hirerGoogle.run()}
           >
-            <Icon name="commit" size="sm" />
-            {hirerGithub.pending ? "Redirecting…" : "Hirer, with GitHub"}
+            {hirerGoogle.pending ? "Redirecting…" : "Hirer, with Google"}
           </Button>
         </div>
         <p className="field__help">

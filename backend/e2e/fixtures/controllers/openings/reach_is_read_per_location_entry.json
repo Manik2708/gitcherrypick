@@ -1,0 +1,784 @@
+{
+  "name": "an opening reaches a contributor through any one entry that admits them",
+  "description": "ADR-0024 decision 5, ADR-0020 amendment 1 and ADR-0021 amendment 1: the worked example of RFC-0024 §2, all five rows, plus the contract case beside it.\n\nAn entry ADMITS a contributor by place: remote-anywhere admits everybody, remote-in-a-country admits whoever states that country, and ONSITE ADMITS EVERYBODY — including somebody who has stated no country at all. A role reaches a contributor when ANY entry admits them. For a full-time role an entry counts only if its mode is one the contributor ticked (open_to_remote / open_to_onsite); the other engagements read their own flag and then need any one entry to admit them. This gates GET /openings and nothing else — a hirer's search is a preference they edit (ADR-0021).\n\nOne full-time role, onsite in Bengaluru and remote in India, published with no bar so that place and shape are the only things deciding. Alice's profile is replaced before each read:\n\n| in India, remote only | yes — the remote-in-India entry |\n| in Germany, remote only | no — the remote entry is India only, and onsite is not ticked |\n| in Germany, onsite | yes — the onsite entry |\n| no country, onsite | yes — the onsite entry admits an unstated country |\n| no country, remote only | no — an unstated country is not India |\n\nThen the same two entries on a CONTRACT role reach somebody in Germany who ticked contract and neither full-time mode: the onsite entry admits them, and the contract flag is the shape that counts. `missed` counts every live opening not shown, whatever the reason, as it did before (RFC-0024 §6 row 1).\n\nThe contributor reads each entry at their level of detail (decision 7): a country for remote, a city and a country for onsite, and never a street, a postcode or an address id — ordered remote first, then by country, then by city, as the hirer read is (amendment 1 §1.7).",
+  "seed": ["principals", "catalogue", "repositories", "scored_population"],
+  "steps": [
+    {
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles",
+        "body": {
+          "title": "Payments engineer",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "onsite",
+              "address_id": "{{acme.address.main}}"
+            },
+            {
+              "mode": "remote",
+              "country": "IN"
+            }
+          ]
+        }
+      },
+      "capture": {
+        "full_time_role": "$.id"
+      },
+      "expect": {
+        "status": 201,
+        "body": {
+          "id": "<uuid>",
+          "organization_id": "01920000-0000-7000-8000-00000000b001",
+          "status": "draft",
+          "title": "Payments engineer",
+          "description": "",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "remote",
+              "country": "IN",
+              "address": null
+            },
+            {
+              "mode": "onsite",
+              "country": null,
+              "address": {
+                "id": "01920000-0000-7000-8000-0000000ad001",
+                "country": "IN",
+                "city": "Bengaluru",
+                "postal_code": "560001",
+                "street1": "1 MG Road",
+                "street2": "Floor 4",
+                "is_main_office": true,
+                "removed": false
+              }
+            }
+          ],
+          "currency": "",
+          "yearly_ctc": null,
+          "yearly_base": null,
+          "hourly_rate": null,
+          "expected_hours": null,
+          "min_office_yoe": null,
+          "min_oss_yoe": null,
+          "requires_online_test": null,
+          "max_interview_rounds": null,
+          "avg_days_to_offer": null,
+          "questions": [],
+          "opened_at": null,
+          "close_requested_at": null,
+          "closed_at": null,
+          "close_reason": null,
+          "hires": [],
+          "advertised": false,
+          "supersedes": null,
+          "created_at": "<timestamp>",
+          "updated_at": "<timestamp>"
+        }
+      }
+    },
+    {
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles/{{full_time_role}}/open"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "id": "<uuid>",
+          "organization_id": "01920000-0000-7000-8000-00000000b001",
+          "status": "open",
+          "title": "Payments engineer",
+          "description": "",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "remote",
+              "country": "IN",
+              "address": null
+            },
+            {
+              "mode": "onsite",
+              "country": null,
+              "address": {
+                "id": "01920000-0000-7000-8000-0000000ad001",
+                "country": "IN",
+                "city": "Bengaluru",
+                "postal_code": "560001",
+                "street1": "1 MG Road",
+                "street2": "Floor 4",
+                "is_main_office": true,
+                "removed": false
+              }
+            }
+          ],
+          "currency": "",
+          "yearly_ctc": null,
+          "yearly_base": null,
+          "hourly_rate": null,
+          "expected_hours": null,
+          "min_office_yoe": null,
+          "min_oss_yoe": null,
+          "requires_online_test": null,
+          "max_interview_rounds": null,
+          "avg_days_to_offer": null,
+          "questions": [],
+          "opened_at": "<timestamp>",
+          "close_requested_at": null,
+          "closed_at": null,
+          "close_reason": null,
+          "hires": [],
+          "advertised": false,
+          "supersedes": null,
+          "created_at": "<timestamp>",
+          "updated_at": "<timestamp>"
+        }
+      }
+    },
+    {
+      "as": "hank",
+      "request": {
+        "method": "PUT",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles/{{full_time_role}}/opening",
+        "body": {
+          "min_overall_score": null,
+          "min_generalist_score": null,
+          "min_oss_yoe": null,
+          "skills": []
+        }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "id": "<uuid>",
+          "role_id": "<uuid>",
+          "min_overall_score": null,
+          "min_generalist_score": null,
+          "min_oss_yoe": null,
+          "skills": [],
+          "live": false,
+          "published_at": null,
+          "withdrawn_at": null
+        }
+      }
+    },
+    {
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles/{{full_time_role}}/opening/publish"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "id": "<uuid>",
+          "role_id": "<uuid>",
+          "min_overall_score": null,
+          "min_generalist_score": null,
+          "min_oss_yoe": null,
+          "skills": [],
+          "live": true,
+          "published_at": "<timestamp>",
+          "withdrawn_at": null
+        }
+      }
+    },
+    {
+      "_step": "ROW 1 — in India, ticked remote only. The remote-in-India entry admits her and its mode is one she ticked.",
+      "as": "alice",
+      "request": {
+        "method": "PUT",
+        "path": "/me/profile",
+        "body": {
+          "open_to_remote": true,
+          "open_to_internships": false,
+          "open_to_onsite": false,
+          "open_to_contract": false,
+          "open_to_freelance": false,
+          "current_country": "IN",
+          "office_yoe": 6,
+          "first_pr_url": "",
+          "latest_pr_url": ""
+        }
+      },
+      "expect": {
+        "status": 200
+      }
+    },
+    {
+      "as": "alice",
+      "request": {
+        "method": "GET",
+        "path": "/openings"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "openings": [
+            {
+              "id": "<uuid>",
+              "organization": "Acme Corp",
+              "role": {
+                "id": "<uuid>",
+                "title": "Payments engineer",
+                "description": "",
+                "engagement": "full_time",
+                "locations": [
+                  {
+                    "mode": "remote",
+                    "country": "IN"
+                  },
+                  {
+                    "mode": "onsite",
+                    "country": "IN",
+                    "city": "Bengaluru"
+                  }
+                ],
+                "currency": "",
+                "yearly_ctc": null,
+                "yearly_base": null,
+                "hourly_rate": null,
+                "expected_hours": null,
+                "requires_online_test": null,
+                "max_interview_rounds": null,
+                "avg_days_to_offer": null,
+                "questions": []
+              },
+              "bar": {
+                "min_overall_score": null,
+                "min_generalist_score": null,
+                "min_oss_yoe": null,
+                "skills": []
+              },
+              "posted_at": "<timestamp>"
+            }
+          ],
+          "matched": 1,
+          "missed": 0
+        }
+      }
+    },
+    {
+      "_step": "ROW 2 — in Germany, ticked remote only. The remote entry is India only; the onsite entry admits her by place, but onsite is not a mode she ticked. Not shown — and counted as missed.",
+      "as": "alice",
+      "request": {
+        "method": "PUT",
+        "path": "/me/profile",
+        "body": {
+          "open_to_remote": true,
+          "open_to_internships": false,
+          "open_to_onsite": false,
+          "open_to_contract": false,
+          "open_to_freelance": false,
+          "current_country": "DE",
+          "office_yoe": 6,
+          "first_pr_url": "",
+          "latest_pr_url": ""
+        }
+      },
+      "expect": {
+        "status": 200
+      }
+    },
+    {
+      "as": "alice",
+      "request": {
+        "method": "GET",
+        "path": "/openings"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "openings": [],
+          "matched": 0,
+          "missed": 1
+        }
+      }
+    },
+    {
+      "_step": "ROW 3 — in Germany, ticked onsite. The onsite entry admits everybody, and onsite is ticked.",
+      "as": "alice",
+      "request": {
+        "method": "PUT",
+        "path": "/me/profile",
+        "body": {
+          "open_to_remote": false,
+          "open_to_internships": false,
+          "open_to_onsite": true,
+          "open_to_contract": false,
+          "open_to_freelance": false,
+          "current_country": "DE",
+          "office_yoe": 6,
+          "first_pr_url": "",
+          "latest_pr_url": ""
+        }
+      },
+      "expect": {
+        "status": 200
+      }
+    },
+    {
+      "as": "alice",
+      "request": {
+        "method": "GET",
+        "path": "/openings"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "openings": [
+            {
+              "id": "<uuid>",
+              "organization": "Acme Corp",
+              "role": {
+                "id": "<uuid>",
+                "title": "Payments engineer",
+                "description": "",
+                "engagement": "full_time",
+                "locations": [
+                  {
+                    "mode": "remote",
+                    "country": "IN"
+                  },
+                  {
+                    "mode": "onsite",
+                    "country": "IN",
+                    "city": "Bengaluru"
+                  }
+                ],
+                "currency": "",
+                "yearly_ctc": null,
+                "yearly_base": null,
+                "hourly_rate": null,
+                "expected_hours": null,
+                "requires_online_test": null,
+                "max_interview_rounds": null,
+                "avg_days_to_offer": null,
+                "questions": []
+              },
+              "bar": {
+                "min_overall_score": null,
+                "min_generalist_score": null,
+                "min_oss_yoe": null,
+                "skills": []
+              },
+              "posted_at": "<timestamp>"
+            }
+          ],
+          "matched": 1,
+          "missed": 0
+        }
+      }
+    },
+    {
+      "_step": "ROW 4 — no country stated, ticked onsite. Onsite admits somebody with no stated country too (decision 5).",
+      "as": "alice",
+      "request": {
+        "method": "PUT",
+        "path": "/me/profile",
+        "body": {
+          "open_to_remote": false,
+          "open_to_internships": false,
+          "open_to_onsite": true,
+          "open_to_contract": false,
+          "open_to_freelance": false,
+          "current_country": "",
+          "office_yoe": 6,
+          "first_pr_url": "",
+          "latest_pr_url": ""
+        }
+      },
+      "expect": {
+        "status": 200
+      }
+    },
+    {
+      "as": "alice",
+      "request": {
+        "method": "GET",
+        "path": "/openings"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "openings": [
+            {
+              "id": "<uuid>",
+              "organization": "Acme Corp",
+              "role": {
+                "id": "<uuid>",
+                "title": "Payments engineer",
+                "description": "",
+                "engagement": "full_time",
+                "locations": [
+                  {
+                    "mode": "remote",
+                    "country": "IN"
+                  },
+                  {
+                    "mode": "onsite",
+                    "country": "IN",
+                    "city": "Bengaluru"
+                  }
+                ],
+                "currency": "",
+                "yearly_ctc": null,
+                "yearly_base": null,
+                "hourly_rate": null,
+                "expected_hours": null,
+                "requires_online_test": null,
+                "max_interview_rounds": null,
+                "avg_days_to_offer": null,
+                "questions": []
+              },
+              "bar": {
+                "min_overall_score": null,
+                "min_generalist_score": null,
+                "min_oss_yoe": null,
+                "skills": []
+              },
+              "posted_at": "<timestamp>"
+            }
+          ],
+          "matched": 1,
+          "missed": 0
+        }
+      }
+    },
+    {
+      "_step": "ROW 5 — no country stated, ticked remote only. An unstated country is not India, and the onsite entry's mode is not ticked.",
+      "as": "alice",
+      "request": {
+        "method": "PUT",
+        "path": "/me/profile",
+        "body": {
+          "open_to_remote": true,
+          "open_to_internships": false,
+          "open_to_onsite": false,
+          "open_to_contract": false,
+          "open_to_freelance": false,
+          "current_country": "",
+          "office_yoe": 6,
+          "first_pr_url": "",
+          "latest_pr_url": ""
+        }
+      },
+      "expect": {
+        "status": 200
+      }
+    },
+    {
+      "as": "alice",
+      "request": {
+        "method": "GET",
+        "path": "/openings"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "openings": [],
+          "matched": 0,
+          "missed": 1
+        }
+      }
+    },
+    {
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles",
+        "body": {
+          "title": "Payments contractor",
+          "engagement": "contract",
+          "locations": [
+            {
+              "mode": "onsite",
+              "address_id": "{{acme.address.main}}"
+            },
+            {
+              "mode": "remote",
+              "country": "IN"
+            }
+          ]
+        }
+      },
+      "capture": {
+        "contract_role": "$.id"
+      },
+      "expect": {
+        "status": 201,
+        "body": {
+          "id": "<uuid>",
+          "organization_id": "01920000-0000-7000-8000-00000000b001",
+          "status": "draft",
+          "title": "Payments contractor",
+          "description": "",
+          "engagement": "contract",
+          "locations": [
+            {
+              "mode": "remote",
+              "country": "IN",
+              "address": null
+            },
+            {
+              "mode": "onsite",
+              "country": null,
+              "address": {
+                "id": "01920000-0000-7000-8000-0000000ad001",
+                "country": "IN",
+                "city": "Bengaluru",
+                "postal_code": "560001",
+                "street1": "1 MG Road",
+                "street2": "Floor 4",
+                "is_main_office": true,
+                "removed": false
+              }
+            }
+          ],
+          "currency": "",
+          "yearly_ctc": null,
+          "yearly_base": null,
+          "hourly_rate": null,
+          "expected_hours": null,
+          "min_office_yoe": null,
+          "min_oss_yoe": null,
+          "requires_online_test": null,
+          "max_interview_rounds": null,
+          "avg_days_to_offer": null,
+          "questions": [],
+          "opened_at": null,
+          "close_requested_at": null,
+          "closed_at": null,
+          "close_reason": null,
+          "hires": [],
+          "advertised": false,
+          "supersedes": null,
+          "created_at": "<timestamp>",
+          "updated_at": "<timestamp>"
+        }
+      }
+    },
+    {
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles/{{contract_role}}/open"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "id": "<uuid>",
+          "organization_id": "01920000-0000-7000-8000-00000000b001",
+          "status": "open",
+          "title": "Payments contractor",
+          "description": "",
+          "engagement": "contract",
+          "locations": [
+            {
+              "mode": "remote",
+              "country": "IN",
+              "address": null
+            },
+            {
+              "mode": "onsite",
+              "country": null,
+              "address": {
+                "id": "01920000-0000-7000-8000-0000000ad001",
+                "country": "IN",
+                "city": "Bengaluru",
+                "postal_code": "560001",
+                "street1": "1 MG Road",
+                "street2": "Floor 4",
+                "is_main_office": true,
+                "removed": false
+              }
+            }
+          ],
+          "currency": "",
+          "yearly_ctc": null,
+          "yearly_base": null,
+          "hourly_rate": null,
+          "expected_hours": null,
+          "min_office_yoe": null,
+          "min_oss_yoe": null,
+          "requires_online_test": null,
+          "max_interview_rounds": null,
+          "avg_days_to_offer": null,
+          "questions": [],
+          "opened_at": "<timestamp>",
+          "close_requested_at": null,
+          "closed_at": null,
+          "close_reason": null,
+          "hires": [],
+          "advertised": false,
+          "supersedes": null,
+          "created_at": "<timestamp>",
+          "updated_at": "<timestamp>"
+        }
+      }
+    },
+    {
+      "as": "hank",
+      "request": {
+        "method": "PUT",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles/{{contract_role}}/opening",
+        "body": {
+          "min_overall_score": null,
+          "min_generalist_score": null,
+          "min_oss_yoe": null,
+          "skills": []
+        }
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "id": "<uuid>",
+          "role_id": "<uuid>",
+          "min_overall_score": null,
+          "min_generalist_score": null,
+          "min_oss_yoe": null,
+          "skills": [],
+          "live": false,
+          "published_at": null,
+          "withdrawn_at": null
+        }
+      }
+    },
+    {
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles/{{contract_role}}/opening/publish"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "id": "<uuid>",
+          "role_id": "<uuid>",
+          "min_overall_score": null,
+          "min_generalist_score": null,
+          "min_oss_yoe": null,
+          "skills": [],
+          "live": true,
+          "published_at": "<timestamp>",
+          "withdrawn_at": null
+        }
+      }
+    },
+    {
+      "_step": "THE CONTRACT CASE. In Germany, ticked contract and neither full-time mode. The full-time role is not shown — neither of its modes is ticked — but the contract role reads the contract flag, and its onsite entry admits her.",
+      "as": "alice",
+      "request": {
+        "method": "PUT",
+        "path": "/me/profile",
+        "body": {
+          "open_to_remote": false,
+          "open_to_internships": false,
+          "open_to_onsite": false,
+          "open_to_contract": true,
+          "open_to_freelance": false,
+          "current_country": "DE",
+          "office_yoe": 6,
+          "first_pr_url": "",
+          "latest_pr_url": ""
+        }
+      },
+      "expect": {
+        "status": 200
+      }
+    },
+    {
+      "as": "alice",
+      "request": {
+        "method": "GET",
+        "path": "/openings"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "openings": [
+            {
+              "id": "<uuid>",
+              "organization": "Acme Corp",
+              "role": {
+                "id": "<uuid>",
+                "title": "Payments contractor",
+                "description": "",
+                "engagement": "contract",
+                "locations": [
+                  {
+                    "mode": "remote",
+                    "country": "IN"
+                  },
+                  {
+                    "mode": "onsite",
+                    "country": "IN",
+                    "city": "Bengaluru"
+                  }
+                ],
+                "currency": "",
+                "yearly_ctc": null,
+                "yearly_base": null,
+                "hourly_rate": null,
+                "expected_hours": null,
+                "requires_online_test": null,
+                "max_interview_rounds": null,
+                "avg_days_to_offer": null,
+                "questions": []
+              },
+              "bar": {
+                "min_overall_score": null,
+                "min_generalist_score": null,
+                "min_oss_yoe": null,
+                "skills": []
+              },
+              "posted_at": "<timestamp>"
+            }
+          ],
+          "matched": 1,
+          "missed": 1
+        }
+      }
+    },
+    {
+      "_step": "And somebody who ticked neither contract nor onsite, with no country, is reached by neither: two live openings, both missed.",
+      "as": "alice",
+      "request": {
+        "method": "PUT",
+        "path": "/me/profile",
+        "body": {
+          "open_to_remote": true,
+          "open_to_internships": false,
+          "open_to_onsite": false,
+          "open_to_contract": false,
+          "open_to_freelance": false,
+          "current_country": "",
+          "office_yoe": 6,
+          "first_pr_url": "",
+          "latest_pr_url": ""
+        }
+      },
+      "expect": {
+        "status": 200
+      }
+    },
+    {
+      "as": "alice",
+      "request": {
+        "method": "GET",
+        "path": "/openings"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "openings": [],
+          "matched": 0,
+          "missed": 2
+        }
+      }
+    }
+  ]
+}

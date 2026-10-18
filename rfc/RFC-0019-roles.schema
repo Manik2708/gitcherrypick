@@ -410,17 +410,36 @@ CREATE TRIGGER trg_roles_updated_at
 
 
 -- ---------------------------------------------------------------------------
--- 6. The forward reference from RFC-0005.
+-- 6. The forward references from RFC-0005.
 --
--- `shortlists.role_id` is declared where shortlists are, because that is where
--- the column belongs and NOT NULL has to be stated at origin. The key can only
--- be added once `roles` exists, which is here.
+-- `role_candidates.role_id` and `contact_requests.role_id` are declared where
+-- those tables are, because that is where the columns belong and NOT NULL has
+-- to be stated at origin. The keys can only be added once `roles` exists,
+-- which is here.
 --
 -- This is ordering within one schema, not a migration: `rfc/*.schema` applied
 -- in order IS the schema, and nothing is deployed.
 -- ---------------------------------------------------------------------------
-ALTER TABLE shortlists
-    ADD CONSTRAINT shortlists_role_id_fkey
+ALTER TABLE role_candidates
+    ADD CONSTRAINT role_candidates_role_id_fkey
+    FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE CASCADE;
+
+ALTER TABLE contact_requests
+    ADD CONSTRAINT contact_requests_role_id_fkey
     FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE RESTRICT;
 
-CREATE INDEX idx_shortlists_role ON shortlists (role_id);
+CREATE INDEX idx_contact_requests_role ON contact_requests (role_id);
+
+-- ---------------------------------------------------------------------------
+-- 7. When this job first told anybody (ADR-0023).
+--
+-- Was `shortlists.first_confirmed_at`. NULL means nothing has ever been sent
+-- for this role, so every candidate on it is still removable — and the overdue
+-- sweep skips it, because a job nobody was told about promised nothing.
+-- ---------------------------------------------------------------------------
+ALTER TABLE roles ADD COLUMN first_contacted_at timestamptz;
+
+-- Drives the overdue-ratio check per organization: a role that has announced
+-- itself, against the date its contact requests promised.
+CREATE INDEX idx_roles_contacted ON roles (organization_id)
+    WHERE first_contacted_at IS NOT NULL;

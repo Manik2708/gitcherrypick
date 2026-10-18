@@ -215,21 +215,75 @@ type OnboardingService interface {
 
 // OnboardingForm is a company describing itself.
 //
-// Every field but Name and Email is optional: a fully remote company has no
-// office to name, a registered address is often an accountant's rather than the
-// company's, and several countries have no postcode (ADR-0017 §5).
+// Workplace is required (ADR-0024 decision 11): an office company gives a
+// country, a city and a street, and a fully remote one gives no part of an
+// address. A postcode and a second line stay optional, because several
+// countries have no postcode (ADR-0017 §5).
 type OnboardingForm struct {
 	Name        string
 	Description string
 	Email       string
 	Phone       string
 	Headcount   domain.HeadcountBand
+	Workplace   domain.Workplace
 
 	Country    string
 	City       string
 	PostalCode string
 	Street1    string
 	Street2    string
+}
+
+// WorkplaceService owns an organisation's kind and its addresses (ADR-0024).
+//
+// Separate from OrganizationService, which owns seats: the two share a route
+// prefix and nothing else, and an address is not a roster entry.
+type WorkplaceService interface {
+	// Addresses is the envelope every seat reads: the kind, the live
+	// addresses, and the latest office request while the organisation is
+	// fully remote.
+	Addresses(ctx context.Context, p domain.Principal, org domain.OrganizationID) (*WorkplaceView, error)
+
+	// AddAddress adds a further address. Owners only, and never for a fully
+	// remote organisation.
+	AddAddress(ctx context.Context, p domain.Principal, org domain.OrganizationID, a domain.Address) (*domain.Address, error)
+
+	// RemoveAddress stamps an address removed. Owners only; never the main
+	// office, and never while a draft or open role uses it.
+	RemoveAddress(ctx context.Context, p domain.Principal, org domain.OrganizationID, id domain.AddressID) error
+
+	// RequestOffice submits a fully remote organisation's first address for
+	// review. Owners only.
+	RequestOffice(ctx context.Context, p domain.Principal, org domain.OrganizationID, a domain.Address) (*domain.OfficeRequest, error)
+
+	// GoFullyRemote removes every address and makes the organisation fully
+	// remote. Owners only, refused while a draft or open role is onsite.
+	GoFullyRemote(ctx context.Context, p domain.Principal, org domain.OrganizationID) (*WorkplaceView, error)
+
+	// OfficeRequests is the administrator's queue: undecided, oldest first.
+	OfficeRequests(ctx context.Context, p domain.Principal) ([]domain.OfficeRequest, error)
+
+	// DecideOfficeRequest approves or rejects one. A rejection needs a reason.
+	DecideOfficeRequest(ctx context.Context, p domain.Principal, id domain.OfficeRequestID, approve bool, reason string) (*OfficeDecision, error)
+}
+
+// WorkplaceView is what GET /orgs/{orgID}/addresses answers.
+type WorkplaceView struct {
+	Workplace domain.Workplace
+	Addresses []domain.Address
+
+	// OfficeRequest is the latest request while the organisation is fully
+	// remote and that request is not approved; nil otherwise (ADR-0024
+	// amendment 1 §1.3).
+	OfficeRequest *domain.OfficeRequest
+}
+
+// OfficeDecision is what an administrator's decision recorded.
+type OfficeDecision struct {
+	ID         domain.OfficeRequestID
+	Status     domain.OfficeRequestStatus
+	ReviewedAt time.Time
+	ReviewedBy domain.AdminID
 }
 
 // OnboardingOwnerInput is how the first person at a company chooses to sign in.
@@ -425,30 +479,10 @@ type DiscoveryService interface {
 	DeleteSavedSearch(ctx context.Context, p domain.Principal, id domain.SavedSearchID) error
 }
 
-// ShortlistService owns hiring rounds and the two-phase disclosure.
-type ShortlistService interface {
-	Create(ctx context.Context, p domain.Principal, role domain.RoleID, name, description string, date time.Time) (*domain.Shortlist, error)
-	List(ctx context.Context, p domain.Principal, status *domain.ShortlistStatus) ([]domain.Shortlist, error)
-	Get(ctx context.Context, p domain.Principal, id domain.ShortlistID) (*domain.Shortlist, error)
-	Update(ctx context.Context, p domain.Principal, id domain.ShortlistID, name, description *string, date *time.Time) (*domain.Shortlist, error)
-	Close(ctx context.Context, p domain.Principal, id domain.ShortlistID) (*domain.Shortlist, error)
-
-	// AddEntry stages and discloses nothing. AssertNotSelf fires HERE rather
-	// than at confirm: discovering an ineligible candidate at send time is too
-	// late.
-	AddEntry(ctx context.Context, p domain.Principal, id domain.ShortlistID, target domain.UserID, note string) (*domain.ShortlistEntry, error)
-	RemoveEntry(ctx context.Context, p domain.Principal, id domain.ShortlistID, target domain.UserID) error
-
-	// Confirm notifies every unnotified entry and is IRREVERSIBLE.
-	Confirm(ctx context.Context, p domain.Principal, id domain.ShortlistID) (*ConfirmResult, error)
-
-	ContactRequests(ctx context.Context, p domain.Principal, id domain.ShortlistID) ([]domain.ContactRequest, error)
-}
-
-// ConfirmResult reports what one confirm actually sent. AlreadyNotified is
-// returned so a second confirm can be seen to have sent nothing.
-type ConfirmResult struct {
-	Shortlist       *domain.Shortlist
+// ContactResult reports what one contact step actually sent. AlreadyNotified
+// is returned so a second press can be seen to have sent nothing.
+type ContactResult struct {
+	Role            *domain.Role
 	Notified        int
 	AlreadyNotified int
 	Requests        []domain.ContactRequest
@@ -487,7 +521,7 @@ type ReevaluationService interface {
 // the e2e harness can drive each one synchronously instead of sleeping.
 type JobService interface {
 	ExpireAvailability(ctx context.Context) (reminded int, err error)
-	FlagOverdueShortlists(ctx context.Context) (flagged int, err error)
+	FlagOverdueRoles(ctx context.Context) (flagged int, err error)
 	ExpireContactRequests(ctx context.Context) (expired int, err error)
 	RecomputeNorms(ctx context.Context) error
 
@@ -531,10 +565,24 @@ type RoleService interface {
 	List(ctx context.Context, p domain.Principal, org domain.OrganizationID, status *domain.RoleStatus) ([]domain.Role, error)
 	Role(ctx context.Context, p domain.Principal, org domain.OrganizationID, id domain.RoleID) (*domain.Role, error)
 
-	// Candidates is everybody already on a round for this role — the list a
-	// hirer reads before searching again, and the list a closure picks its
-	// hires from.
+	// Candidates is everybody already on this role — the list a hirer reads
+	// before searching again, and the list a closure picks its hires from.
 	Candidates(ctx context.Context, p domain.Principal, org domain.OrganizationID, id domain.RoleID) ([]domain.RoleCandidate, error)
+
+	// Stage puts somebody on the role and discloses NOTHING. AssertNotSelf
+	// fires HERE rather than at contact time: discovering an ineligible
+	// candidate at send time is too late.
+	Stage(ctx context.Context, p domain.Principal, org domain.OrganizationID, id domain.RoleID, target domain.UserID, note string) (*domain.RoleCandidate, error)
+
+	// Unstage takes somebody off, and only while they have been told nothing.
+	Unstage(ctx context.Context, p domain.Principal, org domain.OrganizationID, id domain.RoleID, target domain.UserID) error
+
+	// Contact tells every staged candidate, and is IRREVERSIBLE. resultBy is
+	// the date promised to the people it reaches.
+	Contact(ctx context.Context, p domain.Principal, org domain.OrganizationID, id domain.RoleID, resultBy time.Time) (*ContactResult, error)
+
+	// ContactRequests is what each contacted person answered.
+	ContactRequests(ctx context.Context, p domain.Principal, org domain.OrganizationID, id domain.RoleID) ([]domain.ContactRequest, error)
 
 	// --- public openings (ADR-0020) ---------------------------------------
 

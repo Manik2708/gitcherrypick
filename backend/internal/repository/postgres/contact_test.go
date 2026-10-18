@@ -58,17 +58,17 @@ func TestContactRepositoryRespond(t *testing.T) {
 
 func TestContactRepositoryVisibility(t *testing.T) {
 	t.Run("a contributor sees only their own requests", func(t *testing.T) {
-		// Nothing about shortlist membership is visible beyond the requests
+		// Nothing about who else is on a role is visible beyond the requests
 		// addressed to them (ADR-0005).
 		db, ctx := newDB(t), testContext(t)
 		hirer := mustRegister(ctx, t, db, "hank@acme.com", "Hank", "Acme", "acme")
 		alice := mustCreateContributor(ctx, t, db, "Alice Okafor", 100001, "aliceok")
 		bob := mustCreateContributor(ctx, t, db, "Bob Nakamura", 100002, "bobn")
 
-		s := mustCreateShortlist(ctx, t, db, hirer, "Platform team")
-		mustAddEntry(ctx, t, db, s.ID, alice.ID, hirer)
-		mustAddEntry(ctx, t, db, s.ID, bob.ID, hirer)
-		mustConfirm(ctx, t, db, s.ID)
+		role := mustCreateOpenRole(ctx, t, db, hirer)
+		mustStage(ctx, t, db, role.ID, alice.ID, hirer)
+		mustStage(ctx, t, db, role.ID, bob.ID, hirer)
+		mustContact(ctx, t, db, role.ID, hirer)
 
 		got, err := db.Contacts().ListForUser(ctx, alice.ID, nil)
 		if err != nil {
@@ -214,7 +214,7 @@ func TestSavedSearchRepository(t *testing.T) {
 
 // --- helpers -----------------------------------------------------------------
 
-// mustPendingContact stages and confirms one candidate, yielding a pending
+// mustPendingContact stages and contacts one candidate, yielding a pending
 // request. Each call uses a fresh contributor so requests do not collide on
 // uq_contact_request.
 var contactSeq int64
@@ -227,9 +227,9 @@ func mustPendingContact(ctx context.Context, t *testing.T, db *postgres.DB) *dom
 	user := mustCreateContributor(ctx, t, db,
 		"Contributor "+strconv.FormatInt(contactSeq, 10), 400000+contactSeq, "c"+strconv.FormatInt(contactSeq, 10))
 
-	s := mustCreateShortlist(ctx, t, db, hirer, "Round "+strconv.FormatInt(contactSeq, 10))
-	mustAddEntry(ctx, t, db, s.ID, user.ID, hirer)
-	requests := mustConfirm(ctx, t, db, s.ID)
+	role := mustCreateOpenRole(ctx, t, db, hirer)
+	mustStage(ctx, t, db, role.ID, user.ID, hirer)
+	requests := mustContact(ctx, t, db, role.ID, hirer)
 	if len(requests) != 1 {
 		t.Fatalf("expected 1 contact request, got %d", len(requests))
 	}

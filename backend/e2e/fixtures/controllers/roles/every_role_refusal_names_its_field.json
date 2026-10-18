@@ -1,0 +1,503 @@
+{
+  "name": "every invalid_role names the field it is about",
+  "description": "ADR-0024 decision 16 and RFC-0024 §5's first table, which the ADR adopts as the mapping.\n\nThe service already wrote a sentence for every refusal and the controller dropped it, so every role refusal reached the client as the same bare `invalid_role` and the form could not say what was wrong. Now each carries `field`, the request key it is about, and `position` when that key is a list. The CODE is unchanged, so nothing that branches on it breaks, and the sentence is still not sent — a client words its own; `field` is what lets it put the words beside the right control.\n\nOne row of the table per step, each request wrong in exactly one way and otherwise valid, locations included — so no other rule can answer first. The five that roles/an_open_role_is_immutable already asserts (base above the package, an amount with no currency, other with no note, superseded, hired_via_platform naming nobody) are not repeated; the contact route's `tentative_result_date` is asserted by roles/candidates_are_staged_then_contacted and is unchanged.\n\nFreelance pays by the hour and everything else by the year (ADR-0019), so the hourly rows use a freelance role. An unknown key and a mistyped value are 400 rather than 422 and name the key; nothing here writes a role, and the settings stay at their defaults. A list key names the item by `position`, 1-based (amendment 1 §1.6).",
+  "seed": ["principals"],
+  "steps": [
+    {
+      "_step": "No title — whitespace is not one.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles",
+        "body": {
+          "title": "   ",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "remote"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "invalid_role",
+          "field": "title"
+        }
+      }
+    },
+    {
+      "_step": "Not one of the four engagements.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles",
+        "body": {
+          "title": "Platform engineer",
+          "engagement": "permanent",
+          "locations": [
+            {
+              "mode": "remote"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "invalid_role",
+          "field": "engagement"
+        }
+      }
+    },
+    {
+      "_step": "An amount with a currency that is not a three-letter code.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles",
+        "body": {
+          "title": "Platform engineer",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "remote"
+            }
+          ],
+          "currency": "pounds",
+          "yearly_ctc": 9000000
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "invalid_role",
+          "field": "currency"
+        }
+      }
+    },
+    {
+      "_step": "An amount that is not positive names WHICH amount.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles",
+        "body": {
+          "title": "Platform engineer",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "remote"
+            }
+          ],
+          "currency": "GBP",
+          "yearly_ctc": 0
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "invalid_role",
+          "field": "yearly_ctc"
+        }
+      }
+    },
+    {
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles",
+        "body": {
+          "title": "Platform engineer",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "remote"
+            }
+          ],
+          "currency": "GBP",
+          "yearly_ctc": 9000000,
+          "yearly_base": -1
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "invalid_role",
+          "field": "yearly_base"
+        }
+      }
+    },
+    {
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles",
+        "body": {
+          "title": "Platform engineer",
+          "engagement": "freelance",
+          "locations": [
+            {
+              "mode": "remote"
+            }
+          ],
+          "currency": "GBP",
+          "hourly_rate": -5000,
+          "expected_hours": 20
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "invalid_role",
+          "field": "hourly_rate"
+        }
+      }
+    },
+    {
+      "_step": "Hours outside 1 to 168 — there are 168 in a week.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles",
+        "body": {
+          "title": "Platform engineer",
+          "engagement": "freelance",
+          "locations": [
+            {
+              "mode": "remote"
+            }
+          ],
+          "currency": "GBP",
+          "hourly_rate": 5000,
+          "expected_hours": 169
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "invalid_role",
+          "field": "expected_hours"
+        }
+      }
+    },
+    {
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles",
+        "body": {
+          "title": "Platform engineer",
+          "engagement": "freelance",
+          "locations": [
+            {
+              "mode": "remote"
+            }
+          ],
+          "currency": "GBP",
+          "hourly_rate": 5000,
+          "expected_hours": 0
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "invalid_role",
+          "field": "expected_hours"
+        }
+      }
+    },
+    {
+      "_step": "A minimum outside 0 to 80 names which minimum.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles",
+        "body": {
+          "title": "Platform engineer",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "remote"
+            }
+          ],
+          "min_office_yoe": -1
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "invalid_role",
+          "field": "min_office_yoe"
+        }
+      }
+    },
+    {
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles",
+        "body": {
+          "title": "Platform engineer",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "remote"
+            }
+          ],
+          "min_oss_yoe": 81
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "invalid_role",
+          "field": "min_oss_yoe"
+        }
+      }
+    },
+    {
+      "_step": "A process with no rounds is not a process.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles",
+        "body": {
+          "title": "Platform engineer",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "remote"
+            }
+          ],
+          "max_interview_rounds": 0
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "invalid_role",
+          "field": "max_interview_rounds"
+        }
+      }
+    },
+    {
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles",
+        "body": {
+          "title": "Platform engineer",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "remote"
+            }
+          ],
+          "avg_days_to_offer": -1
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "invalid_role",
+          "field": "avg_days_to_offer"
+        }
+      }
+    },
+    {
+      "_step": "An empty screening question names the list AND the question: the second one, position 2.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles",
+        "body": {
+          "title": "Platform engineer",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "remote"
+            }
+          ],
+          "questions": [
+            {
+              "question": "Do you need visa sponsorship?",
+              "expected": false
+            },
+            {
+              "question": "  ",
+              "expected": true
+            }
+          ]
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "invalid_role",
+          "field": "questions",
+          "position": 2
+        }
+      }
+    },
+    {
+      "_step": "AN UNKNOWN KEY is named. 400, because the body did not decode into a role at all.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles",
+        "body": {
+          "title": "Platform engineer",
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "remote"
+            }
+          ],
+          "salary": 9000000
+        }
+      },
+      "expect": {
+        "status": 400,
+        "body": {
+          "error": "invalid_role",
+          "field": "salary"
+        }
+      }
+    },
+    {
+      "_step": "A value of the WRONG TYPE is named the same way.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles",
+        "body": {
+          "title": 7,
+          "engagement": "full_time",
+          "locations": [
+            {
+              "mode": "remote"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "status": 400,
+        "body": {
+          "error": "invalid_role",
+          "field": "title"
+        },
+        "db": {
+          "roles": {
+            "where": {
+              "organization_id": "01920000-0000-7000-8000-00000000b001"
+            },
+            "count": 1
+          }
+        }
+      }
+    },
+    {
+      "_step": "CLOSE. A reason that is not offered.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles/{{acme.role}}/close",
+        "body": {
+          "reason": "bored"
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "invalid_role",
+          "field": "reason"
+        }
+      }
+    },
+    {
+      "_step": "Hires named under a reason that is not hired_via_platform. Nobody was hired through the platform, so naming somebody would record a hire that did not happen.",
+      "as": "hank",
+      "request": {
+        "method": "POST",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/roles/{{acme.role}}/close",
+        "body": {
+          "reason": "hired_elsewhere",
+          "hired": ["01920000-0000-7000-8000-00000000a001"]
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "invalid_role",
+          "field": "hired"
+        },
+        "db": {
+          "roles": {
+            "where": {
+              "organization_id": "01920000-0000-7000-8000-00000000b001",
+              "status": "open"
+            },
+            "count": 1
+          }
+        }
+      }
+    },
+    {
+      "_step": "SETTINGS. Not one of the three authorities names which of the three keys.",
+      "as": "hank",
+      "request": {
+        "method": "PUT",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/settings",
+        "body": {
+          "role_create_authority": "anyone",
+          "role_update_authority": "any_hirer",
+          "role_close_authority": "any_hirer"
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "invalid_role",
+          "field": "role_create_authority"
+        }
+      }
+    },
+    {
+      "as": "hank",
+      "request": {
+        "method": "PUT",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/settings",
+        "body": {
+          "role_create_authority": "any_hirer",
+          "role_update_authority": "any_hirer",
+          "role_close_authority": "owner"
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "invalid_role",
+          "field": "role_close_authority"
+        }
+      }
+    },
+    {
+      "_step": "Neither refusal changed anything: the defaults ADR-0019 §11 states — approve, approve, any_hirer.",
+      "as": "hank",
+      "request": {
+        "method": "GET",
+        "path": "/org-roles/01920000-0000-7000-8000-00000000b001/settings"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "role_create_authority": "draft_and_approve",
+          "role_update_authority": "draft_and_approve",
+          "role_close_authority": "any_hirer"
+        }
+      }
+    }
+  ]
+}

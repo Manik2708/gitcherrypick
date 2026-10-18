@@ -97,3 +97,31 @@ func quote(s string) string {
 	b, _ := json.Marshal(s)
 	return string(b)
 }
+
+func TestUnpinnedMatchesAnyValueButNotAbsence(t *testing.T) {
+	// <unpinned> marks a value the binding ADR leaves open. It must accept
+	// whatever shape the implementation chooses — null included — and still
+	// fail when the key is missing, or a gap would hide a dropped field.
+	want := json.RawMessage(`{"error":"address_in_use","roles":"<unpinned>"}`)
+	for _, got := range []string{
+		`{"error":"address_in_use","roles":["0193"]}`,
+		`{"error":"address_in_use","roles":[{"id":"x","title":"y"}]}`,
+		`{"error":"address_in_use","roles":null}`,
+	} {
+		require.Empty(t, e2e.Compare(want, json.RawMessage(got)), got)
+	}
+	require.NotEmpty(t, e2e.Compare(want, json.RawMessage(`{"error":"address_in_use"}`)))
+	require.NotEmpty(t, e2e.Compare(want, json.RawMessage(`{"error":"other","roles":[]}`)))
+}
+
+func TestEmailBodyFiltersReadTheUnescapedText(t *testing.T) {
+	// html/template escapes an apostrophe as &#39;. A reason the administrator
+	// typed must match as typed, or every reason with an apostrophe in it is
+	// unassertable.
+	body := `<p>Reason: The lease is in a director&#39;s own name, not the company&#39;s.</p>`
+	reason := "The lease is in a director's own name, not the company's."
+	require.True(t, e2e.BodyMatches(body, []string{reason}, nil))
+	require.False(t, e2e.BodyMatches(body, nil, []string{"director's"}))
+	require.False(t, e2e.BodyMatches(body, []string{"landlord's"}, nil))
+	require.True(t, e2e.BodyMatches(`<p>1 &amp; 2</p>`, []string{"1 & 2"}, nil))
+}
